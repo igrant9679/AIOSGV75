@@ -40,6 +40,11 @@ export const WORKSPACE_RE = /^[A-Za-z0-9][A-Za-z0-9 _-]{0,39}$/;
 /** Built-in chat ids that dynamic agents must not shadow. */
 export const RESERVED_IDS = new Set(["claude", "openclaw", "hermes", "overview", "goals", "journal", "memory", "settings"]);
 
+/** Local endpoints (Ollama, LM Studio, …) don't need API keys. */
+export function isLocalEndpoint(url: string): boolean {
+  return /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/i.test(url);
+}
+
 export async function readRegistry(): Promise<Registry> {
   try {
     const raw = JSON.parse(await fs.readFile(FILE, "utf8")) as Partial<Registry>;

@@ -23,7 +23,8 @@ let deadUntil = 0;
 let cache: Record<string, number[]> | null = null;
 
 export function embeddingsConfigured(): boolean {
-  return Boolean(BASE && KEY && MODEL) && Date.now() > deadUntil;
+  const localOk = BASE ? /^http:\/\/(localhost|127\.0\.0\.1)/i.test(BASE) : false;
+  return Boolean(BASE && MODEL && (KEY || localOk)) && Date.now() > deadUntil;
 }
 
 function hash(text: string): string {
@@ -60,7 +61,7 @@ export async function embedTexts(texts: string[]): Promise<(number[] | null)[]> 
   try {
     const res = await fetch(`${BASE}/embeddings`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${KEY}` },
+      headers: { "Content-Type": "application/json", ...(KEY ? { Authorization: `Bearer ${KEY}` } : {}) },
       body: JSON.stringify({ model: MODEL, input: missing.map(({ t }) => t.slice(0, 6000)) }),
       signal: AbortSignal.timeout(30_000),
     });

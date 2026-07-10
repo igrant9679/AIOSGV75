@@ -245,9 +245,9 @@ export default function SettingsSection() {
             </div>
             <div>
               <label className={labelCls} htmlFor="llm-key">
-                API KEY <span className="normal-case text-ink-faint">(stored locally in data/registry.json · get one at {PROVIDER_PRESETS.find((p) => p.id === preset)?.keyHint})</span>
+                API KEY <span className="normal-case text-ink-faint">(stored locally in data/registry.json · get one at {PROVIDER_PRESETS.find((p) => p.id === preset)?.keyHint} · not needed for localhost endpoints like Ollama)</span>
               </label>
-              <input id="llm-key" type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="sk-…" className={inputCls} autoComplete="off" />
+              <input id="llm-key" type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="sk-… (leave empty for localhost)" className={inputCls} autoComplete="off" />
             </div>
             <div>
               <label className={labelCls} htmlFor="llm-sys">SYSTEM PROMPT (OPTIONAL)</label>

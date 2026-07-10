@@ -1,7 +1,7 @@
 import { spawn } from "child_process";
 import os from "os";
 import { AGENT_DEFS } from "./agents-config";
-import { readRegistry, type LlmConfig } from "./registry";
+import { readRegistry, isLocalEndpoint, type LlmConfig } from "./registry";
 import { gatherContext, memoryBlock, memorySystemBlock, EMPTY_CONTEXT } from "./retrieval";
 import { recordUsage } from "./usage";
 
@@ -117,11 +117,16 @@ export function runCommandText(def: { commandTemplate: string }, input: string):
 
 export async function runLlmText(llm: LlmConfig, prompt: string, system: string): Promise<RunResult> {
   const started = Date.now();
-  if (!llm.apiKey) return { text: "", ms: 0, error: `no API key saved for ${llm.name}` };
+  if (!llm.apiKey && !isLocalEndpoint(llm.baseUrl)) {
+    return { text: "", ms: 0, error: `no API key saved for ${llm.name}` };
+  }
   try {
     const res = await fetch(`${llm.baseUrl}/chat/completions`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${llm.apiKey}` },
+      headers: {
+        "Content-Type": "application/json",
+        ...(llm.apiKey ? { Authorization: `Bearer ${llm.apiKey}` } : {}),
+      },
       body: JSON.stringify({
         model: llm.model,
         messages: [

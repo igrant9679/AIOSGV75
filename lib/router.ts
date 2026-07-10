@@ -1,4 +1,4 @@
-import { readRegistry } from "./registry";
+import { readRegistry, isLocalEndpoint } from "./registry";
 import { listStandings } from "./arena";
 import { readUsage } from "./usage";
 
@@ -66,7 +66,7 @@ export async function routeTask(prompt: string): Promise<RouteDecision> {
       okRate: okRateFor("claude"),
     },
     ...reg.llms
-      .filter((l) => l.apiKey)
+      .filter((l) => l.apiKey || isLocalEndpoint(l.baseUrl))
       .map((l) => ({
         id: l.id,
         name: l.name,

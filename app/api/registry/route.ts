@@ -3,6 +3,7 @@ import {
   writeRegistry,
   slugify,
   uniqueId,
+  isLocalEndpoint,
   ACCENT_IDS,
   WORKSPACE_RE,
   type LlmConfig,
@@ -19,7 +20,8 @@ function safeAccent(a: unknown): Accent {
 /** Redact API keys before anything leaves the server. */
 function redact(reg: Awaited<ReturnType<typeof readRegistry>>) {
   return {
-    llms: reg.llms.map(({ apiKey, ...rest }) => ({ ...rest, hasKey: Boolean(apiKey) })),
+    // "hasKey" means "ready to use" — local endpoints (Ollama etc.) need no key
+    llms: reg.llms.map(({ apiKey, ...rest }) => ({ ...rest, hasKey: Boolean(apiKey) || isLocalEndpoint(rest.baseUrl) })),
     commandAgents: reg.commandAgents,
     workspaces: reg.workspaces,
   };

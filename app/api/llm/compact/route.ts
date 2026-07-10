@@ -33,9 +33,9 @@ export async function POST(request: Request) {
     .join("\n");
 
   const llm = body.agentId ? await findLlm(body.agentId) : undefined;
-  let result = llm?.apiKey
+  let result = llm
     ? await runLlmText(llm, prompt, "You are a precise conversation summarizer.")
-    : { text: "", ms: 0, error: "no key" };
+    : { text: "", ms: 0, error: "no llm" };
   if (result.error || !result.text.trim()) {
     result = await runClaudeText(prompt);
   }

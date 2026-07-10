@@ -1,4 +1,4 @@
-import { findLlm } from "@/lib/registry";
+import { findLlm, isLocalEndpoint } from "@/lib/registry";
 import { gatherContext, memorySystemBlock, type AgentContext } from "@/lib/retrieval";
 import { TOOL_DEFS, executeTool } from "@/lib/llmTools";
 
@@ -37,7 +37,9 @@ export async function POST(request: Request) {
   const body = (await request.json()) as { agentId?: string; messages?: ChatMessage[]; summary?: string };
   const llm = body.agentId ? await findLlm(body.agentId) : undefined;
   if (!llm) return Response.json({ error: "unknown LLM agent" }, { status: 400 });
-  if (!llm.apiKey) return Response.json({ error: `No API key saved for ${llm.name} — add one in Settings` }, { status: 400 });
+  if (!llm.apiKey && !isLocalEndpoint(llm.baseUrl)) {
+    return Response.json({ error: `No API key saved for ${llm.name} — add one in Settings` }, { status: 400 });
+  }
 
   const history = (body.messages ?? [])
     .filter((m) => (m.role === "user" || m.role === "assistant") && typeof m.content === "string")
@@ -56,7 +58,10 @@ export async function POST(request: Request) {
   const callUpstream = (withTools: boolean) =>
     fetch(`${llm.baseUrl}/chat/completions`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${llm.apiKey}` },
+      headers: {
+        "Content-Type": "application/json",
+        ...(llm.apiKey ? { Authorization: `Bearer ${llm.apiKey}` } : {}),
+      },
       body: JSON.stringify({
         model: llm.model,
         messages: convo,
