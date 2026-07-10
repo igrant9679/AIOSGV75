@@ -131,7 +131,7 @@ export default function EvalsSection() {
                     aria-pressed={on}
                     className="flex cursor-pointer items-center gap-2 rounded-xl border px-2.5 py-1.5 text-xs font-medium transition-all disabled:cursor-not-allowed disabled:opacity-30"
                     style={{
-                      borderColor: on ? `${col.base}88` : "var(--color-line)",
+                      borderColor: on ? col.border : "var(--color-line)",
                       background: on ? col.soft : "transparent",
                       color: on ? col.base : "var(--color-ink-dim)",
                     }}

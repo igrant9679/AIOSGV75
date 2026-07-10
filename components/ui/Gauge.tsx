@@ -114,9 +114,9 @@ export default function Gauge({
           transition={{ type: "spring", stiffness: 70, damping: 14 }}
           style={{ originX: "100px", originY: `${CY}px` }}
         >
-          <polygon points={`${CX - 3},${CY} ${CX + 3},${CY} ${CX},${CY - R + 16}`} fill={c.base} opacity={0.95} />
+          <polygon points={`${CX - 3},${CY} ${CX + 3},${CY} ${CX},${CY - R + 16}`} style={{ fill: c.base }} opacity={0.95} />
         </motion.g>
-        <circle cx={CX} cy={CY} r={6} fill="#0c0f20" stroke={c.base} strokeWidth={2} />
+        <circle cx={CX} cy={CY} r={6} style={{ fill: "var(--surface-panel)", stroke: c.base }} strokeWidth={2} />
 
         {/* value */}
         <foreignObject x={30} y={CY + 8} width={140} height={40}>

@@ -29,6 +29,12 @@ export default function RootLayout({
       className={`${spaceGrotesk.variable} ${jetbrains.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
+        {/* apply the saved theme before first paint */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `try{document.documentElement.dataset.theme=localStorage.getItem("mc-theme")||"dark"}catch(e){}`,
+          }}
+        />
         <Shell>{children}</Shell>
       </body>
     </html>

@@ -41,13 +41,13 @@ export default function Sparkline({
     <svg width={width} height={height} viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" aria-hidden>
       <defs>
         <linearGradient id={`${id}-fill`} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={c.base} stopOpacity="0.35" />
-          <stop offset="100%" stopColor={c.base} stopOpacity="0" />
+          <stop offset="0%" style={{ stopColor: c.base }} stopOpacity="0.35" />
+          <stop offset="100%" style={{ stopColor: c.base }} stopOpacity="0" />
         </linearGradient>
       </defs>
       <polygon points={area} fill={`url(#${id}-fill)`} />
-      <polyline points={line} fill="none" stroke={c.base} strokeWidth="1.4" vectorEffect="non-scaling-stroke" />
-      <circle cx={last.x} cy={last.y} r="2" fill={c.base} />
+      <polyline points={line} fill="none" style={{ stroke: c.base }} strokeWidth="1.4" vectorEffect="non-scaling-stroke" />
+      <circle cx={last.x} cy={last.y} r="2" style={{ fill: c.base }} />
     </svg>
   );
 }

@@ -46,7 +46,7 @@ export default function Composer({
 
       <div
         className="flex items-end gap-1.5 rounded-2xl border border-line bg-panel-2 p-1.5 transition-colors focus-within:border-line-bright"
-        style={mic.listening ? { borderColor: `${ACCENTS.rose.base}66` } : undefined}
+        style={mic.listening ? { borderColor: ACCENTS.rose.border } : undefined}
       >
         <textarea
           value={mic.listening && mic.interim ? `${text ? text + " " : ""}${mic.interim}` : text}

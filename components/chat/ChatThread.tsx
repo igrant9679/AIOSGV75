@@ -58,7 +58,7 @@ function Bubble({
               ? "whitespace-pre-wrap rounded-bl-md border border-neon-rose/30 bg-neon-rose/10 text-neon-rose"
               : "rounded-bl-md border border-line bg-white/[0.04] text-ink"
         }`}
-        style={isUser ? { background: `linear-gradient(135deg, ${c.gradFrom}, ${c.base}cc)` } : undefined}
+        style={isUser ? { background: `linear-gradient(135deg, ${c.gradFrom}, ${c.base})`, color: "#fff" } : undefined}
       >
         {!isUser && !isError ? <Markdown>{entry.text || " "}</Markdown> : entry.text || " "}
       </div>

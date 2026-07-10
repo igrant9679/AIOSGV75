@@ -3,12 +3,29 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import StatusOrb from "./ui/StatusOrb";
+import { IconSun, IconMoon } from "./icons";
 import { useMission } from "./store";
 
 export default function Header() {
   const { system, busy } = useMission();
   const claudeBusy = Boolean(busy.claude);
   const [clock, setClock] = useState<string>("");
+  const [theme, setTheme] = useState("dark");
+
+  useEffect(() => {
+    setTheme(document.documentElement.dataset.theme ?? "dark");
+  }, []);
+
+  const toggleTheme = () => {
+    const next = theme === "dark" ? "light" : "dark";
+    setTheme(next);
+    document.documentElement.dataset.theme = next;
+    try {
+      localStorage.setItem("mc-theme", next);
+    } catch {
+      /* private mode */
+    }
+  };
 
   useEffect(() => {
     const tick = () =>
@@ -69,6 +86,14 @@ export default function Header() {
         <div className="font-mono text-[11px] tabular-nums text-ink-dim" suppressHydrationWarning>
           {clock}
         </div>
+        <button
+          onClick={toggleTheme}
+          aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+          title={theme === "dark" ? "Light mode" : "Dark mode"}
+          className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg border border-line text-ink-dim transition-colors hover:border-line-bright hover:text-ink"
+        >
+          {theme === "dark" ? <IconSun width={15} height={15} /> : <IconMoon width={15} height={15} />}
+        </button>
       </div>
     </motion.header>
   );

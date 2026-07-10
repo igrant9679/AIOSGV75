@@ -1,26 +1,65 @@
 @import "tailwindcss";
 
+/* Theme tokens: dark is the default; [data-theme="light"] overrides. */
+:root {
+  --surface-void: #05060f;
+  --surface-abyss: #080a18;
+  --surface-panel: #0c0f20;
+  --surface-panel-2: #10142a;
+  --tone-line: rgba(148, 163, 255, 0.12);
+  --tone-line-bright: rgba(148, 163, 255, 0.28);
+  --tone-ink: #e2e8f5;
+  --tone-ink-dim: #8b93b8;
+  --tone-ink-faint: #565e82;
+
+  --ac-cyan: #22d3ee;
+  --ac-magenta: #e879f9;
+  --ac-amber: #fbbf24;
+  --ac-lime: #a3e635;
+  --ac-violet: #a78bfa;
+  --ac-rose: #fb7185;
+}
+
+[data-theme="light"] {
+  --surface-void: #eef1f9;
+  --surface-abyss: #e5e9f5;
+  --surface-panel: #ffffff;
+  --surface-panel-2: #f0f3fb;
+  --tone-line: rgba(30, 41, 80, 0.13);
+  --tone-line-bright: rgba(30, 41, 80, 0.3);
+  --tone-ink: #1b2238;
+  --tone-ink-dim: #4b5474;
+  --tone-ink-faint: #8a92ad;
+
+  --ac-cyan: #0e7490;
+  --ac-magenta: #a21caf;
+  --ac-amber: #b45309;
+  --ac-lime: #4d7c0f;
+  --ac-violet: #6d28d9;
+  --ac-rose: #be123c;
+}
+
 @theme inline {
   --font-display: var(--font-space-grotesk), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-jetbrains), ui-monospace, "Cascadia Code", monospace;
 
-  --color-void: #05060f;
-  --color-abyss: #080a18;
-  --color-panel: #0c0f20;
-  --color-panel-2: #10142a;
-  --color-line: rgba(148, 163, 255, 0.12);
-  --color-line-bright: rgba(148, 163, 255, 0.28);
+  --color-void: var(--surface-void);
+  --color-abyss: var(--surface-abyss);
+  --color-panel: var(--surface-panel);
+  --color-panel-2: var(--surface-panel-2);
+  --color-line: var(--tone-line);
+  --color-line-bright: var(--tone-line-bright);
 
-  --color-neon-cyan: #22d3ee;
-  --color-neon-magenta: #e879f9;
-  --color-neon-amber: #fbbf24;
-  --color-neon-lime: #a3e635;
-  --color-neon-violet: #a78bfa;
-  --color-neon-rose: #fb7185;
+  --color-neon-cyan: var(--ac-cyan);
+  --color-neon-magenta: var(--ac-magenta);
+  --color-neon-amber: var(--ac-amber);
+  --color-neon-lime: var(--ac-lime);
+  --color-neon-violet: var(--ac-violet);
+  --color-neon-rose: var(--ac-rose);
 
-  --color-ink: #e2e8f5;
-  --color-ink-dim: #8b93b8;
-  --color-ink-faint: #565e82;
+  --color-ink: var(--tone-ink);
+  --color-ink-dim: var(--tone-ink-dim);
+  --color-ink-faint: var(--tone-ink-faint);
 }
 
 html,
@@ -243,4 +282,63 @@ body {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* ---- light theme surface treatments ---- */
+[data-theme="light"] .panel {
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 6px 22px rgba(30, 41, 80, 0.09);
+}
+[data-theme="light"] .grid-bg {
+  background-image:
+    linear-gradient(rgba(30, 41, 80, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(30, 41, 80, 0.05) 1px, transparent 1px);
+}
+[data-theme="light"] .nebula {
+  background:
+    radial-gradient(600px 320px at 12% -5%, rgba(14, 116, 144, 0.08), transparent 65%),
+    radial-gradient(700px 380px at 88% 0%, rgba(162, 28, 175, 0.06), transparent 65%),
+    radial-gradient(520px 300px at 55% 110%, rgba(109, 40, 217, 0.06), transparent 65%);
+}
+[data-theme="light"] .scanlines::after {
+  content: none;
+}
+[data-theme="light"] .text-glow-cyan,
+[data-theme="light"] .text-glow-magenta,
+[data-theme="light"] .text-glow-amber {
+  text-shadow: none;
+}
+[data-theme="light"] * {
+  scrollbar-color: rgba(30, 41, 80, 0.3) transparent;
+}
+[data-theme="light"] *::-webkit-scrollbar-thumb {
+  background: rgba(30, 41, 80, 0.3);
+}
+[data-theme="light"] .md-body pre {
+  background: rgba(30, 41, 80, 0.05);
+}
+[data-theme="light"] .md-body code {
+  background: rgba(30, 41, 80, 0.08);
+}
+
+/* white-alpha utilities read as ink-alpha on light surfaces */
+[data-theme="light"] .bg-white\/5,
+[data-theme="light"] .bg-white\/\[0\.02\],
+[data-theme="light"] .bg-white\/\[0\.03\] {
+  background-color: rgba(30, 41, 80, 0.035);
+}
+[data-theme="light"] .bg-white\/10,
+[data-theme="light"] .bg-white\/\[0\.04\],
+[data-theme="light"] .bg-white\/\[0\.05\] {
+  background-color: rgba(30, 41, 80, 0.06);
+}
+[data-theme="light"] .hover\:bg-white\/\[0\.04\]:hover,
+[data-theme="light"] .hover\:bg-white\/\[0\.06\]:hover,
+[data-theme="light"] .hover\:bg-white\/10:hover,
+[data-theme="light"] .hover\:bg-white\/\[0\.02\]:hover {
+  background-color: rgba(30, 41, 80, 0.07);
+}
+[data-theme="light"] .bg-panel-2\/80,
+[data-theme="light"] .bg-panel-2\/90 {
+  background-color: rgba(240, 243, 251, 0.9);
 }
