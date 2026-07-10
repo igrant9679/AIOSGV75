@@ -8,7 +8,7 @@ import { PROVIDER_PRESETS } from "@/lib/providers";
 import Panel from "./ui/Panel";
 import Avatar from "./Avatar";
 import StatusOrb from "./ui/StatusOrb";
-import { IconPlus, IconTrash } from "./icons";
+import { IconCheck, IconPencil, IconPlus, IconTrash } from "./icons";
 import { useMission } from "./store";
 
 const ACCENT_CHOICES: Accent[] = ["cyan", "magenta", "amber", "lime", "violet", "rose"];
@@ -54,6 +54,10 @@ export default function SettingsSection() {
   const [accent, setAccent] = useState<Accent>("cyan");
   const [systemPrompt, setSystemPrompt] = useState("");
   const [saving, setSaving] = useState(false);
+
+  // inline key editing
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editKey, setEditKey] = useState("");
 
   // add command agent form
   const [caName, setCaName] = useState("");
@@ -149,6 +153,31 @@ export default function SettingsSection() {
     addEvent("SETTINGS", `Removed ${kind}: ${id}`, "rose");
   };
 
+  const saveKey = async (id: string, name: string) => {
+    setErr("");
+    setSaving(true);
+    try {
+      const res = await fetch("/api/registry", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kind: "llm", id, data: { apiKey: editKey } }),
+      });
+      const json = (await res.json()) as { ok?: boolean; error?: string };
+      if (!res.ok || !json.ok) {
+        setErr(json.error ?? "key update failed");
+        return;
+      }
+      await refreshRegistry();
+      addEvent("SETTINGS", `API key updated: ${name}`, "lime");
+      setEditingId(null);
+      setEditKey("");
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const addLlm = async () => {
     const id = await post("llm", { name, provider: preset, baseUrl, model, apiKey, accent, systemPrompt });
     if (id) {
@@ -196,22 +225,61 @@ export default function SettingsSection() {
               </p>
             )}
             {registry.llms.map((l) => (
-              <div key={l.id} className="flex items-center gap-3 rounded-xl border border-line bg-white/[0.02] px-3 py-2.5">
-                <Avatar name={l.name} accent={l.accent} size={32} />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-semibold text-ink">{l.name}</p>
-                  <p className="truncate font-mono text-[10px] text-ink-faint">
-                    {l.provider} · {l.model}
-                  </p>
+              <div key={l.id} className="rounded-xl border border-line bg-white/[0.02] px-3 py-2.5">
+                <div className="flex items-center gap-3">
+                  <Avatar name={l.name} accent={l.accent} size={32} />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold text-ink">{l.name}</p>
+                    <p className="truncate font-mono text-[10px] text-ink-faint">
+                      {l.provider} · {l.model}
+                    </p>
+                  </div>
+                  <StatusOrb accent={l.hasKey ? "lime" : "rose"} pulsing={false} size={7} />
+                  <button
+                    onClick={() => {
+                      setEditingId(editingId === l.id ? null : l.id);
+                      setEditKey("");
+                    }}
+                    aria-label={`Edit API key for ${l.name}`}
+                    aria-expanded={editingId === l.id}
+                    className="cursor-pointer rounded-lg p-1.5 text-ink-faint transition-colors hover:bg-white/[0.06] hover:text-neon-cyan"
+                  >
+                    <IconPencil width={14} height={14} />
+                  </button>
+                  <button
+                    onClick={() => remove("llm", l.id)}
+                    aria-label={`Remove ${l.name}`}
+                    className="cursor-pointer rounded-lg p-1.5 text-ink-faint transition-colors hover:bg-white/[0.06] hover:text-neon-rose"
+                  >
+                    <IconTrash width={14} height={14} />
+                  </button>
                 </div>
-                <StatusOrb accent={l.hasKey ? "lime" : "rose"} pulsing={false} size={7} />
-                <button
-                  onClick={() => remove("llm", l.id)}
-                  aria-label={`Remove ${l.name}`}
-                  className="cursor-pointer rounded-lg p-1.5 text-ink-faint transition-colors hover:bg-white/[0.06] hover:text-neon-rose"
-                >
-                  <IconTrash width={14} height={14} />
-                </button>
+                {editingId === l.id && (
+                  <div className="mt-2 flex items-center gap-2">
+                    <input
+                      type="password"
+                      value={editKey}
+                      onChange={(e) => setEditKey(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && editKey.trim()) saveKey(l.id, l.name);
+                        if (e.key === "Escape") setEditingId(null);
+                      }}
+                      placeholder="New API key…"
+                      aria-label={`New API key for ${l.name}`}
+                      autoComplete="off"
+                      autoFocus
+                      className={`${inputCls} h-9`}
+                    />
+                    <button
+                      onClick={() => saveKey(l.id, l.name)}
+                      disabled={saving || !editKey.trim()}
+                      aria-label={`Save API key for ${l.name}`}
+                      className="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-lg bg-gradient-to-br from-lime-600 to-neon-lime text-black disabled:cursor-not-allowed disabled:opacity-35"
+                    >
+                      <IconCheck width={14} height={14} />
+                    </button>
+                  </div>
+                )}
               </div>
             ))}
           </div>

@@ -25,18 +25,21 @@ built-in searchable guide (`/guide`, also exported to the vault for agent RAG).
   run `npm run build` then restart via the VBS so the boot server serves the new code.
   If dev serves stale CSS/JS after big edits: `rm -rf .next/dev` and restart dev.
 
-## Fleet & config state (as of 2026-07-10 evening)
+## Fleet & config state (as of 2026-07-10 night)
 
 | Piece | State |
 | --- | --- |
 | Claude CLI | authed (interactive `/login` done); bridge strips `CLAUDE_*`/`ANTHROPIC_*` env except `ANTHROPIC_API_KEY` |
-| OpenClaw | gateway = Windows Scheduled Task; Telegram bot **@IdrisGV75_bot** paired (owner id 7284896916); approval protocol lives in `~/.openclaw/workspace/TOOLS.md` — **update it if the API port/paths change** |
+| OpenClaw | **named Talos** (IDENTITY.md); gateway = Windows Scheduled Task; Telegram bot **@IdrisGV75_bot** paired (owner id 7284896916); approval protocol lives in `~/.openclaw/workspace/TOOLS.md` — **update it if the API port/paths change** |
 | Hermes | Nous Hermes Agent v0.18.2, absolute path in `.env.local`, one-shot `-z {input}` |
 | DeepSeek | real key in `data/registry.json`, working |
-| Gemini / embeddings | **NOT configured** — free key at aistudio.google.com would enable both (EMBED_* vars in `.env.local` activate hybrid retrieval) |
-| Ollama / Codex | **not installed**; recipes in the Guide; localhost LLM endpoints need no API key |
+| Llama (Ollama) | **installed** — Ollama 0.31.2, llama3.2 (tools-capable) + nomic-embed-text pulled; registered keyless at `http://localhost:11434/v1`; Ollama auto-starts (Startup folder) |
+| Semantic RAG | **ACTIVE** via local embeddings — `EMBED_BASE_URL=http://localhost:11434/v1`, `EMBED_MODEL=nomic-embed-text` in `.env.local` (keyless). Gemini key now optional (only for a Gemini chat agent; recipe commented in `.env.local`) |
+| Codex | CLI 0.144.1 installed + registered as command agent (`codex exec {input}`) — **needs one-time `codex login` by Idris** before it answers |
 | Vault | `C:\Users\Admin\Documents\IdrisGV75\IdrisGV75` → app writes under `Agentic OS/` |
-| Schedules | 📚 Vault Librarian (Sun 18:00), 🛠 Ops Tuner (Sun 19:00 → Telegram), test schedule (off) |
+| Schedules | 📚 Vault Librarian (Sun 18:00), 🛠 Ops Tuner (Sun 19:00 → Telegram), 📊 **CommunityForce Monday Status (Mon 08:30 → Telegram)**, test schedule (off) |
+| Workspaces | Default, Work, **CommunityForce** |
+| Settings | inline **edit-API-key** pencil button per LLM row (PATCH /api/registry) |
 
 ## Codebase conventions & gotchas
 
@@ -55,10 +58,9 @@ built-in searchable guide (`/guide`, also exported to the vault for agent RAG).
 ## Open roadmap / next candidates
 
 1. **Phone access** (Tailscale + PWA) — the one deferred roadmap item
-2. Inline "edit API key" button in Settings (today: delete + re-add)
-3. Usage over features: real Arena battles, name OpenClaw (it's asked twice),
-   CommunityForce workspace + Monday status schedule, Gemini key + EMBED_* for semantic RAG
-4. Ollama install → first free/offline fleet member; Codex CLI as a command agent
+2. `codex login` (Idris, one-time) to light up the Codex agent
+3. Crown winners of the two Arena battles run 2026-07-10 (feeds Auto routing)
+4. Optional: Gemini chat agent (free key at aistudio.google.com; embeddings already local)
 
 ## Suggested first message for the new session
 

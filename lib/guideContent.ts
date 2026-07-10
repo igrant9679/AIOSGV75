@@ -77,7 +77,7 @@ The gateway runs as a Windows Scheduled Task (starts on boot). If the bot goes s
     body: `Settings → **LLM Connections** → pick a provider preset (OpenRouter, DeepSeek, Kimi, GLM, Grok, Gemini, or Custom for any OpenAI-compatible endpoint), paste your API key, choose an accent color. The agent appears in the sidebar instantly.
 
 - Keys are stored **server-side only** in \`data/registry.json\` (git-ignored, never sent to the browser).
-- **To change a key**: delete the entry and re-add it with the same display name (editing in place isn't in the UI yet).
+- **To change a key**: click the pencil icon on the agent's row in Settings → LLM Connections, paste the new key, and hit the check (or Enter). No need to delete and re-add.
 - Error cheat-sheet: **401** = bad key · **402** = valid key, no credit (DeepSeek is prepaid — top up at platform.deepseek.com) · **429** = rate limit.
 - **Gemini** has a free tier: aistudio.google.com, no card required.
 - **Ollama (local models)**: install from ollama.com, \`ollama pull llama3.2\`, then add a Custom LLM with Base URL \`http://localhost:11434/v1\`, model = the model you pulled, and **no API key** (localhost endpoints don't need one). Free, private, offline.
