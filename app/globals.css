@@ -1,0 +1,170 @@
+@import "tailwindcss";
+
+@theme inline {
+  --font-display: var(--font-space-grotesk), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, "Cascadia Code", monospace;
+
+  --color-void: #05060f;
+  --color-abyss: #080a18;
+  --color-panel: #0c0f20;
+  --color-panel-2: #10142a;
+  --color-line: rgba(148, 163, 255, 0.12);
+  --color-line-bright: rgba(148, 163, 255, 0.28);
+
+  --color-neon-cyan: #22d3ee;
+  --color-neon-magenta: #e879f9;
+  --color-neon-amber: #fbbf24;
+  --color-neon-lime: #a3e635;
+  --color-neon-violet: #a78bfa;
+  --color-neon-rose: #fb7185;
+
+  --color-ink: #e2e8f5;
+  --color-ink-dim: #8b93b8;
+  --color-ink-faint: #565e82;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background-color: var(--color-void);
+  color: var(--color-ink);
+  font-family: var(--font-display);
+  overflow-x: hidden;
+}
+
+::selection {
+  background: rgba(34, 211, 238, 0.35);
+  color: #fff;
+}
+
+/* ---- scrollbars ---- */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 255, 0.25) transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 255, 0.25);
+  border-radius: 8px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ---- ambient background ---- */
+.grid-bg {
+  background-image:
+    linear-gradient(rgba(120, 140, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(120, 140, 255, 0.05) 1px, transparent 1px);
+  background-size: 44px 44px;
+  mask-image: radial-gradient(ellipse 90% 70% at 50% 30%, black 30%, transparent 100%);
+}
+
+.nebula {
+  background:
+    radial-gradient(600px 320px at 12% -5%, rgba(34, 211, 238, 0.1), transparent 65%),
+    radial-gradient(700px 380px at 88% 0%, rgba(232, 121, 249, 0.09), transparent 65%),
+    radial-gradient(520px 300px at 55% 110%, rgba(167, 139, 250, 0.08), transparent 65%);
+}
+
+/* ---- glass panel ---- */
+.panel {
+  background: rgba(14, 17, 34, 0.66);
+  border: 1px solid var(--color-line);
+  border-radius: 20px;
+  backdrop-filter: blur(16px);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
+}
+
+.panel-title {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--color-ink-dim);
+}
+
+/* ---- console scanlines ---- */
+.scanlines::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background: repeating-linear-gradient(
+    0deg,
+    rgba(255, 255, 255, 0.018) 0px,
+    rgba(255, 255, 255, 0.018) 1px,
+    transparent 1px,
+    transparent 3px
+  );
+}
+
+/* ---- glows ---- */
+.text-glow-cyan {
+  text-shadow: 0 0 18px rgba(34, 211, 238, 0.55);
+}
+.text-glow-magenta {
+  text-shadow: 0 0 18px rgba(232, 121, 249, 0.55);
+}
+.text-glow-amber {
+  text-shadow: 0 0 18px rgba(251, 191, 36, 0.55);
+}
+
+/* ---- keyframes ---- */
+@keyframes radar-sweep {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+@keyframes pulse-ring {
+  0% { transform: scale(0.6); opacity: 0.9; }
+  100% { transform: scale(2.4); opacity: 0; }
+}
+@keyframes blink-caret {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+@keyframes float-slow {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+@keyframes mic-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(251, 113, 133, 0.45); }
+  50% { box-shadow: 0 0 0 9px rgba(251, 113, 133, 0); }
+}
+@keyframes typing-dot {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+  30% { transform: translateY(-4px); opacity: 1; }
+}
+
+.mic-live {
+  animation: mic-pulse 1.4s ease-out infinite;
+}
+.typing-dot {
+  animation: typing-dot 1.2s ease-in-out infinite;
+}
+
+.animate-radar {
+  animation: radar-sweep 4.5s linear infinite;
+  transform-origin: center;
+}
+.caret::after {
+  content: "▊";
+  margin-left: 2px;
+  color: var(--color-neon-cyan);
+  animation: blink-caret 1s steps(1) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-radar { animation: none; }
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
