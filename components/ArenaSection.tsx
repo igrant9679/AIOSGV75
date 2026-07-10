@@ -7,6 +7,7 @@ import type { Mission } from "@/lib/missions";
 import Panel from "./ui/Panel";
 import StatusOrb from "./ui/StatusOrb";
 import Avatar, { type AvatarKind } from "./Avatar";
+import Markdown from "./Markdown";
 import MicButton, { type MicState } from "./MicButton";
 import { useMission } from "./store";
 import { IconSwords } from "./icons";
@@ -213,11 +214,11 @@ export default function ArenaSection() {
                   }
                 >
                   <div className="flex h-full flex-col">
-                    <div className="max-h-96 min-h-40 flex-1 overflow-y-auto whitespace-pre-wrap px-4 py-3 text-[12.5px] leading-6 text-ink">
+                    <div className="max-h-96 min-h-40 flex-1 overflow-y-auto px-4 py-3 text-[12.5px] leading-6 text-ink">
                       {r.error ? (
-                        <span className="text-neon-rose">{r.error}</span>
+                        <span className="whitespace-pre-wrap text-neon-rose">{r.error}</span>
                       ) : r.text ? (
-                        r.text
+                        <Markdown>{r.text}</Markdown>
                       ) : (
                         <span className="text-ink-faint">thinking…</span>
                       )}

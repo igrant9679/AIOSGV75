@@ -9,6 +9,7 @@ import Panel from "./ui/Panel";
 import StatusOrb from "./ui/StatusOrb";
 import NumberTicker from "./ui/NumberTicker";
 import Avatar, { type AvatarKind } from "./Avatar";
+import Markdown from "./Markdown";
 import MicButton, { type MicState } from "./MicButton";
 import { useMission } from "./store";
 import { IconRocket } from "./icons";
@@ -428,8 +429,14 @@ export default function MissionsSection() {
                                   {r.status === "done" ? `${(r.ms / 1000).toFixed(1)}s` : r.status}
                                 </span>
                               </div>
-                              <div className="max-h-56 overflow-y-auto whitespace-pre-wrap text-[12.5px] leading-6 text-ink">
-                                {r.error ? <span className="text-neon-rose">{r.error}</span> : r.text || "…"}
+                              <div className="max-h-56 overflow-y-auto text-[12.5px] leading-6 text-ink">
+                                {r.error ? (
+                                  <span className="whitespace-pre-wrap text-neon-rose">{r.error}</span>
+                                ) : r.text ? (
+                                  <Markdown>{r.text}</Markdown>
+                                ) : (
+                                  "…"
+                                )}
                               </div>
                             </div>
                           );
@@ -439,8 +446,8 @@ export default function MissionsSection() {
                             <p className="mb-1.5 font-mono text-[10px] tracking-[0.18em] text-neon-violet">
                               {m.strategy === "moa" ? "✦ SYNTHESIS" : "✦ FINAL OUTPUT"}
                             </p>
-                            <div className="max-h-72 overflow-y-auto whitespace-pre-wrap text-[13px] leading-6 text-ink">
-                              {m.synthesis}
+                            <div className="max-h-72 overflow-y-auto text-[13px] leading-6 text-ink">
+                              <Markdown>{m.synthesis}</Markdown>
                             </div>
                           </div>
                         )}

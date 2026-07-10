@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { MissionProvider } from "./store";
 import Header from "./Header";
 import Sidebar from "./Sidebar";
+import ApprovalsBar from "./ApprovalsBar";
 
 export default function Shell({ children }: { children: ReactNode }) {
   return (
@@ -15,6 +16,7 @@ export default function Shell({ children }: { children: ReactNode }) {
 
         <div className="relative mx-auto flex min-h-dvh w-full max-w-[1600px] flex-col gap-4 p-4 lg:p-5">
           <Header />
+          <ApprovalsBar />
           <div className="flex flex-1 flex-col gap-4 md:flex-row">
             <Sidebar />
             <main className="min-w-0 flex-1">{children}</main>

@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import type { ConsoleEntry } from "@/lib/types";
 import { ACCENTS, type Accent } from "@/lib/accents";
 import Avatar, { type AvatarKind } from "../Avatar";
+import Markdown from "../Markdown";
 import { IconTerminal } from "../icons";
 
 function Bubble({
@@ -48,16 +49,16 @@ function Bubble({
     <div className={`mb-3 flex items-end gap-2.5 ${isUser ? "flex-row-reverse" : ""}`}>
       <Avatar kind={isUser ? "user" : agent} name={agentName} accent={accent} size={32} />
       <div
-        className={`max-w-[78%] whitespace-pre-wrap break-words rounded-2xl px-4 py-2.5 text-[13.5px] leading-6 ${
+        className={`max-w-[78%] break-words rounded-2xl px-4 py-2.5 text-[13.5px] leading-6 ${
           isUser
-            ? "rounded-br-md text-white"
+            ? "whitespace-pre-wrap rounded-br-md text-white"
             : isError
-              ? "rounded-bl-md border border-neon-rose/30 bg-neon-rose/10 text-neon-rose"
+              ? "whitespace-pre-wrap rounded-bl-md border border-neon-rose/30 bg-neon-rose/10 text-neon-rose"
               : "rounded-bl-md border border-line bg-white/[0.04] text-ink"
         }`}
         style={isUser ? { background: `linear-gradient(135deg, ${c.gradFrom}, ${c.base}cc)` } : undefined}
       >
-        {entry.text || " "}
+        {!isUser && !isError ? <Markdown>{entry.text || " "}</Markdown> : entry.text || " "}
       </div>
     </div>
   );

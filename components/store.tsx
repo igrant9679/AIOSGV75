@@ -23,6 +23,15 @@ export interface FeedEvent {
   accent: Accent;
 }
 
+/** An agent-requested action awaiting human sign-off (the autonomy slider's gate). */
+export interface PendingApproval {
+  id: string;
+  kind: "mission";
+  payload: string;
+  source: string;
+  ts: number;
+}
+
 /** Abort controllers for in-flight runs, keyed by chat id. Module-scoped so
  * they survive page navigation (the components unmount, the runs continue). */
 export const runControllers = new Map<string, AbortController>();
@@ -53,6 +62,8 @@ interface MissionStore {
   refreshMemory: () => Promise<void>;
   workspace: string;
   setWorkspace: (w: string) => void;
+  pendingApprovals: PendingApproval[];
+  resolveApproval: (id: string, approve: boolean) => void;
 }
 
 const Ctx = createContext<MissionStore | null>(null);
@@ -110,6 +121,38 @@ export function MissionProvider({ children }: { children: ReactNode }) {
       [chatId]: (prev[chatId] ?? []).map((e) => (e.id === entryId ? { ...e, text: e.text + text } : e)),
     }));
   }, []);
+
+  const [pendingApprovals, setPendingApprovals] = useState<PendingApproval[]>([]);
+  const resolveApproval = useCallback(
+    (id: string, approve: boolean) => {
+      setPendingApprovals((prev) => {
+        const approval = prev.find((a) => a.id === id);
+        if (approval) {
+          if (approve) {
+            fetch("/api/missions", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                title: `🤖 via ${approval.source}: ${approval.payload.slice(0, 40)}`,
+                prompt: approval.payload,
+                strategy: "single",
+                agentIds: ["claude"],
+              }),
+            })
+              .then((r) => {
+                if (r.ok) addEvent("MISSIONS", `Approved — ${approval.source}'s mission launched`, "cyan");
+                else addEvent("MISSIONS", "Approved mission failed to launch", "rose");
+              })
+              .catch(() => addEvent("MISSIONS", "Approved mission failed to launch", "rose"));
+          } else {
+            addEvent("MISSIONS", `Rejected ${approval.source}'s mission request`, "amber");
+          }
+        }
+        return prev.filter((a) => a.id !== id);
+      });
+    },
+    [addEvent],
+  );
 
   const [summaries, setSummaries] = useState<Record<string, { text: string; covered: number }>>({});
   const setSummary = useCallback((chatId: string, text: string, covered: number) => {
@@ -270,20 +313,12 @@ export function MissionProvider({ children }: { children: ReactNode }) {
               .catch(() => {});
           },
           mission: (payload: string) => {
-            fetch("/api/missions", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                title: `🤖 via ${chatId}: ${payload.slice(0, 40)}`,
-                prompt: payload,
-                strategy: "single",
-                agentIds: ["claude"],
-              }),
-            })
-              .then((r) => {
-                if (r.ok) addEvent("MISSIONS", `${chatId} launched a mission: ${payload.slice(0, 60)}`, "cyan");
-              })
-              .catch(() => {});
+            // missions spend money and act autonomously — gate behind human approval
+            setPendingApprovals((prev) => [
+              ...prev,
+              { id: `ap${eventSeq++}`, kind: "mission", payload, source: chatId, ts: Date.now() },
+            ]);
+            addEvent("APPROVAL", `${chatId} requests a mission — approve or reject above`, "amber");
           },
         };
         const VERB_TAGS: { re: RegExp; run: (payload: string) => void }[] = [
@@ -394,6 +429,8 @@ export function MissionProvider({ children }: { children: ReactNode }) {
       refreshMemory,
       workspace,
       setWorkspace,
+      pendingApprovals,
+      resolveApproval,
     }),
     [
       events,
@@ -421,6 +458,8 @@ export function MissionProvider({ children }: { children: ReactNode }) {
       refreshMemory,
       workspace,
       setWorkspace,
+      pendingApprovals,
+      resolveApproval,
     ],
   );
 

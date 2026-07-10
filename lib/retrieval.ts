@@ -64,7 +64,7 @@ const VERB_HINT =
   `<remember>fact</remember> saves a durable fact to shared memory (use sparingly) · ` +
   `<goal>task</goal> adds a checkbox goal · ` +
   `<journal>note</journal> appends to the user's journal · ` +
-  `<mission>task</mission> launches a background Claude mission.]`;
+  `<mission>task</mission> requests a background Claude mission (the user approves or rejects it first).]`;
 
 function passagesText(passages: VaultPassage[]): string {
   return passages.map((p) => `(${p.file}${p.linked ? " — linked note" : ""}) ${p.text}`).join("\n---\n");

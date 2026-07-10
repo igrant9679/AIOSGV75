@@ -157,6 +157,15 @@ Long API-LLM chats fold older turns into a rolling summary once they pass ~16 me
 can run all day without unbounded prompts. The chat's own model summarizes; the local Claude
 CLI is the fallback. Claude-bridge chats are excluded (Claude Code compacts itself).
 
+## Verification loop
+
+- **Rendered markdown everywhere** — assistant chat bubbles, mission outputs, and arena
+  answers render headings, tables, task lists, and syntax-styled code (raw HTML is never
+  rendered). `[[wikilinks]]` become clickable `obsidian://` deep links into your vault.
+- **Approval gates** — agent-requested missions (`<mission>` verb) no longer auto-launch:
+  a pending card appears at the top of every page with Approve/Reject. Cheap reversible
+  verbs (remember/goal/journal) still execute immediately.
+
 ## OS verbs (agent-operable OS)
 
 Any agent can drive the OS by including tags in a reply — the dashboard executes them and
