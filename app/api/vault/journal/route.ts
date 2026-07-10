@@ -1,5 +1,4 @@
-import { readJournal, writeJournal, todayStamp, vaultAvailable, DATE_RE, ensureAgentPage } from "@/lib/vault";
-import { agentWikilink } from "@/lib/chatMarkdown";
+import { readJournal, writeJournal, todayStamp, vaultAvailable, DATE_RE, appendJournalEntry } from "@/lib/vault";
 import { WORKSPACE_RE } from "@/lib/registry";
 
 export const dynamic = "force-dynamic";
@@ -27,15 +26,7 @@ export async function POST(request: Request) {
   if (entry.length > 5000) return Response.json({ error: "too large" }, { status: 413 });
   if (!(await vaultAvailable())) return Response.json({ error: "vault not reachable" }, { status: 503 });
 
-  const ws = wsParam(body.workspace);
-  const date = todayStamp();
-  const { content } = await readJournal(date, ws);
-  const d = new Date();
-  const stamp = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-  const source = (body.source ?? "agent").toString().slice(0, 30);
-  await ensureAgentPage(source).catch(() => {});
-  const line = `**${stamp} · ${agentWikilink(source)}:** ${entry}`;
-  await writeJournal(date, content ? `${content.replace(/\s+$/, "")}\n\n${line}\n` : `${line}\n`, ws);
+  await appendJournalEntry(entry, (body.source ?? "agent").toString().slice(0, 30), wsParam(body.workspace));
   return Response.json({ ok: true });
 }
 

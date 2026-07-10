@@ -178,6 +178,17 @@ export async function recentNotesDigest(days = 7, maxChars = 9000): Promise<stri
   return out.slice(0, maxChars) || "(no notes were modified in this period)";
 }
 
+/** Append a timestamped, agent-attributed entry to today's journal. */
+export async function appendJournalEntry(entry: string, source: string, workspace?: string): Promise<void> {
+  const date = todayStamp();
+  const { content } = await readJournal(date, workspace);
+  const d = new Date();
+  const stamp = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  await ensureAgentPage(source).catch(() => {});
+  const line = `**${stamp} · ${agentWikilink(source)}:** ${entry}`;
+  await writeJournal(date, content ? `${content.replace(/\s+$/, "")}\n\n${line}\n` : `${line}\n`, workspace);
+}
+
 /* ---- mission logs ---- */
 
 export async function writeMissionLog(mission: {

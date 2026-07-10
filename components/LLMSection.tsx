@@ -86,6 +86,12 @@ export default function LLMSection({ llmId }: { llmId: string }) {
             if (ev.type === "delta") {
               if (!liveId) liveId = appendChat(llmId, { role: "assistant", text: "" });
               appendText(llmId, liveId, ev.text as string);
+            } else if (ev.type === "tool") {
+              liveId = null; // post-tool text starts a fresh bubble
+              appendChat(llmId, { role: "tool", text: `${ev.name} ${ev.detail ?? ""}` });
+              addEvent(llm.name.toUpperCase(), `Tool engaged: ${ev.name}`, "violet");
+            } else if (ev.type === "tool_result") {
+              appendChat(llmId, { role: "tool", text: `↳ ${ev.detail ?? "done"}` });
             } else if (ev.type === "error") {
               appendChat(llmId, { role: "error", text: String(ev.message) });
               addEvent(llm.name.toUpperCase(), "API error — see chat", "rose");

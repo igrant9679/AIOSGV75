@@ -157,6 +157,14 @@ Long API-LLM chats fold older turns into a rolling summary once they pass ~16 me
 can run all day without unbounded prompts. The chat's own model summarizes; the local Claude
 CLI is the fallback. Claude-bridge chats are excluded (Claude Code compacts itself).
 
+## LLM tool loop (API models become agents)
+
+Every API LLM chat runs an agentic tool loop: models get native function tools —
+`search_vault`, `read_note`, `save_memory`, `add_goal`, `list_goals`, `append_journal`,
+`request_mission` — executed locally against the vault/OS. Tool calls stream into the chat
+as activity cards; `request_mission` still goes through the approval gate. Providers that
+don't support the `tools` parameter get one transparent retry without tools.
+
 ## Auto — smart routing
 
 The **Auto** agent (`/auto`, also selectable in Missions/Schedules) routes each task to the
