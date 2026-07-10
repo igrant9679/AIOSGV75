@@ -27,6 +27,8 @@ export default function RootLayout({
     <html
       lang="en"
       className={`${spaceGrotesk.variable} ${jetbrains.variable} h-full antialiased`}
+      // the theme boot script sets data-theme before hydration — expected mismatch
+      suppressHydrationWarning
     >
       <body className="min-h-full flex flex-col">
         {/* apply the saved theme before first paint */}
