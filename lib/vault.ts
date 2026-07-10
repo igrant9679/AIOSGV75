@@ -79,6 +79,14 @@ export async function ensureScaffold(agents: { id: string; tagline?: string }[] 
   for (const a of agents) await ensureAgentPage(a.id, a.tagline);
 
   const agentNames = ["claude", "openclaw", "hermes", ...agents.map((a) => a.id)];
+  // export the user guide so agents can answer questions about the OS via RAG
+  try {
+    const { guideMarkdown } = await import("./guideContent");
+    await fs.writeFile(safeJoin("Guide.md"), guideMarkdown(), "utf8");
+  } catch {
+    /* non-fatal */
+  }
+
   const home = [
     `# Agentic OS`,
     ``,
@@ -87,6 +95,7 @@ export async function ensureScaffold(agents: { id: string; tagline?: string }[] 
     `The control room of your AI operating system. Regenerated daily by Mission Control — edits here get overwritten.`,
     ``,
     `## Live surfaces`,
+    `- [[Agentic OS/Guide|User Guide]] — how the whole OS works`,
     `- [[Agentic OS/Memory|Shared Memory]] — what every agent knows`,
     `- [[Agentic OS/Goals|Goals]]`,
     `- [[Agentic OS/Journal/${today}|Today's journal]]`,

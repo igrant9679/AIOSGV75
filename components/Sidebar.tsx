@@ -7,7 +7,7 @@ import { ACCENTS, type Accent } from "@/lib/accents";
 import { useMission } from "./store";
 import StatusOrb from "./ui/StatusOrb";
 import Avatar, { type AvatarKind } from "./Avatar";
-import { IconGrid, IconTarget, IconBook, IconBrain, IconGear, IconPlus, IconRocket, IconSwords, IconPulse, IconCheck } from "./icons";
+import { IconGrid, IconTarget, IconBook, IconBrain, IconGear, IconPlus, IconRocket, IconSwords, IconPulse, IconCheck, IconHelp } from "./icons";
 
 interface NavItem {
   href: string;
@@ -36,6 +36,7 @@ const WORKSPACE_NAV: NavItem[] = [
   { href: "/journal", label: "Journal", sub: "One file per day", accent: "rose", icon: IconBook },
   { href: "/memory", label: "Memory", sub: "Shared by all agents", accent: "violet", icon: IconBrain },
   { href: "/settings", label: "Settings", sub: "LLMs · agents · spaces", accent: "cyan", icon: IconGear },
+  { href: "/guide", label: "Guide", sub: "Searchable manual", accent: "magenta", icon: IconHelp },
 ];
 
 export default function Sidebar() {
@@ -62,7 +63,7 @@ export default function Sidebar() {
   const statusFor = (href: string): Accent => {
     if (href === "/claude") return system?.claudeVersion ? (busy.claude ? "amber" : "lime") : "rose";
     if (href === "/auto") return busy.auto ? "amber" : "lime";
-    if (href === "/" || href === "/settings" || href === "/missions" || href === "/arena" || href === "/analytics" || href === "/evals") return "lime";
+    if (href === "/" || href === "/settings" || href === "/missions" || href === "/arena" || href === "/analytics" || href === "/evals" || href === "/guide") return "lime";
     if (href === "/goals" || href === "/journal" || href === "/memory") return vaultOk ? "lime" : "rose";
     const id = href.replace("/agent/", "").replace("/", "");
     if (busy[id]) return "amber";

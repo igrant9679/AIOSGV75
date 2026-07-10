@@ -143,6 +143,14 @@ export const IconGear = (p: SVGProps<SVGSVGElement>) => (
   </svg>
 );
 
+export const IconHelp = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M9.2 9a2.9 2.9 0 0 1 5.6 1c0 1.8-2.6 2.2-2.6 3.8" />
+    <circle cx="12" cy="17.3" r="0.6" fill="currentColor" stroke="none" />
+  </svg>
+);
+
 export const IconSun = (p: SVGProps<SVGSVGElement>) => (
   <svg {...base(p)}>
     <circle cx="12" cy="12" r="4.5" />
