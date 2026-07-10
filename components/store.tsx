@@ -23,13 +23,14 @@ export interface FeedEvent {
   accent: Accent;
 }
 
-/** An agent-requested action awaiting human sign-off (the autonomy slider's gate). */
+/** An agent-requested action awaiting human sign-off (server-side; also answerable from Telegram). */
 export interface PendingApproval {
   id: string;
   kind: "mission";
   payload: string;
   source: string;
   ts: number;
+  status?: string;
 }
 
 /** Abort controllers for in-flight runs, keyed by chat id. Module-scoped so
@@ -123,35 +124,39 @@ export function MissionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const [pendingApprovals, setPendingApprovals] = useState<PendingApproval[]>([]);
+
+  const pollApprovals = useCallback(async () => {
+    try {
+      const res = await fetch("/api/approvals");
+      if (res.ok) setPendingApprovals((((await res.json()) as { pending: PendingApproval[] }).pending ?? []));
+    } catch {
+      /* server restarting */
+    }
+  }, []);
+  useEffect(() => {
+    pollApprovals();
+    const iv = setInterval(pollApprovals, 8000);
+    return () => clearInterval(iv);
+  }, [pollApprovals]);
+
   const resolveApproval = useCallback(
     (id: string, approve: boolean) => {
-      setPendingApprovals((prev) => {
-        const approval = prev.find((a) => a.id === id);
-        if (approval) {
-          if (approve) {
-            fetch("/api/missions", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                title: `🤖 via ${approval.source}: ${approval.payload.slice(0, 40)}`,
-                prompt: approval.payload,
-                strategy: "single",
-                agentIds: ["claude"],
-              }),
-            })
-              .then((r) => {
-                if (r.ok) addEvent("MISSIONS", `Approved — ${approval.source}'s mission launched`, "cyan");
-                else addEvent("MISSIONS", "Approved mission failed to launch", "rose");
-              })
-              .catch(() => addEvent("MISSIONS", "Approved mission failed to launch", "rose"));
-          } else {
-            addEvent("MISSIONS", `Rejected ${approval.source}'s mission request`, "amber");
-          }
-        }
-        return prev.filter((a) => a.id !== id);
-      });
+      // optimistic removal; the server launches the mission on approve
+      setPendingApprovals((prev) => prev.filter((a) => a.id !== id));
+      fetch("/api/approvals", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, approve, by: "dashboard" }),
+      })
+        .then((r) => {
+          if (r.ok) {
+            addEvent("MISSIONS", approve ? "Approved — mission launched" : "Mission request rejected", approve ? "cyan" : "amber");
+          } else addEvent("MISSIONS", "Approval update failed", "rose");
+          pollApprovals();
+        })
+        .catch(() => addEvent("MISSIONS", "Approval update failed", "rose"));
     },
-    [addEvent],
+    [addEvent, pollApprovals],
   );
 
   const [summaries, setSummaries] = useState<Record<string, { text: string; covered: number }>>({});
@@ -314,11 +319,19 @@ export function MissionProvider({ children }: { children: ReactNode }) {
           },
           mission: (payload: string) => {
             // missions spend money and act autonomously — gate behind human approval
-            setPendingApprovals((prev) => [
-              ...prev,
-              { id: `ap${eventSeq++}`, kind: "mission", payload, source: chatId, ts: Date.now() },
-            ]);
-            addEvent("APPROVAL", `${chatId} requests a mission — approve or reject above`, "amber");
+            // (server-side: card in the dashboard + notification to Telegram)
+            fetch("/api/approvals", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ payload, source: chatId }),
+            })
+              .then((r) => {
+                if (r.ok) {
+                  addEvent("APPROVAL", `${chatId} requests a mission — approve here or from Telegram`, "amber");
+                  pollApprovals();
+                }
+              })
+              .catch(() => {});
           },
         };
         const VERB_TAGS: { re: RegExp; run: (payload: string) => void }[] = [
@@ -366,7 +379,7 @@ export function MissionProvider({ children }: { children: ReactNode }) {
           .catch(() => addEvent("VAULT", "Chat save failed", "rose"));
       }
     }, 1200);
-  }, [chats, busy, vaultOk, addEvent, refreshMemory, workspace]);
+  }, [chats, busy, vaultOk, addEvent, refreshMemory, workspace, pollApprovals]);
 
   // probe companion agents — re-poll so slow cold-boot CLIs recover without a refresh
   const agentAvailability = useRef(new Map<string, boolean>());

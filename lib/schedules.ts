@@ -1,7 +1,7 @@
 import fs from "fs/promises";
 import path from "path";
-import { spawn } from "child_process";
 import { startMissionAwaited, type MissionStrategy } from "./missions";
+import { sendTelegram } from "./telegram";
 import { recentNotesDigest, todayStamp } from "./vault";
 
 /**
@@ -48,7 +48,6 @@ export interface Schedule {
 }
 
 const FILE = path.join(process.cwd(), "data", "schedules.json");
-const TELEGRAM_TARGET = process.env.TELEGRAM_TARGET ?? "7284896916";
 
 /**
  * No in-memory cache: the scheduler tick (instrumentation bundle) and the API
@@ -145,28 +144,6 @@ export async function deleteSchedule(id: string): Promise<void> {
   await save((await load()).filter((s) => s.id !== id));
 }
 
-function deliverTelegram(text: string): Promise<boolean> {
-  return new Promise((resolve) => {
-    const child = spawn(
-      "openclaw",
-      ["message", "send", "--channel", "telegram", "--target", TELEGRAM_TARGET, "--message", JSON.stringify(text)],
-      { shell: true },
-    );
-    const timer = setTimeout(() => {
-      child.kill();
-      resolve(false);
-    }, 120_000);
-    child.on("close", (code) => {
-      clearTimeout(timer);
-      resolve(code === 0);
-    });
-    child.on("error", () => {
-      clearTimeout(timer);
-      resolve(false);
-    });
-  });
-}
-
 export async function runScheduleNow(id: string): Promise<boolean> {
   const s = (await load()).find((x) => x.id === id);
   if (!s || inFlight.has(id)) return false;
@@ -205,7 +182,7 @@ async function executeSchedule(s: Schedule): Promise<void> {
     } else if (s.deliver === "telegram") {
       const header = `🛰 Scheduled mission: ${s.title}\n\n`;
       const body = finalText.length > 3500 ? finalText.slice(0, 3500) + "\n…(full result in your vault)" : finalText;
-      const sent = await deliverTelegram(header + body);
+      const sent = await sendTelegram(header + body);
       lastStatus = sent ? "delivered to Telegram" : "ran, but Telegram delivery failed";
     } else {
       lastStatus = "saved to vault";

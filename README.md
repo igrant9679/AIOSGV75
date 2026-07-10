@@ -175,6 +175,10 @@ CLI is the fallback. Claude-bridge chats are excluded (Claude Code compacts itse
 - **Approval gates** — agent-requested missions (`<mission>` verb) no longer auto-launch:
   a pending card appears at the top of every page with Approve/Reject. Cheap reversible
   verbs (remember/goal/journal) still execute immediately.
+- **Approvals from Telegram** — approvals live server-side (`data/approvals.json`) and every
+  new one is pushed to your Telegram via OpenClaw. Reply `approve <id>` or `reject <id>`
+  to the bot: OpenClaw knows the protocol (documented in its workspace `TOOLS.md`) and
+  PATCHes `/api/approvals` locally. Dashboard and phone stay in sync either way.
 
 ## OS verbs (agent-operable OS)
 
