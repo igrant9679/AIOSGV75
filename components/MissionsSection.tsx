@@ -11,6 +11,7 @@ import NumberTicker from "./ui/NumberTicker";
 import Avatar, { type AvatarKind } from "./Avatar";
 import Markdown from "./Markdown";
 import MicButton, { type MicState } from "./MicButton";
+import WatchersPanel from "./WatchersPanel";
 import { useMission } from "./store";
 import { IconRocket } from "./icons";
 
@@ -24,6 +25,7 @@ interface Candidate {
 
 const STRATEGIES: { id: MissionStrategy; label: string; hint: string }[] = [
   { id: "moa", label: "Mixture of Agents", hint: "all agents answer in parallel, a synthesizer merges the best of each" },
+  { id: "debate", label: "Debate", hint: "agents argue two rounds — openings then rebuttals — and a judge rules" },
   { id: "pipeline", label: "Pipeline", hint: "agents run in sequence, each improving the previous output" },
   { id: "single", label: "Single", hint: "one agent handles the task" },
 ];
@@ -120,7 +122,7 @@ export default function MissionsSection() {
       prompt,
       strategy,
       agentIds: strategy === "single" ? selected.slice(0, 1) : selected,
-      synthesizerId: strategy === "moa" ? synthesizer : undefined,
+      synthesizerId: strategy === "moa" || strategy === "debate" ? synthesizer : undefined,
     };
     try {
       if (mode === "schedule") {
@@ -172,7 +174,7 @@ export default function MissionsSection() {
   const canLaunch =
     prompt.trim().length > 0 &&
     selected.length >= (strategy === "single" ? 1 : 2) &&
-    (strategy !== "moa" || Boolean(synthesizer)) &&
+    (strategy !== "moa" && strategy !== "debate" ? true : Boolean(synthesizer)) &&
     !launching;
 
   const doneCount = missions.filter((m) => m.status === "done").length;
@@ -325,9 +327,9 @@ export default function MissionsSection() {
 
             {/* synthesizer + launch */}
             <div className="flex flex-wrap items-center justify-between gap-3">
-              {strategy === "moa" ? (
+              {strategy === "moa" || strategy === "debate" ? (
                 <label className="flex items-center gap-2 font-mono text-[10.5px] text-ink-faint">
-                  SYNTHESIZER
+                  {strategy === "debate" ? "JUDGE" : "SYNTHESIZER"}
                   <select
                     value={synthesizer}
                     onChange={(e) => setSynthesizer(e.target.value)}
@@ -446,7 +448,7 @@ export default function MissionsSection() {
                         {m.synthesis && m.strategy !== "single" && (
                           <div className="rounded-xl border border-neon-violet/40 bg-neon-violet/[0.07] p-3">
                             <p className="mb-1.5 font-mono text-[10px] tracking-[0.18em] text-neon-violet">
-                              {m.strategy === "moa" ? "✦ SYNTHESIS" : "✦ FINAL OUTPUT"}
+                              {m.strategy === "moa" ? "✦ SYNTHESIS" : m.strategy === "debate" ? "⚖ VERDICT" : "✦ FINAL OUTPUT"}
                             </p>
                             <div className="max-h-72 overflow-y-auto text-[13px] leading-6 text-ink">
                               <Markdown>{m.synthesis}</Markdown>
@@ -539,6 +541,8 @@ export default function MissionsSection() {
             ))}
           </div>
         </Panel>
+
+        <WatchersPanel delay={0.09} />
 
         <Panel title="Strategies" delay={0.1}>
           <div className="flex flex-col gap-3 p-4 text-[11.5px] leading-5 text-ink-dim">

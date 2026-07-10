@@ -4,7 +4,7 @@ import { AGENT_DEFS } from "@/lib/agents-config";
 
 export const dynamic = "force-dynamic";
 
-const STRATEGIES = new Set<MissionStrategy>(["single", "moa", "pipeline", "arena"]);
+const STRATEGIES = new Set<MissionStrategy>(["single", "moa", "pipeline", "arena", "debate"]);
 
 async function validAgentIds(): Promise<Set<string>> {
   const reg = await readRegistry();
@@ -46,8 +46,8 @@ export async function POST(request: Request) {
     return Response.json({ error: "arena supports 2-4 agents" }, { status: 400 });
   }
   const synthesizerId = body.synthesizerId && known.has(body.synthesizerId) ? body.synthesizerId : undefined;
-  if (body.strategy === "moa" && !synthesizerId) {
-    return Response.json({ error: "moa needs a synthesizer agent" }, { status: 400 });
+  if ((body.strategy === "moa" || body.strategy === "debate") && !synthesizerId) {
+    return Response.json({ error: `${body.strategy} needs a ${body.strategy === "debate" ? "judge" : "synthesizer"} agent` }, { status: 400 });
   }
 
   const mission = await startMission({

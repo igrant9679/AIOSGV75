@@ -18,7 +18,11 @@ const FREQS = new Set<Frequency>(["hourly", "daily", "weekly"]);
 const DELIVERIES = new Set<Delivery>(["vault", "telegram"]);
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 
-export async function GET() {
+export async function GET(request: Request) {
+  if (new URL(request.url).searchParams.get("digest") === "1") {
+    const { opsDigest } = await import("@/lib/ops");
+    return Response.json({ digest: await opsDigest() });
+  }
   return Response.json({ schedules: await listSchedules() });
 }
 

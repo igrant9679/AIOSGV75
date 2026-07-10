@@ -1,4 +1,5 @@
 import { checkDueSchedules } from "./schedules";
+import { checkWatchers } from "./watchers";
 import { ensureScaffold } from "./vault";
 import { readRegistry } from "./registry";
 
@@ -22,11 +23,13 @@ export function startScheduler(): void {
   console.log("[mission-control] schedule tick armed (30s interval)");
   setInterval(() => {
     checkDueSchedules().catch(() => {});
+    checkWatchers().catch(() => {});
     void refreshScaffold(); // no-op unless the day rolled over
   }, 30_000);
   // catch anything already due shortly after boot
   setTimeout(() => {
     checkDueSchedules().catch(() => {});
+    checkWatchers().catch(() => {});
     void refreshScaffold();
   }, 5_000);
 }

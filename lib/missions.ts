@@ -10,7 +10,7 @@ import { writeMissionLog } from "./vault";
  *  - moa:      all agents answer in parallel, a synthesizer merges (Mixture of Agents)
  *  - pipeline: agents run in sequence, each improving the previous output
  */
-export type MissionStrategy = "single" | "moa" | "pipeline" | "arena";
+export type MissionStrategy = "single" | "moa" | "pipeline" | "arena" | "debate";
 
 export interface MissionResult {
   agentId: string;
@@ -106,7 +106,7 @@ async function createMission(input: MissionInput): Promise<Mission> {
     prompt: input.prompt,
     strategy: input.strategy,
     agentIds: input.agentIds,
-    synthesizerId: input.strategy === "moa" ? input.synthesizerId : undefined,
+    synthesizerId: input.strategy === "moa" || input.strategy === "debate" ? input.synthesizerId : undefined,
     status: "running",
     createdAt: Date.now(),
     results: input.agentIds.map((agentId) => ({ agentId, status: "pending", text: "", ms: 0 })),
@@ -145,6 +145,37 @@ function synthesisPrompt(mission: Mission, answers: MissionResult[]): string {
   ].join("\n");
 }
 
+function rebuttalPrompt(task: string, own: string, others: string): string {
+  return [
+    `Task under debate: ${task}`,
+    ``,
+    `Your opening answer was:`,
+    own,
+    ``,
+    `The other debaters argued:`,
+    others,
+    ``,
+    `Critique their reasoning where it's weak, concede where they're right, and give your final, improved position. Be substantive, not polite. Output only your rebuttal and final position.`,
+  ].join("\n");
+}
+
+function judgePrompt(mission: Mission): string {
+  const finals = mission.results
+    .filter((r) => r.status === "done" && r.text.trim())
+    .map((r) => `--- ${r.agentId} ---\n${r.text.trim()}`)
+    .join("\n\n");
+  return [
+    `You are the judge of a debate between AI agents. The task:`,
+    mission.prompt,
+    ``,
+    `The debaters' openings and final positions:`,
+    ``,
+    finals,
+    ``,
+    `Deliver your verdict: 1) declare a winner and say why in two sentences, 2) give the single best final answer to the task, merging the strongest points. Output only the verdict and answer.`,
+  ].join("\n");
+}
+
 function pipelinePrompt(original: string, previous: string): string {
   return [
     `Task: ${original}`,
@@ -160,7 +191,47 @@ function pipelinePrompt(original: string, previous: string): string {
 
 async function runMission(mission: Mission): Promise<void> {
   try {
-    if (mission.strategy === "pipeline") {
+    if (mission.strategy === "debate") {
+      // round 1: independent openings
+      const openings: Record<string, string> = {};
+      await Promise.all(
+        mission.results.map(async (result) => {
+          result.status = "running";
+          await saveMission(mission);
+          const r = await runAgentText(result.agentId, mission.prompt);
+          openings[result.agentId] = r.error ? `(errored: ${r.error})` : r.text;
+          result.text = `**Opening**\n\n${r.error ? "" : r.text}`;
+          result.ms = r.ms;
+          result.error = r.error;
+          result.routedTo = r.routedTo;
+          await saveMission(mission);
+        }),
+      );
+      // round 2: rebuttals & final positions
+      await Promise.all(
+        mission.results.map(async (result) => {
+          if (result.error) {
+            result.status = "error";
+            return;
+          }
+          const others = mission.results
+            .filter((x) => x.agentId !== result.agentId)
+            .map((x) => `--- ${x.agentId} ---\n${openings[x.agentId]}`)
+            .join("\n\n");
+          const r = await runAgentText(result.agentId, rebuttalPrompt(mission.prompt, openings[result.agentId], others));
+          result.text += `\n\n**Rebuttal & final position**\n\n${r.error ? `_(rebuttal errored: ${r.error})_` : r.text}`;
+          result.ms += r.ms;
+          result.status = "done";
+          await saveMission(mission);
+        }),
+      );
+      // the judge rules
+      if (mission.synthesizerId) {
+        const r = await runAgentText(mission.synthesizerId, judgePrompt(mission), { injectMemory: false });
+        if (r.error) mission.synthesisError = r.error;
+        else mission.synthesis = r.text;
+      }
+    } else if (mission.strategy === "pipeline") {
       let current = "";
       for (const result of mission.results) {
         result.status = "running";

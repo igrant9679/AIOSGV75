@@ -170,7 +170,28 @@ export async function searchVault(query: string, k = 3, followLinks = true): Pro
     }
     if (score > 0) scored.push({ file: p.file, text: p.text, score });
   }
-  const hits = scored.sort((a, b) => b.score - a.score).slice(0, k);
+  let ranked = scored.sort((a, b) => b.score - a.score);
+
+  // hybrid rerank: when an embeddings endpoint is configured, blend BM25 with
+  // semantic similarity over the lexical top candidates
+  const { embeddingsConfigured, embedTexts, cosine } = await import("./embeddings");
+  if (embeddingsConfigured() && ranked.length > 1) {
+    const pool = ranked.slice(0, Math.max(k * 6, 18));
+    const vectors = await embedTexts([query, ...pool.map((p) => p.text)]);
+    const qv = vectors[0];
+    if (qv) {
+      const maxBm25 = pool[0].score || 1;
+      ranked = pool
+        .map((p, i) => {
+          const pv = vectors[i + 1];
+          const semantic = pv ? (cosine(qv, pv) + 1) / 2 : 0;
+          return { ...p, score: 0.55 * (p.score / maxBm25) + 0.45 * semantic };
+        })
+        .sort((a, b) => b.score - a.score);
+    }
+  }
+
+  const hits = ranked.slice(0, k);
   // graph edges become context: linked notes ride along with the scored hits
   return followLinks ? expandLinks(hits, 2) : hits;
 }

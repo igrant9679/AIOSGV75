@@ -165,6 +165,22 @@ Every API LLM chat runs an agentic tool loop: models get native function tools �
 as activity cards; `request_mission` still goes through the approval gate. Providers that
 don't support the `tools` parameter get one transparent retry without tools.
 
+## Debate, evals, watchers, self-tuning, semantic retrieval
+
+- **Debate strategy** (Missions): agents argue two rounds — openings, then rebuttals — and a
+  judge agent rules with a verdict + merged best answer.
+- **Evals** (`/evals`): a saved test suite run against any agents, scored 0–10 by a Claude
+  judge against per-case criteria; latest-run report card + history.
+- **Watchers** (Missions page): event triggers — new file in a folder, goal completed, or a
+  shared-memory mention — fire a mission and ping Telegram. Checked every 30s by the
+  scheduler tick; first check baselines silently.
+- **Ops Tuner**: a seeded weekly schedule that reviews the `{{ops_digest}}` prompt variable
+  (usage, arena, evals, schedules, watchers, fleet) and sends tuning recommendations to
+  Telegram every Sunday 19:00.
+- **Semantic retrieval**: set `EMBED_BASE_URL`/`EMBED_API_KEY`/`EMBED_MODEL` in `.env.local`
+  (any OpenAI-compatible embeddings endpoint) and vault search becomes hybrid BM25 +
+  cosine, with disk-cached vectors and silent fallback to pure BM25.
+
 ## Auto — smart routing
 
 The **Auto** agent (`/auto`, also selectable in Missions/Schedules) routes each task to the

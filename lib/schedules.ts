@@ -8,12 +8,18 @@ import { recentNotesDigest, todayStamp } from "./vault";
  * Prompt variables, expanded at run time:
  *   {{today}}        → YYYY-MM-DD
  *   {{recent_notes}} → digest of vault notes modified in the last 7 days
+ *   {{ops_digest}}   → usage/arena/evals/schedules/watchers operations summary
  */
-async function expandPromptVars(prompt: string): Promise<string> {
+export async function expandPromptVars(prompt: string): Promise<string> {
   let out = prompt.replace(/\{\{today\}\}/g, todayStamp());
   if (out.includes("{{recent_notes}}")) {
     const digest = await recentNotesDigest();
     out = out.replace("{{recent_notes}}", () => digest);
+  }
+  if (out.includes("{{ops_digest}}")) {
+    const { opsDigest } = await import("./ops");
+    const digest = await opsDigest();
+    out = out.replace("{{ops_digest}}", () => digest);
   }
   return out;
 }
