@@ -86,6 +86,26 @@ The gateway runs as a Windows Scheduled Task (starts on boot). If the bot goes s
 Every API LLM automatically gets: shared memory + vault RAG context, **native function tools** (see LLM Tools), session compaction for long chats, voice in/out, and vault chat logging.`,
   },
   {
+    id: "local-and-coding-agents",
+    title: "Ollama, Codex & Local Models",
+    keywords: "ollama local model llama qwen mistral free offline private lm studio codex openai cli coding agent gpt keyless no key localhost 11434",
+    body: `**Ollama — free, private, offline models on your own hardware**
+
+1. Install from **ollama.com**, then pull a model in a terminal: \`ollama pull llama3.2\` (other good picks: \`qwen2.5\`, \`mistral\`, \`deepseek-r1\`)
+2. Settings → Add LLM → provider **Custom**:
+   - Base URL: \`http://localhost:11434/v1\`
+   - Model: the model you pulled (e.g. \`llama3.2\`)
+   - API key: **leave blank** — localhost endpoints don't need one
+3. The agent appears in the sidebar instantly, with everything included: streaming chat, shared memory + vault RAG, the function-calling tool loop (tool-capable models like llama3.1+ and qwen2.5 can search your vault and file goals), Arena, MoA, debate, and Auto routing — at $0.00 per token.
+
+Notes: local speed/quality depends on your hardware — 7–8B models run comfortably on 24 GB RAM. **LM Studio** works the same way (Custom, \`http://localhost:1234/v1\`, no key).
+
+**Codex — OpenAI's coding agent**
+
+- **Codex CLI** (the agent, like Claude Code): install and authenticate it, then Settings → **Command Agents** → name \`Codex\`, command template \`codex exec {input}\`. It becomes a chat page, mission participant, and arena fighter — try a Claude-vs-Codex debate on a code question with a third model judging.
+- **OpenAI API models**: Settings → Add LLM → Custom → Base URL \`https://api.openai.com/v1\` + your OpenAI key. Full tool-loop citizen like any other API LLM.`,
+  },
+  {
     id: "llm-tools",
     title: "LLM Tools (Function Calling)",
     keywords: "tools function calling search_vault read_note save_memory add_goal list_goals append_journal request_mission agentic loop",
