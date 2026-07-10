@@ -89,6 +89,11 @@ export default function LLMSection({ llmId }: { llmId: string }) {
             } else if (ev.type === "error") {
               appendChat(llmId, { role: "error", text: String(ev.message) });
               addEvent(llm.name.toUpperCase(), "API error — see chat", "rose");
+              fetch("/api/usage", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ agent: llmId, kind: "chat", ms: Date.now() - started, ok: false }),
+              }).catch(() => {});
             } else if (ev.type === "usage") {
               const secs = ((Date.now() - started) / 1000).toFixed(1);
               appendChat(llmId, {

@@ -10,6 +10,7 @@ async function validAgentIds(): Promise<Set<string>> {
   const reg = await readRegistry();
   return new Set([
     "claude",
+    "auto",
     ...AGENT_DEFS.map((d) => d.id),
     ...reg.commandAgents.map((a) => a.id),
     ...reg.llms.map((l) => l.id),

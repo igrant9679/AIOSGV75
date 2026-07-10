@@ -71,6 +71,7 @@ export default function MissionsSection() {
 
   const candidates: Candidate[] = useMemo(
     () => [
+      { id: "auto", name: "Auto", accent: "cyan", kind: undefined, online: true },
       { id: "claude", name: "Claude", accent: "violet", kind: "claude" as AvatarKind, online: Boolean(system?.claudeVersion) },
       ...agents.map((a) => ({
         id: a.id,
@@ -426,6 +427,7 @@ export default function MissionsSection() {
                                   {c?.name ?? r.agentId}
                                 </span>
                                 <span className="font-mono text-[9.5px] text-ink-faint">
+                                  {r.routedTo ? `→ ${r.routedTo} · ` : ""}
                                   {r.status === "done" ? `${(r.ms / 1000).toFixed(1)}s` : r.status}
                                 </span>
                               </div>

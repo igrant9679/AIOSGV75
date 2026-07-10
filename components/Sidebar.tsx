@@ -21,6 +21,7 @@ interface NavItem {
 
 const AGENT_NAV: NavItem[] = [
   { href: "/", label: "Overview", sub: "Fleet & vitals", accent: "cyan", icon: IconGrid },
+  { href: "/auto", label: "Auto", sub: "Smart router", accent: "cyan", avatarName: "Auto" },
   { href: "/claude", label: "Claude", sub: "Claude Code CLI", accent: "violet", avatar: "claude" },
   { href: "/openclaw", label: "OpenClaw", sub: "Assistant gateway", accent: "magenta", avatar: "openclaw" },
   { href: "/hermes", label: "Hermes", sub: "Nous agent", accent: "amber", avatar: "hermes" },
@@ -59,6 +60,7 @@ export default function Sidebar() {
 
   const statusFor = (href: string): Accent => {
     if (href === "/claude") return system?.claudeVersion ? (busy.claude ? "amber" : "lime") : "rose";
+    if (href === "/auto") return busy.auto ? "amber" : "lime";
     if (href === "/" || href === "/settings" || href === "/missions" || href === "/arena" || href === "/analytics") return "lime";
     if (href === "/goals" || href === "/journal" || href === "/memory") return vaultOk ? "lime" : "rose";
     const id = href.replace("/agent/", "").replace("/", "");

@@ -17,6 +17,9 @@ export interface RunResult {
   costUsd?: number;
   tokensIn?: number;
   tokensOut?: number;
+  /** set when the "auto" router delegated this run */
+  routedTo?: string;
+  routeReason?: string;
 }
 
 const CLI_TIMEOUT_MS = 300_000;
@@ -154,6 +157,20 @@ export async function runAgentText(
   prompt: string,
   opts: { injectMemory?: boolean } = {},
 ): Promise<RunResult> {
+  // "auto" is virtual: route to a real agent, with failover to Claude on error
+  if (agentId === "auto") {
+    const { routeTask } = await import("./router");
+    const decision = await routeTask(prompt);
+    let r = await runAgentText(decision.agentId, prompt, opts);
+    let reason = decision.reason;
+    if (r.error && decision.agentId !== "claude") {
+      r = await runAgentText("claude", prompt, opts);
+      reason += ` · failover to Claude after ${decision.agentName} errored`;
+      return { ...r, routedTo: "claude", routeReason: reason };
+    }
+    return { ...r, routedTo: decision.agentId, routeReason: reason };
+  }
+
   const inject = opts.injectMemory !== false;
   const ctx = inject ? await gatherContext(prompt) : EMPTY_CONTEXT;
 

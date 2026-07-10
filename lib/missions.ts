@@ -18,6 +18,8 @@ export interface MissionResult {
   text: string;
   ms: number;
   error?: string;
+  /** which real agent handled it, when agentId is "auto" */
+  routedTo?: string;
 }
 
 export interface Mission {
@@ -168,6 +170,7 @@ async function runMission(mission: Mission): Promise<void> {
         result.text = r.text;
         result.ms = r.ms;
         result.error = r.error;
+        result.routedTo = r.routedTo;
         result.status = r.error ? "error" : "done";
         await saveMission(mission);
         if (!r.error && r.text.trim()) current = r.text;
@@ -182,6 +185,7 @@ async function runMission(mission: Mission): Promise<void> {
           result.text = r.text;
           result.ms = r.ms;
           result.error = r.error;
+          result.routedTo = r.routedTo;
           result.status = r.error ? "error" : "done";
           await saveMission(mission);
         }),

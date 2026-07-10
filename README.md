@@ -157,6 +157,15 @@ Long API-LLM chats fold older turns into a rolling summary once they pass ~16 me
 can run all day without unbounded prompts. The chat's own model summarizes; the local Claude
 CLI is the fallback. Claude-bridge chats are excluded (Claude Code compacts itself).
 
+## Auto — smart routing
+
+The **Auto** agent (`/auto`, also selectable in Missions/Schedules) routes each task to the
+best real model: tasks are tiered (simple / standard / hard) by heuristics, then the router
+picks using live signals — Arena win-rates for quality, the usage ledger for cost, latency,
+and health (models failing >50% of runs are skipped), and provider cost hints as a prior.
+If the chosen model errors, Auto fails over to Claude automatically. Every answer shows who
+handled it and why. The router gets smarter as you crown Arena winners and accumulate usage.
+
 ## Analytics & voice
 
 - **Analytics** (`/analytics`): every run — chats, missions, schedules, summarizers — is

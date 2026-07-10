@@ -48,6 +48,7 @@ export async function POST(request: Request) {
   const reg = await readRegistry();
   const known = new Set([
     "claude",
+    "auto",
     ...AGENT_DEFS.map((d) => d.id),
     ...reg.commandAgents.map((a) => a.id),
     ...reg.llms.map((l) => l.id),
