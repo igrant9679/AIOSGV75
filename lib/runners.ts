@@ -3,6 +3,7 @@ import os from "os";
 import { AGENT_DEFS } from "./agents-config";
 import { readRegistry, type LlmConfig } from "./registry";
 import { gatherContext, memoryBlock, memorySystemBlock, EMPTY_CONTEXT } from "./retrieval";
+import { recordUsage } from "./usage";
 
 /**
  * Non-streaming, promise-based agent runners for server-side orchestration
@@ -13,6 +14,9 @@ export interface RunResult {
   text: string;
   ms: number;
   error?: string;
+  costUsd?: number;
+  tokensIn?: number;
+  tokensOut?: number;
 }
 
 const CLI_TIMEOUT_MS = 300_000;
@@ -51,11 +55,19 @@ export function runClaudeText(prompt: string): Promise<RunResult> {
     child.on("close", () => {
       clearTimeout(timer);
       try {
-        const json = JSON.parse(out) as { result?: string; is_error?: boolean };
+        const json = JSON.parse(out) as {
+          result?: string;
+          is_error?: boolean;
+          total_cost_usd?: number;
+          usage?: { input_tokens?: number; output_tokens?: number };
+        };
         resolve({
           text: json.result ?? "",
           ms: Date.now() - started,
           error: json.is_error ? (json.result ?? "claude run failed") : undefined,
+          costUsd: json.total_cost_usd,
+          tokensIn: json.usage?.input_tokens,
+          tokensOut: json.usage?.output_tokens,
         });
       } catch {
         resolve({ text: out.trim(), ms: Date.now() - started, error: out.trim() ? undefined : err || "no output" });
@@ -121,8 +133,16 @@ export async function runLlmText(llm: LlmConfig, prompt: string, system: string)
       const detail = (await res.text().catch(() => "")).slice(0, 300);
       return { text: "", ms: Date.now() - started, error: `${llm.name} API ${res.status}: ${detail}` };
     }
-    const json = (await res.json()) as { choices?: { message?: { content?: string } }[] };
-    return { text: json.choices?.[0]?.message?.content?.trim() ?? "", ms: Date.now() - started };
+    const json = (await res.json()) as {
+      choices?: { message?: { content?: string } }[];
+      usage?: { prompt_tokens?: number; completion_tokens?: number };
+    };
+    return {
+      text: json.choices?.[0]?.message?.content?.trim() ?? "",
+      ms: Date.now() - started,
+      tokensIn: json.usage?.prompt_tokens,
+      tokensOut: json.usage?.completion_tokens,
+    };
   } catch (e) {
     return { text: "", ms: Date.now() - started, error: (e as Error).message };
   }
@@ -137,21 +157,31 @@ export async function runAgentText(
   const inject = opts.injectMemory !== false;
   const ctx = inject ? await gatherContext(prompt) : EMPTY_CONTEXT;
 
+  let result: RunResult | null = null;
   if (agentId === "claude") {
-    return runClaudeText((inject ? memoryBlock(ctx) : "") + prompt);
+    result = await runClaudeText((inject ? memoryBlock(ctx) : "") + prompt);
+  } else {
+    const reg = await readRegistry();
+    const llm = reg.llms.find((l) => l.id === agentId);
+    if (llm) {
+      const system = `${llm.systemPrompt?.trim() || `You are ${llm.name}, an AI agent on the user's Mission Control dashboard.`}\n\n${memorySystemBlock(ctx)}`;
+      result = await runLlmText(llm, prompt, system);
+    } else {
+      const def = AGENT_DEFS.find((d) => d.id === agentId) ?? reg.commandAgents.find((a) => a.id === agentId);
+      if (def) result = await runCommandText(def, (inject ? memoryBlock(ctx) : "") + prompt);
+    }
   }
 
-  const reg = await readRegistry();
-  const llm = reg.llms.find((l) => l.id === agentId);
-  if (llm) {
-    const system = `${llm.systemPrompt?.trim() || `You are ${llm.name}, an AI agent on the user's Mission Control dashboard.`}\n\n${memorySystemBlock(ctx)}`;
-    return runLlmText(llm, prompt, system);
-  }
-
-  const def = AGENT_DEFS.find((d) => d.id === agentId) ?? reg.commandAgents.find((a) => a.id === agentId);
-  if (def) {
-    return runCommandText(def, (inject ? memoryBlock(ctx) : "") + prompt);
-  }
-
-  return { text: "", ms: 0, error: `unknown agent: ${agentId}` };
+  if (!result) return { text: "", ms: 0, error: `unknown agent: ${agentId}` };
+  void recordUsage({
+    ts: Date.now(),
+    agent: agentId,
+    kind: "mission",
+    ms: result.ms,
+    costUsd: result.costUsd,
+    tokensIn: result.tokensIn,
+    tokensOut: result.tokensOut,
+    ok: !result.error,
+  }).catch(() => {});
+  return result;
 }

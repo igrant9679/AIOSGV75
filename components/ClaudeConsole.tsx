@@ -143,6 +143,19 @@ export default function ClaudeConsole({ heightClass = "h-[calc(100dvh-21rem)] mi
             outputTokens: usage.output_tokens ?? 0,
             runs: 1,
           });
+          fetch("/api/usage", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              agent: "claude",
+              kind: "chat",
+              ms: (ev.duration_ms as number) ?? 0,
+              costUsd: ev.total_cost_usd as number | undefined,
+              tokensIn: usage.input_tokens,
+              tokensOut: usage.output_tokens,
+              ok: !ev.is_error,
+            }),
+          }).catch(() => {});
           const cost = ev.total_cost_usd != null ? `$${(ev.total_cost_usd as number).toFixed(4)}` : "n/a";
           const secs = (((ev.duration_ms as number) ?? 0) / 1000).toFixed(1);
           if (ev.is_error) {

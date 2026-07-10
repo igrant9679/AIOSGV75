@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import type { ConsoleEntry } from "@/lib/types";
 import { ACCENTS, type Accent } from "@/lib/accents";
+import { speak, stopSpeaking, ttsSupported } from "@/lib/tts";
+import { useLocalStorageState } from "@/lib/useLocalStorageState";
 import Avatar, { type AvatarKind } from "../Avatar";
 import Markdown from "../Markdown";
-import { IconTerminal } from "../icons";
+import { IconTerminal, IconSpeaker } from "../icons";
 
 function Bubble({
   entry,
@@ -46,7 +48,7 @@ function Bubble({
   const isError = entry.role === "error";
 
   return (
-    <div className={`mb-3 flex items-end gap-2.5 ${isUser ? "flex-row-reverse" : ""}`}>
+    <div className={`group mb-3 flex items-end gap-2.5 ${isUser ? "flex-row-reverse" : ""}`}>
       <Avatar kind={isUser ? "user" : agent} name={agentName} accent={accent} size={32} />
       <div
         className={`max-w-[78%] break-words rounded-2xl px-4 py-2.5 text-[13.5px] leading-6 ${
@@ -60,6 +62,16 @@ function Bubble({
       >
         {!isUser && !isError ? <Markdown>{entry.text || " "}</Markdown> : entry.text || " "}
       </div>
+      {!isUser && !isError && ttsSupported() && entry.text && (
+        <button
+          onClick={() => speak(entry.text)}
+          aria-label="Read this reply aloud"
+          title="Read aloud"
+          className="mb-1 cursor-pointer rounded-lg p-1.5 text-ink-faint opacity-0 transition-all hover:bg-white/[0.06] hover:text-neon-cyan group-hover:opacity-100"
+        >
+          <IconSpeaker width={14} height={14} />
+        </button>
+      )}
     </div>
   );
 }
@@ -107,16 +119,57 @@ export default function ChatThread({
   heightClass?: string;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [autoSpeak, setAutoSpeak] = useLocalStorageState<string>("mc-autospeak", "off");
+  const [supported, setSupported] = useState(false);
+  const spokenRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    setSupported(ttsSupported());
+  }, []);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [entries, busy]);
 
+  // voice out: when a run settles, read the newest assistant reply aloud
+  useEffect(() => {
+    if (busy || autoSpeak !== "on") return;
+    const lastAssistant = [...entries].reverse().find((e) => e.role === "assistant" && e.text.trim());
+    if (lastAssistant && spokenRef.current !== lastAssistant.id) {
+      spokenRef.current = lastAssistant.id;
+      speak(lastAssistant.text);
+    }
+  }, [busy, entries, autoSpeak]);
+
   const last = entries[entries.length - 1];
   const showTyping = busy && (!last || last.role !== "assistant" || last.text === "");
 
   return (
-    <div ref={scrollRef} className={`overflow-y-auto px-5 py-4 ${heightClass}`}>
+    <div ref={scrollRef} className={`relative overflow-y-auto px-5 py-4 ${heightClass}`}>
+      {supported && (
+        <button
+          onClick={() => {
+            const next = autoSpeak === "on" ? "off" : "on";
+            setAutoSpeak(next);
+            if (next === "off") stopSpeaking();
+            else {
+              // mark current tail as already spoken so the toggle doesn't replay history
+              const lastAssistant = [...entries].reverse().find((e) => e.role === "assistant");
+              spokenRef.current = lastAssistant?.id ?? null;
+            }
+          }}
+          aria-pressed={autoSpeak === "on"}
+          aria-label={autoSpeak === "on" ? "Turn off spoken replies" : "Read replies aloud automatically"}
+          title={autoSpeak === "on" ? "Voice replies: on" : "Voice replies: off"}
+          className={`sticky left-full top-0 z-10 -mr-1 flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg border transition-colors ${
+            autoSpeak === "on"
+              ? "border-neon-cyan/50 bg-neon-cyan/15 text-neon-cyan"
+              : "border-line bg-panel-2/80 text-ink-faint hover:text-ink"
+          }`}
+        >
+          <IconSpeaker width={15} height={15} />
+        </button>
+      )}
       {entries.length === 0 && !busy && (
         <div className="flex h-full flex-col items-center justify-center gap-3 text-center">{empty}</div>
       )}

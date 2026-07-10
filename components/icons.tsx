@@ -73,6 +73,13 @@ export const IconMic = (p: SVGProps<SVGSVGElement>) => (
   </svg>
 );
 
+export const IconSpeaker = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}>
+    <path d="M11 5L6.5 9H3v6h3.5L11 19V5z" />
+    <path d="M15 9.5a4 4 0 0 1 0 5M17.8 7a8 8 0 0 1 0 10" />
+  </svg>
+);
+
 export const IconTerminal = (p: SVGProps<SVGSVGElement>) => (
   <svg {...base(p)}>
     <path d="M4 17l6-5-6-5M12 19h8" />

@@ -157,6 +157,16 @@ Long API-LLM chats fold older turns into a rolling summary once they pass ~16 me
 can run all day without unbounded prompts. The chat's own model summarizes; the local Claude
 CLI is the fallback. Claude-bridge chats are excluded (Claude Code compacts itself).
 
+## Analytics & voice
+
+- **Analytics** (`/analytics`): every run — chats, missions, schedules, summarizers — is
+  recorded to `data/usage.json` (cost, tokens, latency, outcome). The page charts 30-day
+  spend, runs/day, spend/day, and per-agent stats. This ledger is the foundation for smart
+  routing later.
+- **Voice out**: browser-native TTS (no keys). Hover any agent reply for a read-aloud
+  button, or flip the speaker toggle at the top of a chat to have every new reply spoken
+  automatically (markdown is flattened for listening; code blocks are skipped).
+
 ## Verification loop
 
 - **Rendered markdown everywhere** — assistant chat bubbles, mission outputs, and arena

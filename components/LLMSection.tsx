@@ -96,6 +96,18 @@ export default function LLMSection({ llmId }: { llmId: string }) {
                 text: `done · ${secs}s · ${ev.prompt_tokens ?? "?"} in / ${ev.completion_tokens ?? "?"} out tokens`,
               });
               addEvent(llm.name.toUpperCase(), `Reply in ${secs}s (${ev.completion_tokens ?? "?"} tokens)`, "lime");
+              fetch("/api/usage", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  agent: llmId,
+                  kind: "chat",
+                  ms: Date.now() - started,
+                  tokensIn: ev.prompt_tokens,
+                  tokensOut: ev.completion_tokens,
+                  ok: true,
+                }),
+              }).catch(() => {});
             }
           },
           controller.signal,

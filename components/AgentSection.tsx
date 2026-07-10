@@ -35,6 +35,7 @@ export default function AgentSection({ agentId }: { agentId: string }) {
       let liveErrId: string | null = null;
       const controller = new AbortController();
       runControllers.set(agentId, controller);
+      const started = Date.now();
 
       try {
         await streamSSE(
@@ -53,6 +54,11 @@ export default function AgentSection({ agentId }: { agentId: string }) {
             } else if (ev.type === "done") {
               appendChat(agentId, { role: "system", text: `exited (${ev.code})` });
               addEvent(agent.name.toUpperCase(), `Run complete (exit ${ev.code})`, ev.code === 0 ? "lime" : "rose");
+              fetch("/api/usage", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ agent: agentId, kind: "chat", ms: Date.now() - started, ok: ev.code === 0 }),
+              }).catch(() => {});
             }
           },
           controller.signal,
