@@ -17,6 +17,9 @@ npm run dev
 # open http://localhost:3000
 ```
 
+> Setting up a second machine (shared vault brain, per-machine agents)?
+> Follow **[SETUP-NEW-MACHINE.md](SETUP-NEW-MACHINE.md)**.
+
 > Launch it from a normal terminal (not from inside another Claude Code session) so the
 > CLI bridge inherits a clean environment.
 
