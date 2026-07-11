@@ -81,7 +81,7 @@ The gateway runs as a Windows Scheduled Task (starts on boot). If the bot goes s
 - Error cheat-sheet: **401** = bad key · **402** = valid key, no credit (DeepSeek is prepaid — top up at platform.deepseek.com) · **429** = rate limit.
 - **Gemini** has a free tier: aistudio.google.com, no card required.
 - **Ollama (local models)**: install from ollama.com, \`ollama pull llama3.2\`, then add a Custom LLM with Base URL \`http://localhost:11434/v1\`, model = the model you pulled, and **no API key** (localhost endpoints don't need one). Free, private, offline.
-- **OpenAI / Codex models**: Custom preset with Base URL \`https://api.openai.com/v1\` + your OpenAI key. The Codex **CLI** plugs in as a Command Agent instead (template \`codex exec {input}\`).
+- **OpenAI / Codex models**: Custom preset with Base URL \`https://api.openai.com/v1\` + your OpenAI key. The Codex **CLI** plugs in as a Command Agent instead (template \`codex exec --skip-git-repo-check {input}\`).
 
 Every API LLM automatically gets: shared memory + vault RAG context, **native function tools** (see LLM Tools), session compaction for long chats, voice in/out, and vault chat logging.`,
   },
@@ -102,7 +102,7 @@ Notes: local speed/quality depends on your hardware — 7–8B models run comfor
 
 **Codex — OpenAI's coding agent**
 
-- **Codex CLI** (the agent, like Claude Code): install and authenticate it, then Settings → **Command Agents** → name \`Codex\`, command template \`codex exec {input}\`. It becomes a chat page, mission participant, and arena fighter — try a Claude-vs-Codex debate on a code question with a third model judging.
+- **Codex CLI** (the agent, like Claude Code): install and authenticate it, then Settings → **Command Agents** → name \`Codex\`, command template \`codex exec --skip-git-repo-check {input}\`. It becomes a chat page, mission participant, and arena fighter — try a Claude-vs-Codex debate on a code question with a third model judging.
 - **OpenAI API models**: Settings → Add LLM → Custom → Base URL \`https://api.openai.com/v1\` + your OpenAI key. Full tool-loop citizen like any other API LLM.`,
   },
   {

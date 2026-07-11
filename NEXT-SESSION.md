@@ -35,7 +35,7 @@ built-in searchable guide (`/guide`, also exported to the vault for agent RAG).
 | DeepSeek | real key in `data/registry.json`, working |
 | Llama (Ollama) | **installed** — Ollama 0.31.2, llama3.2 (tools-capable) + nomic-embed-text pulled; registered keyless at `http://localhost:11434/v1`; Ollama auto-starts (Startup folder) |
 | Semantic RAG | **ACTIVE** via local embeddings — `EMBED_BASE_URL=http://localhost:11434/v1`, `EMBED_MODEL=nomic-embed-text` in `.env.local` (keyless). Gemini key now optional (only for a Gemini chat agent; recipe commented in `.env.local`) |
-| Codex | CLI 0.144.1 installed + registered as command agent (`codex exec {input}`) — **needs one-time `codex login` by Idris** before it answers |
+| Codex | CLI 0.144.1 installed + registered as command agent (`codex exec --skip-git-repo-check {input}`) — **needs one-time `codex login` by Idris** before it answers |
 | Vault | `C:\Users\Admin\Documents\IdrisGV75\IdrisGV75` → app writes under `Agentic OS/` |
 | Schedules | 📚 Vault Librarian (Sun 18:00), 🛠 Ops Tuner (Sun 19:00 → Telegram), 📊 **CommunityForce Monday Status (Mon 08:30 → Telegram)**, test schedule (off) |
 | Workspaces | Default, Work, **CommunityForce** |

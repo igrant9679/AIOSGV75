@@ -26,7 +26,7 @@ manual is `/guide` (source: `lib/guideContent.ts`).
 | Hermes | command agent | Nous Hermes CLI, one-shot `-z {input}`; absolute path from `.env.local` |
 | DeepSeek / any API LLM | OpenAI-compatible | `/api/llm` streaming agentic tool loop (`lib/llmTools.ts`: search_vault, read_note, save_memory, goals, journal, request_mission) |
 | Llama | local LLM | Ollama at `http://localhost:11434/v1`, keyless (`isLocalEndpoint()` in `lib/registry.ts`) |
-| Codex | command agent | `codex exec {input}` (needs one-time `codex login`) |
+| Codex | command agent | `codex exec --skip-git-repo-check {input}` (needs one-time `codex login`) |
 | Auto | virtual router | `lib/router.ts` picks a real agent by task tier, arena win-rate, cost, health; fails over to Claude |
 
 ## Map of the code

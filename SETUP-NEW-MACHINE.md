@@ -185,7 +185,7 @@ LM Studio works too (Custom LLM at `http://localhost:1234/v1`).
 ```powershell
 npm install -g @openai/codex
 codex login        # one-time browser sign-in (ChatGPT/OpenAI account)
-codex exec "say ok"   # verify headless
+codex exec --skip-git-repo-check "say ok"   # verify headless
 ```
 
 ### 3d. Hermes (optional — Nous Research agent)
@@ -278,7 +278,7 @@ Open http://127.0.0.1:3000. On first boot the app scaffolds
      key. Rotate later with the pencil icon on the row.
    - Local Llama: provider **Custom**, name `Llama`, Base URL
      `http://localhost:11434/v1`, model `llama3.2`, **API key blank**.
-2. **Command Agents** — `Codex` with template `codex exec {input}` (if
+2. **Command Agents** — `Codex` with template `codex exec --skip-git-repo-check {input}` (if
    installed + logged in). OpenClaw and Hermes are built-ins driven by
    `.env.local`, not added here.
 3. **Workspaces** — recreate the names you use (e.g. `Work`,
