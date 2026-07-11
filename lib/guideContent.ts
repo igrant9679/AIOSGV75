@@ -266,6 +266,44 @@ In Obsidian's graph view, filter with \`path:"Agentic OS"\` to see the OS's brai
 **✓ Evals** — a saved test suite (reasoning trap, instruction-following, concision — add your own cases with scoring criteria). Run it against any agents; a Claude judge scores 0–10 per case. The history panel turns model quality into a trend line. Costs roughly one Claude run per answer judged.`,
   },
   {
+    id: "playbook",
+    title: "Playbook — Worked Examples",
+    keywords: "playbook recipes examples use cases how to workflow routine cookbook weekly status second opinion debate decision watcher summarizer train auto offline free brain memory routine ideas",
+    body: `Copy-paste starting points. Each one names the exact page, settings, and prompt — adapt freely.
+
+**1. Weekly project status to your phone**
+*Missions → On a schedule.* Strategy **single** · agent **Claude** · **weekly**, Monday 08:30 · deliver **Telegram**.
+> "You are the Monday-morning status reporter for my <project> (one line of context about it). Today is {{today}}. Review the recent vault notes below, especially <workspace folder>, plus goals and journal. Write: 1) where the project stands, 2) top 3 priorities this week, 3) risks/blockers. Under 200 words, plain text.\\n\\n{{recent_notes}}"
+Why it works: \`{{recent_notes}}\` injects the week's vault activity, so the report reflects what actually happened — no manual roundup.
+
+**2. Weekly knowledge synthesis (the Librarian pattern)**
+Same as #1 but deliver **vault**: ask for a "Weekly Synthesis" note — key themes, connections between notes as \`[[wikilinks]]\`, open threads. The note becomes a knowledge-graph hub that future RAG retrievals follow.
+
+**3. Second opinion on anything important (MoA)**
+*Missions → New mission.* Strategy **MoA** · agents **Claude + DeepSeek + Llama** · synthesizer **Claude**.
+> "Draft a reply to this email declining the vendor renewal but keeping the door open: <paste>"
+Each model answers blind; the synthesizer merges the best parts. Use when one model's take isn't enough: important emails, plans, tricky explanations.
+
+**4. Decide with a debate**
+*Missions → New mission.* Strategy **debate** · two agents argue (2 rounds) · judge a third.
+> "Should I migrate <app> from local hosting to a cloud host? Argue from cost, reliability, and maintenance burden."
+The judge's verdict cites the strongest arguments — better than asking one model "what should I do?" because the positions get stress-tested.
+
+**5. File-drop summarizer (watcher)**
+*Missions → Watchers.* Trigger **file** on a folder you drop exports/notes into · prompt:
+> "A new file appeared: {{event}}. Read it, summarize the 5 key points, save anything worth remembering to shared memory, and flag action items."
+Results ping Telegram. First check baselines silently; the cooldown stops spam if you drop ten files at once.
+
+**6. Train Auto with arena fights**
+*Arena.* Pick a task you do often (code review, rewriting, planning) → battle 2–4 models on a *real* example → **crown the winner**. Do this a handful of times and Auto's "hard" tier starts routing to your actual champion instead of a guess. Check /analytics to see if the cheap models are earning their spot.
+
+**7. $0 days (local Llama)**
+For drafts, summaries, quick questions: chat with **Llama** directly — free, private, offline, and it can still search your vault and file goals (tool-capable). Auto's "simple" tier already prefers cheap models; crowning Llama in easy arena fights pushes more traffic there.
+
+**8. Build the shared brain deliberately**
+End a work session by telling any agent: "Remember: <the three facts worth keeping>. Add a goal: <next step>. Journal: <one-line summary>." Every agent — including Talos on your phone — recalls it afterwards. The brain compounds: the more you save, the sharper every schedule, mission, and RAG answer gets.`,
+  },
+  {
     id: "settings-env",
     title: "Settings & Environment Reference",
     keywords: "settings env environment variables configuration mcp command agents workspaces vault_dir telegram_target embed openclaw hermes bin cmd",
