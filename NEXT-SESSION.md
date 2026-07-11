@@ -39,7 +39,8 @@ built-in searchable guide (`/guide`, also exported to the vault for agent RAG).
 | Vault | `C:\Users\Admin\Documents\IdrisGV75\IdrisGV75` → app writes under `Agentic OS/` |
 | Schedules | 📚 Vault Librarian (Sun 18:00), 🛠 Ops Tuner (Sun 19:00 → Telegram), 📊 **CommunityForce Monday Status (Mon 08:30 → Telegram)**, test schedule (off) |
 | Workspaces | Default, Work, **CommunityForce** |
-| Settings | inline **edit-API-key** pencil button per LLM row (PATCH /api/registry) |
+| Settings | **full inline LLM editing** (v19.1) — pencil opens all fields: name/provider/baseUrl/model/key/prompt/accent; blank key keeps current, REMOVE KEY checkbox for keyless localhost |
+| server.cmd | prepends `.local\bin` / npm-global / Ollama to PATH (v19.1) — a boot-time PATH once missed the Claude native install and the bridge showed red; if an agent is red but its CLI works in a terminal, suspect server-process PATH |
 
 ## Codebase conventions & gotchas
 
