@@ -55,9 +55,19 @@ export default function SettingsSection() {
   const [systemPrompt, setSystemPrompt] = useState("");
   const [saving, setSaving] = useState(false);
 
-  // inline key editing
+  // inline LLM editing (apiKey blank = keep current; clearKey overrides)
+  const emptyEdit = {
+    name: "",
+    provider: "",
+    baseUrl: "",
+    model: "",
+    apiKey: "",
+    systemPrompt: "",
+    accent: "cyan" as Accent,
+    clearKey: false,
+  };
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editKey, setEditKey] = useState("");
+  const [edit, setEdit] = useState(emptyEdit);
 
   // add command agent form
   const [caName, setCaName] = useState("");
@@ -153,24 +163,48 @@ export default function SettingsSection() {
     addEvent("SETTINGS", `Removed ${kind}: ${id}`, "rose");
   };
 
-  const saveKey = async (id: string, name: string) => {
+  const openEdit = (l: (typeof registry.llms)[number]) => {
+    setEditingId(l.id);
+    setEdit({
+      name: l.name,
+      provider: l.provider,
+      baseUrl: l.baseUrl,
+      model: l.model,
+      apiKey: "",
+      systemPrompt: l.systemPrompt ?? "",
+      accent: l.accent,
+      clearKey: false,
+    });
+  };
+
+  const saveEdit = async (id: string) => {
     setErr("");
     setSaving(true);
     try {
+      const data: Record<string, unknown> = {
+        name: edit.name,
+        provider: edit.provider,
+        baseUrl: edit.baseUrl,
+        model: edit.model,
+        systemPrompt: edit.systemPrompt,
+        accent: edit.accent,
+      };
+      if (edit.clearKey) data.apiKey = null;
+      else if (edit.apiKey) data.apiKey = edit.apiKey;
       const res = await fetch("/api/registry", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ kind: "llm", id, data: { apiKey: editKey } }),
+        body: JSON.stringify({ kind: "llm", id, data }),
       });
       const json = (await res.json()) as { ok?: boolean; error?: string };
       if (!res.ok || !json.ok) {
-        setErr(json.error ?? "key update failed");
+        setErr(json.error ?? "update failed");
         return;
       }
       await refreshRegistry();
-      addEvent("SETTINGS", `API key updated: ${name}`, "lime");
+      addEvent("SETTINGS", `LLM updated: ${edit.name}`, edit.accent);
       setEditingId(null);
-      setEditKey("");
+      setEdit(emptyEdit);
     } catch (e) {
       setErr((e as Error).message);
     } finally {
@@ -236,11 +270,8 @@ export default function SettingsSection() {
                   </div>
                   <StatusOrb accent={l.hasKey ? "lime" : "rose"} pulsing={false} size={7} />
                   <button
-                    onClick={() => {
-                      setEditingId(editingId === l.id ? null : l.id);
-                      setEditKey("");
-                    }}
-                    aria-label={`Edit API key for ${l.name}`}
+                    onClick={() => (editingId === l.id ? setEditingId(null) : openEdit(l))}
+                    aria-label={`Edit ${l.name}`}
                     aria-expanded={editingId === l.id}
                     className="cursor-pointer rounded-lg p-1.5 text-ink-faint transition-colors hover:bg-white/[0.06] hover:text-neon-cyan"
                   >
@@ -255,29 +286,79 @@ export default function SettingsSection() {
                   </button>
                 </div>
                 {editingId === l.id && (
-                  <div className="mt-2 flex items-center gap-2">
-                    <input
-                      type="password"
-                      value={editKey}
-                      onChange={(e) => setEditKey(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && editKey.trim()) saveKey(l.id, l.name);
-                        if (e.key === "Escape") setEditingId(null);
-                      }}
-                      placeholder="New API key…"
-                      aria-label={`New API key for ${l.name}`}
-                      autoComplete="off"
-                      autoFocus
-                      className={`${inputCls} h-9`}
-                    />
-                    <button
-                      onClick={() => saveKey(l.id, l.name)}
-                      disabled={saving || !editKey.trim()}
-                      aria-label={`Save API key for ${l.name}`}
-                      className="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-lg bg-gradient-to-br from-lime-600 to-neon-lime text-black disabled:cursor-not-allowed disabled:opacity-35"
-                    >
-                      <IconCheck width={14} height={14} />
-                    </button>
+                  <div
+                    className="mt-3 flex flex-col gap-3"
+                    onKeyDown={(e) => {
+                      if (e.key === "Escape") setEditingId(null);
+                    }}
+                  >
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className={labelCls} htmlFor={`edit-name-${l.id}`}>DISPLAY NAME</label>
+                        <input id={`edit-name-${l.id}`} value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })} className={inputCls} autoFocus />
+                      </div>
+                      <div>
+                        <label className={labelCls} htmlFor={`edit-model-${l.id}`}>MODEL ID</label>
+                        <input id={`edit-model-${l.id}`} value={edit.model} onChange={(e) => setEdit({ ...edit, model: e.target.value })} className={inputCls} />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-[1fr_2fr] gap-3">
+                      <div>
+                        <label className={labelCls} htmlFor={`edit-provider-${l.id}`}>PROVIDER</label>
+                        <input id={`edit-provider-${l.id}`} value={edit.provider} onChange={(e) => setEdit({ ...edit, provider: e.target.value })} className={inputCls} />
+                      </div>
+                      <div>
+                        <label className={labelCls} htmlFor={`edit-url-${l.id}`}>BASE URL</label>
+                        <input id={`edit-url-${l.id}`} value={edit.baseUrl} onChange={(e) => setEdit({ ...edit, baseUrl: e.target.value })} className={inputCls} />
+                      </div>
+                    </div>
+                    <div>
+                      <label className={labelCls} htmlFor={`edit-key-${l.id}`}>
+                        API KEY <span className="normal-case text-ink-faint">(leave blank to keep the current key)</span>
+                      </label>
+                      <input
+                        id={`edit-key-${l.id}`}
+                        type="password"
+                        value={edit.apiKey}
+                        onChange={(e) => setEdit({ ...edit, apiKey: e.target.value, clearKey: false })}
+                        placeholder={l.hasKey ? "unchanged" : "no key set"}
+                        autoComplete="off"
+                        className={inputCls}
+                        disabled={edit.clearKey}
+                      />
+                      <label className="mt-1.5 flex cursor-pointer items-center gap-2 font-mono text-[10px] tracking-[0.1em] text-ink-faint">
+                        <input
+                          type="checkbox"
+                          checked={edit.clearKey}
+                          onChange={(e) => setEdit({ ...edit, clearKey: e.target.checked, apiKey: "" })}
+                          className="cursor-pointer accent-current"
+                        />
+                        REMOVE KEY (for keyless localhost endpoints)
+                      </label>
+                    </div>
+                    <div>
+                      <label className={labelCls} htmlFor={`edit-sys-${l.id}`}>SYSTEM PROMPT</label>
+                      <textarea id={`edit-sys-${l.id}`} value={edit.systemPrompt} onChange={(e) => setEdit({ ...edit, systemPrompt: e.target.value })} rows={2} className={`${inputCls} h-auto resize-none py-2`} />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <AccentPicker value={edit.accent} onChange={(a) => setEdit({ ...edit, accent: a })} />
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => setEditingId(null)}
+                          className="cursor-pointer rounded-lg border border-line px-3 py-2 text-xs text-ink-dim transition-colors hover:bg-white/[0.06]"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={() => saveEdit(l.id)}
+                          disabled={saving || !edit.name.trim() || !edit.model.trim() || !edit.baseUrl.trim()}
+                          aria-label={`Save changes to ${l.name}`}
+                          className="flex cursor-pointer items-center gap-2 rounded-lg bg-gradient-to-br from-lime-600 to-neon-lime px-4 py-2 text-xs font-semibold text-black disabled:cursor-not-allowed disabled:opacity-35"
+                        >
+                          <IconCheck width={14} height={14} /> Save
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>

@@ -102,9 +102,22 @@ export async function PATCH(request: Request) {
     const llm = reg.llms.find((l) => l.id === body.id);
     if (!llm) return Response.json({ error: "not found" }, { status: 404 });
     const d = body.data ?? {};
+    if (typeof d.baseUrl === "string" && d.baseUrl.trim()) {
+      const baseUrl = d.baseUrl.trim().replace(/\/+$/, "");
+      if (!/^https:\/\/.+/i.test(baseUrl) && !/^http:\/\/(localhost|127\.0\.0\.1)/i.test(baseUrl)) {
+        return Response.json({ error: "baseUrl must be https:// (or http://localhost)" }, { status: 400 });
+      }
+      llm.baseUrl = baseUrl;
+    }
+    if (typeof d.name === "string" && d.name.trim()) llm.name = d.name.trim().slice(0, 40);
+    if (typeof d.provider === "string" && d.provider.trim()) llm.provider = d.provider.trim().slice(0, 30);
     if (typeof d.apiKey === "string" && d.apiKey) llm.apiKey = d.apiKey;
+    if (d.apiKey === null) llm.apiKey = ""; // explicit clear, e.g. switching to a keyless localhost endpoint
     if (typeof d.model === "string" && d.model.trim()) llm.model = d.model.trim().slice(0, 100);
     if (typeof d.systemPrompt === "string") llm.systemPrompt = d.systemPrompt.slice(0, 4000) || undefined;
+    if (typeof d.accent === "string" && ACCENT_IDS.includes(d.accent as (typeof ACCENT_IDS)[number])) {
+      llm.accent = d.accent as Accent;
+    }
     await writeRegistry(reg);
     return Response.json({ ok: true });
   }
