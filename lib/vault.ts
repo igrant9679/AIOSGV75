@@ -98,6 +98,7 @@ export async function ensureScaffold(agents: { id: string; tagline?: string }[] 
     `- [[Agentic OS/Guide|User Guide]] — how the whole OS works`,
     `- [[Agentic OS/Memory|Shared Memory]] — what every agent knows`,
     `- [[Agentic OS/Goals|Goals]]`,
+    `- [[Agentic OS/Tasks|Task Board]]`,
     `- [[Agentic OS/Journal/${today}|Today's journal]]`,
     `- [[Agentic OS/Chats/${today}|Today's chat log]]`,
     ``,

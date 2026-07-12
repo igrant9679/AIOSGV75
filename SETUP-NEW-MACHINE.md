@@ -15,7 +15,7 @@ one brain (the synced Obsidian vault).
 | | Shared across machines | Per-machine |
 | --- | --- | --- |
 | **Mechanism** | The synced Obsidian vault | `data/*.json` + `.env.local` (both git-ignored) |
-| **What** | Shared memory, RAG (BM25 + semantic), goals, journal, chat logs, mission archives, knowledge graph, Guide | API keys, command agents, workspaces list, schedules, watchers, arena standings, usage ledger, CLI logins |
+| **What** | Shared memory, RAG (BM25 + semantic), goals, **task board**, journal, chat logs, mission archives, knowledge graph, Guide | API keys, command agents, workspaces list, schedules, watchers, arena standings, usage ledger, CLI logins |
 
 Pick roles before you start:
 

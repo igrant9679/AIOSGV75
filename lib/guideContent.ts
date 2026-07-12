@@ -210,7 +210,7 @@ The mission prompt can use \`{{event}}\` for what happened. Results ping your **
     keywords: "tasks kanban board pending in progress done operator schedule calendar cron timeline next run library content docs documents viewer download obsidian ops pulse queue integrity disk uptime",
     body: `Three operations pages (inspired by command-center dashboards) round out the workspace:
 
-**🛠 Tasks (/tasks)** — a personal kanban board: **Pending → In Progress → Done**. Add tasks with Enter, move them with ◀ ▶, delete on hover. The stat row shows board totals, scheduled-job count, and the **next cron countdown**. Stored in \`data/tasks.json\` — this is *your* operator board, separate from Goals (vault checkboxes agents can complete) and Missions (agent work).
+**🛠 Tasks (/tasks)** — a personal kanban board: **Pending → In Progress → Done**. Add tasks with Enter, move them with ◀ ▶, delete on hover. The stat row shows board totals, scheduled-job count, and the **next cron countdown**. Stored in the vault as \`Agentic OS/Tasks.md\`, so it **syncs across machines** like shared memory and goals — and it's a normal Obsidian note: add a \`- [ ] task\` line under a lane heading by hand and the app adopts it; check a box in Obsidian and it lands in Done.
 
 **📅 Schedule (/schedule)** — the cron calendar: every schedule grouped by frequency (hourly / daily / weekly) with time, delivery target, and next-run countdown; watchers listed alongside; a **7-day timeline** showing exactly what fires on which day. Run-now and on/off toggles work right from the cards. Creating/editing schedules still happens in the Missions launcher.
 
