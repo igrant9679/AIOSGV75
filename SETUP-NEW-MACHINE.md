@@ -50,8 +50,25 @@ winget install Obsidian.Obsidian
 winget install GitHub.cli              # optional — only for gh/PR workflows
 ```
 
-Close and reopen the terminal afterwards so PATH updates take effect.
-Verify: `node --version`, `git --version`.
+**The PATH ritual (learned the hard way):** a terminal only reads PATH when it
+opens, so after **every** winget install, close the window and open a fresh
+one before the new command works. Verify with `node --version` and
+`git --version` in a *new* window. If a tool is installed but still "not
+recognized", either reboot (logon refreshes PATH for everything) or patch the
+current session and keep moving:
+
+```powershell
+$env:Path += ";C:\Program Files\Git\cmd"      # git for this session
+$env:Path += ";C:\Program Files\nodejs"       # node/npm for this session
+```
+
+**PowerShell "running scripts is disabled" (fresh Windows blocks `npm.ps1`):**
+either use `npm.cmd` everywhere you'd type `npm`, or fix it once for your
+user account (Microsoft's recommended dev setting, no admin needed):
+
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+```
 
 **Optional but recommended: Tailscale** — lets your phone/laptop open this
 machine's dashboard over a private network without exposing anything to the
@@ -234,15 +251,23 @@ cd mission-control
 npm install
 ```
 
+- No GitHub sign-in is needed while the repo is public. If it's made private,
+  the clone/pull pops up a browser sign-in on its own (Git Credential
+  Manager ships with Git for Windows) — the `gh` CLI is never required.
+- npm commands must run **inside the `mission-control` folder** — from
+  anywhere else you'll get `ENOENT: could not read package.json`.
+
 ### 4b. Configure `.env.local` (git-ignored — create on every machine)
 
 Full reference (every variable the app reads):
 
 ```ini
 # ── Vault ────────────────────────────────────────────────────────────
-# REQUIRED unless your vault happens to be at the default path in lib/vault.ts.
-# Point at the folder that CONTAINS "Agentic OS" (or will, on first boot).
-VAULT_DIR=C:\Users\<you>\Documents\<VaultName>
+# REQUIRED on every new machine. Without it the app falls back to a path
+# that only ever existed on the first desktop — and the whole brain shows
+# offline: "Vault offline" on Memory, empty task board, red Goals/Journal/
+# Library orbs. Point at the folder that DIRECTLY CONTAINS "Agentic OS".
+VAULT_DIR=C:\Users\<you>\LSI Media LLC\Working Files Idris - Documents\AI Mission Control\IdrisGV75
 
 # ── Semantic RAG (recommended; keyless via local Ollama) ─────────────
 EMBED_BASE_URL=http://localhost:11434/v1
@@ -265,6 +290,13 @@ EMBED_MODEL=nomic-embed-text
 # ── Claude auth override (rarely needed — CLI login is the norm) ─────
 # ANTHROPIC_API_KEY=sk-ant-...   # the bridge whitelists this env var
 ```
+
+Two traps:
+- **Notepad silently saves `.env.local.txt`** — save with type "All files",
+  then confirm with
+  `Get-ChildItem $env:USERPROFILE\Documents\mission-control -Force -Filter ".env*"`.
+- **Env is read only at boot** — after any `.env.local` change, Ctrl+C the
+  server and start it again.
 
 ### 4c. Build and first boot
 
@@ -305,6 +337,15 @@ Set sh = CreateObject("WScript.Shell")
 sh.Run """C:\Users\<you>\Documents\mission-control\server.cmd""", 0, False
 ```
 
+Test it without rebooting: Ctrl+C the manually-started server, double-click
+the VBS, wait ~15 seconds, reload the dashboard. (Watch that the file didn't
+save as `.vbs.txt`.)
+
+**What auto-starts what** — only the server needs this VBS. Ollama's
+installer already added itself to Startup, OneDrive starts at sign-in by
+default, and the agent CLIs (Claude/Codex) aren't services — the server
+spawns them on demand with your persisted logins.
+
 Optional desktop shortcut → `launch.cmd` (opens browser; starts a dev server
 only if the port is free). `stop.cmd` kills the server (it ends with a
 `pause` — expects a keypress when run by hand).
@@ -314,21 +355,31 @@ only if the port is free). `stop.cmd` kills the server (it ends with a
 ## 5. Verify (in order)
 
 ```powershell
-curl http://127.0.0.1:3000/api/system     # 1. server up
-curl http://127.0.0.1:3000/api/agents     # 2. CLI agents green (cold-boot probe can take ~45s)
-curl http://127.0.0.1:3000/api/registry   # 3. LLMs show hasKey:true
-curl "http://127.0.0.1:3000/api/vault/search?q=test"   # 4. vault reachable
-dir data\embeddings-cache.json            # 5. exists after step 4 = semantic RAG active
+curl http://127.0.0.1:3000/api/vault/status   # 1. THE definitive vault check — ok:true + your OneDrive path
+curl http://127.0.0.1:3000/api/system     # 2. server up
+curl http://127.0.0.1:3000/api/agents     # 3. CLI agents green (cold-boot probe can take ~45s)
+curl http://127.0.0.1:3000/api/registry   # 4. LLMs show hasKey:true
+curl "http://127.0.0.1:3000/api/vault/search?q=test"   # 5. RAG answering
+dir data\embeddings-cache.json            # 6. exists after step 5 = semantic RAG active
 ```
 
-6. **Chat test**: ask Claude something; confirm a streamed reply.
-7. **Brain test (multi-machine)**: on this machine tell Claude
+7. **Task-board test (fastest brain proof)**: open `/tasks` — the shared
+   board from the other machines should be sitting there.
+8. **Chat test**: ask Claude something; confirm a streamed reply.
+9. **Memory round trip**: on this machine tell Claude
    *"Save to shared memory: setup test from \<machine-name\>"*; wait for the
    vault to sync; on another machine ask any agent *"what was recently saved
    to shared memory?"* If it answers with your phrase, sync + shared memory +
    RAG are all working end-to-end.
-8. **PRIMARY only**: toggle a schedule to run-now and confirm the Telegram
-   message arrives.
+10. **PRIMARY only**: toggle a schedule to run-now and confirm the Telegram
+    message arrives.
+
+**What a healthy WORKSTATION looks like** (don't chase these "problems"):
+- **OpenClaw/Talos red — forever, by design.** It lives on the PRIMARY only
+  (one Telegram gateway). Hermes red too unless you chose to install it here.
+- **DeepSeek / Llama / Codex missing from the sidebar** until you add them in
+  Settings — the registry is per-machine.
+- Schedules and Watchers pages empty — correct; they run on the PRIMARY.
 
 ---
 
@@ -356,6 +407,10 @@ dir data\embeddings-cache.json            # 5. exists after step 4 = semantic RA
 | `...-conflict` files appearing in vault | Two machines wrote the same file simultaneously via cloud-drive sync. Merge by hand; consider Obsidian Sync/Syncthing. |
 | Two Telegram replies per approval/schedule | PRIMARY rule broken — disable the gateway/schedules on one machine. |
 | Port 3000 already in use when starting dev | The boot server is running — `stop.cmd` first. |
+| `git`/`node` "not recognized" right after install | Terminal predates the install — open a fresh window, or patch the session: `$env:Path += ";C:\Program Files\Git\cmd"`. Reboot fixes it everywhere. |
+| `npm … running scripts is disabled` | PowerShell execution policy — use `npm.cmd`, or once: `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`. |
+| npm error `ENOENT … package.json` | You're not in the project folder — `cd $env:USERPROFILE\Documents\mission-control` first. |
+| "Vault offline" on Memory / empty task board / red Goals-Journal-Library | New-machine classic: `.env.local` missing or `VAULT_DIR` wrong (check for the Notepad `.env.local.txt` trap), or OneDrive hasn't finished syncing the library. Fix, then **restart the server**. `curl /api/vault/status` tells the truth. |
 
 ## 8. FAQ
 
