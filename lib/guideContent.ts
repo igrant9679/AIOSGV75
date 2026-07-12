@@ -102,7 +102,7 @@ Notes: local speed/quality depends on your hardware — 7–8B models run comfor
 
 **Codex — OpenAI's coding agent**
 
-- **Codex CLI** (the agent, like Claude Code): install and authenticate it, then Settings → **Command Agents** → name \`Codex\`, command template \`codex exec --skip-git-repo-check {input}\`. It becomes a chat page, mission participant, and arena fighter — try a Claude-vs-Codex debate on a code question with a third model judging.
+- **Codex CLI** (the agent, like Claude Code): install (\`npm i -g @openai/codex\`) and authenticate (\`codex login\`, ChatGPT account), then Settings → **Command Agents** → name \`Codex\`, command template \`codex exec --skip-git-repo-check {input}\` (the flag is required — the app spawns it outside a git repo). It becomes a chat page, mission participant, and arena fighter. Note: OpenAI merged the Codex *desktop app* into the ChatGPT desktop app (July 2026) — the **CLI is separate, still maintained, and is what Mission Control uses**; desktop-app sign-in does NOT authenticate the CLI. Its green orb only means the binary exists — if runs 401, check \`codex login status\`.
 - **OpenAI API models**: Settings → Add LLM → Custom → Base URL \`https://api.openai.com/v1\` + your OpenAI key. Full tool-loop citizen like any other API LLM.`,
   },
   {
@@ -203,6 +203,28 @@ Schedules fire whenever the PC is on (30-second background tick).`,
 - **Shared-memory mention** — fires when a new memory matches a keyword (or any new memory)
 
 The mission prompt can use \`{{event}}\` for what happened. Results ping your **Telegram**. The first check silently baselines (no firing on pre-existing files), and a cooldown (default 10 min) prevents spam. Watchers run on the same 30-second tick as schedules.`,
+  },
+  {
+    id: "multi-machine",
+    title: "Multi-Machine & Sync",
+    keywords: "sync onedrive obsidian sync multi machine second laptop network internet lan chats sessions shared brain vault_dir git pull update railway cloud hosting tailscale primary workstation conflict one engine",
+    body: `Mission Control runs a **full instance on each machine**, all sharing one brain. Two channels do the work — and neither needs the machines on the same network:
+
+- **GitHub** ships the *code*: on another machine, \`git clone\` once, then \`git pull && npm run build\` + restart to update. Machines never talk to each other; each runs its own server at its own \`127.0.0.1:3000\`.
+- **OneDrive** ships the *brain*: the vault lives inside the OneDrive (LSI Media LLC) folder — \`…\\AI Mission Control\\IdrisGV75\` — so shared memory, RAG, goals, the task board, journal, chat logs, mission archives, and this Guide sync through the cloud. New machine = sign into the same OneDrive, sync the library, point \`VAULT_DIR\` in \`.env.local\` at it, and mark it "Always keep on this device".
+
+**One sync engine, ever.** OneDrive is the chosen mechanism — leave Obsidian's built-in Sync core plugin OFF. Two engines rewriting the same files fight each other and breed conflict copies.
+
+**Chats & sessions across machines** — three layers:
+1. *Live threads and CLI sessions are per-machine* (Claude's resumable sessions live in that machine's ~/.claude).
+2. *Chat records are shared* — every finished exchange lands in \`Agentic OS/Chats/\` and is readable anywhere (Library page) and searchable via RAG.
+3. *The useful contents are shared* — memory facts, goals, journal entries reach every agent on every machine. End sessions with "Remember: … / goal / journal" and any machine picks up the thread.
+
+**Deliberately per-machine:** schedules & watchers (one PRIMARY machine runs them — duplicates double-fire and two Telegram gateways steal each other's updates), API keys, arena standings, and the usage ledger (each machine's Auto learns its own history).
+
+**Why not host it in the cloud (Railway etc.)?** The server is the engine room — it spawns local CLIs, reads the vault from disk, and talks to localhost Ollama; none of that exists in a cloud container, and the dashboard has no auth layer (it can run commands, so it binds 127.0.0.1 only). Remote access, when wanted, = **Tailscale** private mesh, not public hosting.
+
+Full walkthrough for a new machine: **SETUP-NEW-MACHINE.md** in the repo.`,
   },
   {
     id: "ops-pages",

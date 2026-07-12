@@ -108,6 +108,12 @@ Sync the existing vault down first, then install the app. Confirm
    ```
 
 **OneDrive / Dropbox (works, with caveats)**
+> **This deployment's choice (2026-07-12):** the vault lives in the OneDrive
+> (LSI Media LLC) library at
+> `...\Working Files Idris - Documents\AI Mission Control\IdrisGV75`.
+> On each new machine: sign into the same OneDrive account, sync that
+> library, and point `VAULT_DIR` at it. **OneDrive is the one and only sync
+> engine** — leave Obsidian's built-in Sync core plugin OFF (see FAQ).
 - Put the vault inside the synced folder — BUT right-click the vault folder →
   **"Always keep on this device."** Files-on-demand placeholders make the
   app's vault scans slow and flaky.
@@ -350,3 +356,50 @@ dir data\embeddings-cache.json            # 5. exists after step 4 = semantic RA
 | `...-conflict` files appearing in vault | Two machines wrote the same file simultaneously via cloud-drive sync. Merge by hand; consider Obsidian Sync/Syncthing. |
 | Two Telegram replies per approval/schedule | PRIMARY rule broken — disable the gateway/schedules on one machine. |
 | Port 3000 already in use when starting dev | The boot server is running — `stop.cmd` first. |
+
+## 8. FAQ
+
+**Do the machines need to be on the same network?**
+No. Nothing is LAN-dependent: GitHub distributes the code over the internet,
+and the vault syncs through OneDrive's cloud (machines don't even need to be
+on at the same time). The machines never talk to each other directly — each
+runs its **own** server at its own `127.0.0.1:3000`; only files sync.
+
+**How do updates reach another machine?**
+You don't push to it — it pulls: `git pull && npm run build`, then restart
+the server. The vault needs nothing; OneDrive syncs it continuously.
+
+**Why only ONE sync engine for the vault?**
+Two sync engines on the same folder (e.g. OneDrive **plus** Obsidian Sync)
+both rewrite the same files and fight each other — conflict churn, especially
+with the app writing constantly. This deployment uses **OneDrive only**; keep
+Obsidian's Sync core plugin off on every machine.
+
+**Are chats and sessions shared across machines?**
+Three layers:
+1. **Live chat threads & CLI sessions — per-machine.** The open thread lives
+   in that browser's memory, and Claude's `--resume` session files live in
+   that machine's `~/.claude`. You can't reopen machine A's live thread on
+   machine B.
+2. **Chat records — shared.** Every finished exchange is appended to
+   `Agentic OS/Chats/<date>.md` in the vault (mission results to
+   `Missions/`), readable everywhere (Library page, Obsidian) and indexed by
+   RAG.
+3. **The useful contents — shared, and this is the real continuity.** Facts
+   saved to shared memory, goals, and journal entries are injected into every
+   agent on every machine. Habit worth keeping: end a session with
+   *"Remember: … Add a goal: … Journal: …"* (Playbook #8 in the Guide) and
+   any machine's agents can pick up where you left off.
+
+Per-machine on purpose: schedules/watchers (would double-fire), API keys,
+arena standings and the usage ledger (each machine's Auto router learns its
+own history).
+
+**Why not host the app on Railway / a cloud server?**
+The Next.js server is also the engine room — it spawns the local CLIs
+(`claude -p`, Talos, Hermes, `codex exec`), reads the vault from disk, and
+talks to `localhost` Ollama. In a cloud container none of those exist, and
+the app has no auth layer (it binds 127.0.0.1 by design because it can run
+commands). Cloud hosting would reduce it to API-key LLMs only. For access
+from other devices without a full install, the plan is **Tailscale** (private
+mesh), not public hosting.
