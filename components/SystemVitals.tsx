@@ -18,9 +18,10 @@ export default function SystemVitals({ delay = 0 }: { delay?: number }) {
   const memPct = system ? (system.memUsed / system.memTotal) * 100 : 0;
   const memGb = system ? system.memUsed / 1024 ** 3 : 0;
   const memTotalGb = system ? system.memTotal / 1024 ** 3 : 0;
+  const diskPct = system?.diskUsed && system.diskTotal ? (system.diskUsed / system.diskTotal) * 100 : null;
 
   return (
-    <Panel title="Host Vitals" delay={delay}>
+    <Panel title="Host Vitals · VPS/Local Computer" delay={delay}>
       <div className="flex flex-wrap items-center justify-around gap-x-6 gap-y-3 px-4 py-3">
         <div className="flex flex-col items-center">
           <Gauge value={system?.cpu ?? 0} label="CPU Load" unit="%" accent="cyan" size={168} />
@@ -35,6 +36,26 @@ export default function SystemVitals({ delay = 0 }: { delay?: number }) {
             <dt className="panel-title">RAM In Use</dt>
             <dd className="text-base font-semibold text-neon-magenta">
               <NumberTicker value={memGb} decimals={1} suffix={` / ${memTotalGb.toFixed(0)} GB`} />
+            </dd>
+          </div>
+          <div>
+            <dt className="panel-title">Disk</dt>
+            <dd className="text-base font-semibold text-neon-cyan">
+              {diskPct !== null && system?.diskUsed && system.diskTotal ? (
+                <NumberTicker
+                  value={system.diskUsed / 1024 ** 3}
+                  decimals={0}
+                  suffix={` / ${(system.diskTotal / 1024 ** 3).toFixed(0)} GB · ${diskPct.toFixed(0)}%`}
+                />
+              ) : (
+                "—"
+              )}
+            </dd>
+          </div>
+          <div>
+            <dt className="panel-title">Data Stores</dt>
+            <dd className="text-base font-semibold text-neon-amber">
+              {system?.dataBytes !== undefined ? `${(system.dataBytes / 1024 ** 2).toFixed(2)} MB` : "—"}
             </dd>
           </div>
           <div>

@@ -205,6 +205,20 @@ Schedules fire whenever the PC is on (30-second background tick).`,
 The mission prompt can use \`{{event}}\` for what happened. Results ping your **Telegram**. The first check silently baselines (no firing on pre-existing files), and a cooldown (default 10 min) prevents spam. Watchers run on the same 30-second tick as schedules.`,
   },
   {
+    id: "ops-pages",
+    title: "Task Board, Schedule Calendar & Library",
+    keywords: "tasks kanban board pending in progress done operator schedule calendar cron timeline next run library content docs documents viewer download obsidian ops pulse queue integrity disk uptime",
+    body: `Three operations pages (inspired by command-center dashboards) round out the workspace:
+
+**🛠 Tasks (/tasks)** — a personal kanban board: **Pending → In Progress → Done**. Add tasks with Enter, move them with ◀ ▶, delete on hover. The stat row shows board totals, scheduled-job count, and the **next cron countdown**. Stored in \`data/tasks.json\` — this is *your* operator board, separate from Goals (vault checkboxes agents can complete) and Missions (agent work).
+
+**📅 Schedule (/schedule)** — the cron calendar: every schedule grouped by frequency (hourly / daily / weekly) with time, delivery target, and next-run countdown; watchers listed alongside; a **7-day timeline** showing exactly what fires on which day. Run-now and on/off toggles work right from the cards. Creating/editing schedules still happens in the Missions launcher.
+
+**📚 Library (/library)** — every markdown document the OS has written into the vault (mission archives, weekly syntheses, chat logs, journal, the Guide), filterable by folder, rendered in a full viewer with **open-in-Obsidian** and **download**. This is the "content folder" pattern: agents save long-form output to files instead of bloating chat context — and the Library is where you read it.
+
+**Overview upgrades** — Host Vitals now reports **disk usage** and **data-store size** alongside CPU/RAM/uptime (your VPS/Local Computer at a glance), plus the **Ops Pulse** tile (mission queue, runs today, errors today, fleet integrity N-of-M) and **Fleet Activity** — a 7-day per-agent run chart with success rates from the usage ledger.`,
+  },
+  {
     id: "approvals",
     title: "Approvals (The Autonomy Gate)",
     keywords: "approval gate approve reject pending card telegram mission request autonomy",

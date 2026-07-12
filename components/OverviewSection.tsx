@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { ACCENTS } from "@/lib/accents";
 import Panel from "./ui/Panel";
@@ -12,8 +13,71 @@ import SystemVitals from "./SystemVitals";
 import EventFeed from "./EventFeed";
 import { useMission } from "./store";
 
+interface UsageLite {
+  ts: number;
+  agent: string;
+  ok: boolean;
+}
+
+function agoShort(ts: number): string {
+  const s = Math.max(1, Math.floor((Date.now() - ts) / 1000));
+  if (s < 3600) return `${Math.floor(s / 60)}m`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h`;
+  return `${Math.floor(s / 86400)}d`;
+}
+
 export default function OverviewSection() {
-  const { system, agents, claudeStats, busy } = useMission();
+  const { system, agents, claudeStats, busy, registry } = useMission();
+  const [usage, setUsage] = useState<UsageLite[]>([]);
+  const [queue, setQueue] = useState(0);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const [u, m] = await Promise.all([fetch("/api/usage?days=7"), fetch("/api/missions")]);
+        if (u.ok) setUsage((((await u.json()) as { entries: UsageLite[] }).entries ?? []).map(({ ts, agent, ok }) => ({ ts, agent, ok })));
+        if (m.ok) {
+          const missions = ((await m.json()) as { missions: { status: string }[] }).missions ?? [];
+          setQueue(missions.filter((x) => x.status === "running" || x.status === "pending").length);
+        }
+      } catch {
+        /* ignore */
+      }
+    };
+    load();
+    const t = setInterval(load, 45_000);
+    return () => clearInterval(t);
+  }, []);
+
+  const dayMs = 86_400_000;
+  const todayStart = new Date().setHours(0, 0, 0, 0);
+  const todayRuns = usage.filter((e) => e.ts >= todayStart);
+  const todayErrors = todayRuns.filter((e) => !e.ok).length;
+
+  const fleetActivity = useMemo(() => {
+    const byAgent = new Map<string, UsageLite[]>();
+    for (const e of usage) {
+      const list = byAgent.get(e.agent) ?? [];
+      list.push(e);
+      byAgent.set(e.agent, list);
+    }
+    return Array.from(byAgent.entries())
+      .map(([agent, list]) => {
+        const days = Array.from({ length: 7 }, (_, i) => {
+          const start = todayStart - (6 - i) * dayMs;
+          return list.filter((e) => e.ts >= start && e.ts < start + dayMs).length;
+        });
+        const okCount = list.filter((e) => e.ok).length;
+        return {
+          agent,
+          days,
+          runs: list.length,
+          successPct: list.length ? Math.round((okCount / list.length) * 100) : 100,
+          lastTs: Math.max(...list.map((e) => e.ts)),
+        };
+      })
+      .sort((a, b) => b.runs - a.runs);
+  }, [usage, todayStart]);
 
   const fleet = [
     {
@@ -35,6 +99,10 @@ export default function OverviewSection() {
       detail: a.available ? (a.version ?? "ready") : `'${a.binary}' not found`,
     })),
   ];
+
+  const readyLlms = registry.llms.filter((l) => l.hasKey).length;
+  const respondersUp = fleet.filter((f) => f.online).length + readyLlms;
+  const respondersTotal = fleet.length + registry.llms.length;
 
   return (
     <div className="grid gap-4 xl:grid-cols-3">
@@ -74,10 +142,81 @@ export default function OverviewSection() {
           </div>
         </Panel>
 
+        <Panel title="Fleet Activity · 7 Days" delay={0.12}>
+          <div className="flex flex-col gap-2 p-4">
+            {fleetActivity.length === 0 && (
+              <p className="py-4 text-center text-xs text-ink-faint">No recorded runs yet — activity appears after chats, missions, and schedules run.</p>
+            )}
+            {fleetActivity.map((row) => {
+              const known = fleet.find((f) => f.id === row.agent);
+              const llm = registry.llms.find((l) => l.id === row.agent);
+              const accent = known?.accent ?? llm?.accent ?? "cyan";
+              const c = ACCENTS[accent];
+              const max = Math.max(1, ...row.days);
+              return (
+                <div key={row.agent} className="flex items-center gap-3 rounded-xl border border-line bg-white/[0.02] px-3 py-2">
+                  <Avatar name={known?.name ?? llm?.name ?? row.agent} kind={known && !llm ? (row.agent as AvatarKind) : undefined} accent={accent} size={28} />
+                  <span className="w-20 shrink-0 truncate text-sm font-semibold" style={{ color: c.base }}>
+                    {known?.name ?? llm?.name ?? row.agent}
+                  </span>
+                  <span className="flex flex-1 items-end gap-1" aria-label="7-day activity">
+                    {row.days.map((n, i) => (
+                      <span
+                        key={i}
+                        title={`${n} runs`}
+                        className="rounded-full"
+                        style={{
+                          width: 10 + Math.round((n / max) * 8),
+                          height: 10 + Math.round((n / max) * 8),
+                          background: n > 0 ? c.base : "var(--color-line)",
+                          opacity: n > 0 ? 0.4 + 0.6 * (n / max) : 0.6,
+                        }}
+                      />
+                    ))}
+                  </span>
+                  <span className="w-28 shrink-0 text-right font-mono text-[10px] text-ink-faint">
+                    {row.runs} runs · {row.successPct}%
+                  </span>
+                  <span className="w-14 shrink-0 text-right font-mono text-[10px] text-ink-dim">{agoShort(row.lastTs)} ago</span>
+                </div>
+              );
+            })}
+          </div>
+        </Panel>
+
         <EventFeed delay={0.14} />
       </div>
 
       <div className="flex flex-col gap-4">
+        <Panel title="Ops Pulse" delay={0.08}>
+          <div className="grid grid-cols-2 gap-4 p-4">
+            <div>
+              <p className="panel-title">Queue</p>
+              <p className="font-mono text-xl font-bold text-neon-cyan">
+                <NumberTicker value={queue} />
+              </p>
+            </div>
+            <div>
+              <p className="panel-title">Today</p>
+              <p className="font-mono text-xl font-bold text-neon-lime">
+                <NumberTicker value={todayRuns.length} />
+              </p>
+            </div>
+            <div>
+              <p className="panel-title">Errors · Today</p>
+              <p className="font-mono text-xl font-bold" style={{ color: todayErrors > 0 ? ACCENTS.rose.base : ACCENTS.lime.base }}>
+                <NumberTicker value={todayErrors} />
+              </p>
+            </div>
+            <div>
+              <p className="panel-title">Integrity</p>
+              <p className="font-mono text-xl font-bold text-neon-violet">
+                {respondersUp} <span className="text-ink-faint">of</span> {respondersTotal}
+              </p>
+            </div>
+          </div>
+        </Panel>
+
         <Panel title="Deep Space Scan" delay={0.1}>
           <div className="p-4">
             <RadarSweep size={230} />

@@ -8,6 +8,9 @@ export interface SystemStats {
   platform: string;
   hostname: string;
   claudeVersion: string | null;
+  diskUsed?: number; // bytes
+  diskTotal?: number; // bytes
+  dataBytes?: number; // total size of data/*.json stores
 }
 
 export interface ClaudeRunOptions {
