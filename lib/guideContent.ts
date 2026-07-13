@@ -315,6 +315,12 @@ Obsidian's own graph view works too (filter \`path:"Agentic OS"\`), and any agen
 
 **⚔ Arena** — same prompt to 2–4 models side by side; crown the winner. The leaderboard's win-rates feed the Auto router's choices.
 
+Field lessons from real battles (2026-07):
+- **Crown easy battles too.** Hard battles teach the router who the champion is (Claude); *easy* battles — summaries, rewrites, short explainers — are where cheap models earn wins, and that's the evidence the "simple" tier needs to route cheaply with confidence. Leave Claude out of easy battles so the budget fighters compete on winnable ground.
+- **One battle at a time when local/CLI fighters are involved.** Launching several battles at once means several simultaneous runs per agent — cloud APIs shrug, but CPU-bound Ollama models and one-shot CLIs (Hermes) choke and error. Sequential battles give fair results.
+- **Reruns aren't independent.** Finished battles archive to the vault, so a rerun of a similar prompt lets fighters *retrieve earlier answers via RAG* — a small model can echo a rival's archived answer nearly verbatim. Judge with that in mind.
+- **A no-show isn't a loss.** If a fighter errors, exclude it from the recorded vote rather than counting a phantom defeat.
+
 **📊 Analytics** — every run (chats, missions, schedules) is recorded with cost, tokens, latency, and outcome. 30-day spend, runs/day, and per-agent breakdowns. Claude reports real dollars; API models report tokens.
 
 **✓ Evals** — a saved test suite (reasoning trap, instruction-following, concision — add your own cases with scoring criteria). Run it against any agents; a Claude judge scores 0–10 per case. The history panel turns model quality into a trend line. Costs roughly one Claude run per answer judged.`,
@@ -349,7 +355,7 @@ The judge's verdict cites the strongest arguments — better than asking one mod
 Results ping Telegram. First check baselines silently; the cooldown stops spam if you drop ten files at once.
 
 **6. Train Auto with arena fights**
-*Arena.* Pick a task you do often (code review, rewriting, planning) → battle 2–4 models on a *real* example → **crown the winner**. Do this a handful of times and Auto's "hard" tier starts routing to your actual champion instead of a guess. Check /analytics to see if the cheap models are earning their spot.
+*Arena.* Pick a task you do often (code review, rewriting, planning) → battle 2–4 models on a *real* example → **crown the winner**. Do this a handful of times and Auto's "hard" tier starts routing to your actual champion instead of a guess. Then run **easy-tier battles without Claude** (summaries, rewrites, explainers, one battle at a time) so the cheap models can win crowns — that's what teaches the "simple" tier to route cheaply. Check /analytics to see if the cheap models are earning their spot.
 
 **7. $0 days (local Llama)**
 For drafts, summaries, quick questions: chat with **Llama** directly — free, private, offline, and it can still search your vault and file goals (tool-capable). Auto's "simple" tier already prefers cheap models; crowning Llama in easy arena fights pushes more traffic there.

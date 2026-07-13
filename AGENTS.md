@@ -32,14 +32,23 @@ manual is `/guide` (source: `lib/guideContent.ts`).
 ## Map of the code
 
 - `app/api/*` — route handlers: agents, claude, llm, auto, missions, schedules,
-  watchers, approvals, arena, evals, registry, mcp, memory, usage, vault, system.
+  watchers, approvals, arena, evals, registry, mcp, memory, usage, vault
+  (incl. `vault/notes` list/read + `vault/graph`), system, tasks,
+  orchestrations, attention.
 - `lib/` — the engine room: `missions.ts` (MoA/pipeline/debate/arena engine),
+  `orchestrator.ts` (goal → plan → dispatch-to-auto-or-pinned-workers →
+  review → ≤2 reworks → assemble; kanban + vault + Telegram lifecycle),
+  `attention.ts` (blocked-on-owner aggregator + Telegram nudges),
+  `tasks.ts` (vault-backed kanban: `Agentic OS/Tasks.md`, hand-edits adopted),
   `schedules.ts` + `scheduler.ts` (30s tick armed in `instrumentation.ts`),
   `watchers.ts`, `approvals.ts` (Telegram-answerable gates), `runners.ts`
   (non-streaming agent execution), `router.ts` (Auto), `retrieval.ts` +
   `vaultSearch.ts` (BM25) + `embeddings.ts` (optional semantic layer),
   `vault.ts` (Obsidian read/write + scaffold), `registry.ts`, `usage.ts`,
   `arena.ts`, `evals.ts`, `llmTools.ts`, `telegram.ts`, `guideContent.ts`.
+- Operator pages beyond chat: `/tasks` (kanban + Orchestrator panel),
+  `/schedule` (cron calendar), `/library` (vault doc browser), `/graph`
+  (canvas force-sim knowledge graph — hand-rolled, no graph lib).
 - `components/` — UI: `store.tsx` (global chat/mission state, OS-verb
   harvesting), `Shell.tsx`, `ChatThread.tsx`, `SettingsSection.tsx`,
   `GuideSection.tsx`, `Markdown.tsx` ([[wikilinks]] → obsidian:// links).
@@ -80,6 +89,17 @@ manual is `/guide` (source: `lib/guideContent.ts`).
 10. Keyless endpoints: `hasKey` in the registry GET means "ready", which is
     true for localhost base URLs with no key. Authorization headers are only
     sent when a key exists.
+11. **In-flight runs die with the server process.** Never rebuild-and-restart
+    while a schedule/mission/orchestration is running — check the mission log
+    and Ops Pulse queue first.
+12. **Don't run concurrent arena battles with local/CLI fighters** (Ollama,
+    Hermes) — simultaneous runs per agent make them error. Sequential battles
+    only. Cloud APIs tolerate it.
+13. Canvas/React traps (from /graph): a conditional *sibling* remounts a
+    non-keyed canvas and orphans its animation loop — mount canvases
+    unconditionally, overlay empty-states. And rAF is fully suspended in
+    hidden tabs — pair every frame with a timer fallback if work must settle
+    off-screen.
 
 ## Dev cycle (production server auto-starts at login)
 

@@ -39,6 +39,8 @@ built-in searchable guide (`/guide`, also exported to the vault for agent RAG).
 | Vault | **moved 2026-07-12 into OneDrive (LSI Media LLC)**: `C:\Users\Admin\LSI Media LLC\Working Files Idris - Documents\AI Mission Control\IdrisGV75` (VAULT_DIR in `.env.local`; pinned "always keep on this device") → app writes under `Agentic OS/` |
 | Schedules | 📚 Vault Librarian (Sun 18:00), 🛠 Ops Tuner (Sun 19:00 → Telegram), 📊 **CommunityForce Monday Status (Mon 08:30 → Telegram)**, test schedule (off) |
 | Workspaces | Default, Work, **CommunityForce** |
+| Arena standings (2026-07-13) | Claude 3/3 · DeepSeek 2/5 · Hermes 1/3 · Llama 0/4 — hard tier has a champion, simple tier has evidence (DeepSeek/Hermes wins on easy battles). Battle lessons live in the Guide's Arena section |
+| Laptop (user `idris`) | **deployed 2026-07-12 as WORKSTATION** — vault via OneDrive, Claude + Ollama installed, Talos/Hermes stay desktop-only, schedules empty. Updates: `git pull && npm run build` + restart |
 | Settings | **full inline LLM editing** (v19.1) — pencil opens all fields: name/provider/baseUrl/model/key/prompt/accent; blank key keeps current, REMOVE KEY checkbox for keyless localhost |
 | Ops pages (v20) | **/tasks** kanban (vault-backed: `Agentic OS/Tasks.md`, syncs across machines, hand-edits adopted), **/schedule** cron calendar (7-day timeline over schedules+watchers), **/library** vault content browser (/api/vault/notes); Overview adds disk/data-store vitals, Ops Pulse tiles, 7-day Fleet Activity |
 | Graph (v20.2) | **/graph** knowledge-graph visualization — canvas force sim over /api/vault/graph (notes=nodes, wikilinks=edges), folder legend/filter, hover neighborhoods, click→Obsidian, orphan/hub stats; loop sleeps when settled, timer fallback drives it in hidden tabs (rAF is suspended there) |
@@ -63,9 +65,9 @@ built-in searchable guide (`/guide`, also exported to the vault for agent RAG).
 ## Open roadmap / next candidates
 
 1. **Phone access** (Tailscale + PWA) — the one deferred roadmap item
-2. Crown winners of the two Arena battles run 2026-07-10 (feeds Auto routing)
-3. Optional: Gemini chat agent (free key at aistudio.google.com; embeddings already local)
-4. Multi-machine rollout: follow SETUP-NEW-MACHINE.md on the next laptop
+2. **LLM-history import**: distill Idris's ChatGPT/Claude.ai chat exports into topic notes in the vault (pipeline designed 2026-07-12 — waiting on Idris to download the export ZIPs to `Documents\llm-exports`)
+3. Optional: Gemini chat agent (free key at aistudio.google.com; embeddings already local); Hermes on the laptop
+4. Keep feeding the Arena easy-tier battles so simple routing gets cheaper/smarter
 
 ## Suggested first message for the new session
 
