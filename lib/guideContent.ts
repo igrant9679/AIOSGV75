@@ -247,7 +247,7 @@ Full walkthrough for a new machine: **SETUP-NEW-MACHINE.md** in the repo.`,
     body: `**🤖 The Orchestrator** (panel on the Tasks page) is the chief-of-staff loop — hand it one goal and it runs the whole show:
 
 1. **Plan** — Claude decomposes the goal into ≤5 self-contained subtasks
-2. **Dispatch** — each subtask goes to **Auto**, which routes to the cheapest capable model (your token-conservation layer)
+2. **Dispatch** — each subtask goes to **Auto**, which routes to the cheapest capable model (your token-conservation layer). Or **pin workers**: pick up to 4 agents in the launcher (e.g. Hermes for research, Llama for free drafts) and subtasks are distributed among them round-robin — the review/rework gate stays either way
 3. **Review** — Claude judges every output against the goal
 4. **Rework** — weak work goes back with specific feedback (max 2 retries per subtask)
 5. **Assemble** — Claude merges everything into one polished deliverable

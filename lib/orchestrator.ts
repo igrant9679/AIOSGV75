@@ -32,6 +32,8 @@ export interface OrchStep {
 export interface Orchestration {
   id: string;
   goal: string;
+  /** pinned worker agent ids; empty/undefined = "auto" routes each subtask */
+  workers?: string[];
   status: "planning" | "running" | "assembling" | "done" | "error";
   createdAt: number;
   finishedAt?: number;
@@ -85,10 +87,11 @@ async function save(o: Orchestration): Promise<void> {
 
 let seq = 0;
 
-export async function startOrchestration(goal: string): Promise<Orchestration> {
+export async function startOrchestration(goal: string, workers?: string[]): Promise<Orchestration> {
   const o: Orchestration = {
     id: `orc-${Date.now().toString(36)}-${seq++}`,
     goal: goal.trim().slice(0, 4000),
+    workers: workers && workers.length > 0 ? workers.slice(0, 4) : undefined,
     status: "planning",
     createdAt: Date.now(),
     steps: [],
@@ -268,8 +271,10 @@ async function run(o: Orchestration): Promise<void> {
     await save(o);
 
     // ── dispatch → review → rework, per step, in parallel ──
+    // pinned workers take subtasks round-robin; otherwise "auto" routes each
     await Promise.all(
-      o.steps.map(async (step) => {
+      o.steps.map(async (step, stepIndex) => {
+        const workerId = o.workers?.length ? o.workers[stepIndex % o.workers.length] : "auto";
         while (step.attempts < MAX_ATTEMPTS) {
           step.attempts++;
           step.status = step.attempts === 1 ? "running" : "rework";
@@ -278,7 +283,7 @@ async function run(o: Orchestration): Promise<void> {
           const prompt = step.attempts === 1 ? step.prompt : reworkPrompt(step);
           // workers get shared memory + vault RAG so subtask output reflects
           // the owner's actual system/projects instead of generic guesses
-          const r = await runAgentText("auto", prompt, { injectMemory: true });
+          const r = await runAgentText(workerId, prompt, { injectMemory: true });
           step.ms += r.ms;
           if (r.error) {
             step.status = "error";
@@ -287,7 +292,7 @@ async function run(o: Orchestration): Promise<void> {
             return;
           }
           step.output = r.text;
-          step.routedTo = r.routedTo ?? step.routedTo;
+          step.routedTo = r.routedTo ?? (workerId !== "auto" ? workerId : step.routedTo);
 
           step.status = "review";
           await save(o);

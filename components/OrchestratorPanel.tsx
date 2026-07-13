@@ -28,11 +28,22 @@ const ORCH_LABEL: Record<Orchestration["status"], string> = {
 };
 
 export default function OrchestratorPanel({ delay = 0 }: { delay?: number }) {
-  const { addEvent } = useMission();
+  const { addEvent, agents, registry } = useMission();
   const [goal, setGoal] = useState("");
+  const [workers, setWorkers] = useState<string[]>([]);
   const [items, setItems] = useState<Orchestration[]>([]);
   const [open, setOpen] = useState<string | null>(null);
   const [err, setErr] = useState("");
+
+  const workerChoices: { id: string; name: string; accent: Accent }[] = [
+    { id: "claude", name: "Claude", accent: "violet" },
+    ...agents.map((a) => ({ id: a.id, name: a.name, accent: a.accent })),
+    ...registry.llms.map((l) => ({ id: l.id, name: l.name, accent: l.accent })),
+    ...registry.commandAgents.map((a) => ({ id: a.id, name: a.name, accent: a.accent })),
+  ];
+
+  const toggleWorker = (id: string) =>
+    setWorkers((w) => (w.includes(id) ? w.filter((x) => x !== id) : w.length < 4 ? [...w, id] : w));
 
   const anyActive = items.some((o) => o.status !== "done" && o.status !== "error");
 
@@ -58,7 +69,7 @@ export default function OrchestratorPanel({ delay = 0 }: { delay?: number }) {
     const res = await fetch("/api/orchestrations", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ goal: g }),
+      body: JSON.stringify({ goal: g, workers }),
     });
     const json = (await res.json()) as { ok?: boolean; error?: string };
     if (!res.ok || !json.ok) {
@@ -83,6 +94,37 @@ export default function OrchestratorPanel({ delay = 0 }: { delay?: number }) {
           final deliverable — archived to the vault, tracked on this board, and pinged to your Telegram.
         </p>
         {err && <p className="rounded-lg border border-neon-rose/30 bg-neon-rose/10 px-3 py-1.5 font-mono text-[11px] text-neon-rose">{err}</p>}
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="pr-1 font-mono text-[10px] tracking-[0.12em] text-ink-faint">WORKERS</span>
+          <button
+            onClick={() => setWorkers([])}
+            className="cursor-pointer rounded-full border px-2.5 py-1 font-mono text-[10px] tracking-[0.06em] transition-colors"
+            style={
+              workers.length === 0
+                ? { background: ACCENTS.cyan.soft, color: ACCENTS.cyan.base, borderColor: "transparent" }
+                : { borderColor: "var(--color-line)", color: "var(--color-ink-faint)" }
+            }
+          >
+            AUTO · cheapest capable
+          </button>
+          {workerChoices.map((w) => (
+            <button
+              key={w.id}
+              onClick={() => toggleWorker(w.id)}
+              className="cursor-pointer rounded-full border px-2.5 py-1 font-mono text-[10px] tracking-[0.06em] transition-colors"
+              style={
+                workers.includes(w.id)
+                  ? { background: ACCENTS[w.accent].soft, color: ACCENTS[w.accent].base, borderColor: "transparent" }
+                  : { borderColor: "var(--color-line)", color: "var(--color-ink-faint)" }
+              }
+            >
+              {w.name}
+            </button>
+          ))}
+          {workers.length > 0 && (
+            <span className="font-mono text-[10px] text-ink-faint">subtasks round-robin across {workers.length}</span>
+          )}
+        </div>
         <div className="flex items-start gap-2">
           <textarea
             value={goal}
@@ -119,6 +161,7 @@ export default function OrchestratorPanel({ delay = 0 }: { delay?: number }) {
                   <span className="font-mono text-[10px] text-ink-faint">
                     {ORCH_LABEL[o.status]}
                     {o.steps.length > 0 && ` · ${o.steps.filter((s) => s.status === "done").length}/${o.steps.length} subtasks`}
+                    {` · workers: ${o.workers?.length ? o.workers.join(", ") : "auto"}`}
                     {o.plannerNote && " · ⚠ fallback plan"}
                   </span>
                 </span>
