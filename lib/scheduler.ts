@@ -1,5 +1,6 @@
 import { checkDueSchedules } from "./schedules";
 import { checkWatchers } from "./watchers";
+import { nudgeStaleApprovals } from "./attention";
 import { ensureScaffold } from "./vault";
 import { readRegistry } from "./registry";
 
@@ -24,6 +25,7 @@ export function startScheduler(): void {
   setInterval(() => {
     checkDueSchedules().catch(() => {});
     checkWatchers().catch(() => {});
+    nudgeStaleApprovals().catch(() => {});
     void refreshScaffold(); // no-op unless the day rolled over
   }, 30_000);
   // catch anything already due shortly after boot

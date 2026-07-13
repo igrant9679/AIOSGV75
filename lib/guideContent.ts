@@ -241,6 +241,22 @@ Full walkthrough for a new machine: **SETUP-NEW-MACHINE.md** in the repo.`,
 **Overview upgrades** — Host Vitals now reports **disk usage** and **data-store size** alongside CPU/RAM/uptime (your VPS/Local Computer at a glance), plus the **Ops Pulse** tile (mission queue, runs today, errors today, fleet integrity N-of-M) and **Fleet Activity** — a 7-day per-agent run chart with success rates from the usage ledger.`,
   },
   {
+    id: "orchestrator-attention",
+    title: "Orchestrator & Needs Attention",
+    keywords: "orchestrator chief of staff delegate goal decompose dispatch review rework assemble subtasks auto route cheap tokens conserve needs attention stalled blocked waiting pending nudge reminder",
+    body: `**🤖 The Orchestrator** (panel on the Tasks page) is the chief-of-staff loop — hand it one goal and it runs the whole show:
+
+1. **Plan** — Claude decomposes the goal into ≤5 self-contained subtasks
+2. **Dispatch** — each subtask goes to **Auto**, which routes to the cheapest capable model (your token-conservation layer)
+3. **Review** — Claude judges every output against the goal
+4. **Rework** — weak work goes back with specific feedback (max 2 retries per subtask)
+5. **Assemble** — Claude merges everything into one polished deliverable
+
+The goal appears on your kanban board (🤖-prefixed, In Progress → Done; failures return to Pending for your eyes), the full run archives to the vault (visible in Library and the Graph), and completion pings your Telegram. Two orchestrations can run at once. Watch live progress in the panel: each subtask shows its status, which model Auto picked, and the attempt count.
+
+**⚠ Needs Attention** (panel on the Overview) is the one place that answers "is anything blocked on me?" — it aggregates: **approvals waiting** (with age), **failed missions** (last 24h), **missions running suspiciously long** (>10 min), and **schedules whose last run failed**. Empty = all clear. And if an approval sits unanswered for 10+ minutes, you get a one-time ⏳ Telegram reminder — so nothing waits on you silently while you're away from the dashboard.`,
+  },
+  {
     id: "approvals",
     title: "Approvals (The Autonomy Gate)",
     keywords: "approval gate approve reject pending card telegram mission request autonomy",

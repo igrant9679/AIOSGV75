@@ -11,6 +11,7 @@ import NumberTicker from "./ui/NumberTicker";
 import Avatar, { type AvatarKind } from "./Avatar";
 import SystemVitals from "./SystemVitals";
 import EventFeed from "./EventFeed";
+import AttentionPanel from "./AttentionPanel";
 import { useMission } from "./store";
 
 interface UsageLite {
@@ -188,6 +189,8 @@ export default function OverviewSection() {
       </div>
 
       <div className="flex flex-col gap-4">
+        <AttentionPanel delay={0.06} />
+
         <Panel title="Ops Pulse" delay={0.08}>
           <div className="grid grid-cols-2 gap-4 p-4">
             <div>

@@ -6,6 +6,7 @@ import { ACCENTS, type Accent } from "@/lib/accents";
 import type { BoardTask, BoardStatus } from "@/lib/tasks";
 import Panel from "./ui/Panel";
 import NumberTicker from "./ui/NumberTicker";
+import OrchestratorPanel from "./OrchestratorPanel";
 import { IconPlus, IconTrash } from "./icons";
 import { useMission } from "./store";
 
@@ -145,6 +146,8 @@ export default function TasksSection() {
           </div>
         </Panel>
       </div>
+
+      <OrchestratorPanel delay={0.14} />
 
       <div className="flex items-center gap-2">
         <input

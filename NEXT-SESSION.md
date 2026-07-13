@@ -42,6 +42,8 @@ built-in searchable guide (`/guide`, also exported to the vault for agent RAG).
 | Settings | **full inline LLM editing** (v19.1) — pencil opens all fields: name/provider/baseUrl/model/key/prompt/accent; blank key keeps current, REMOVE KEY checkbox for keyless localhost |
 | Ops pages (v20) | **/tasks** kanban (vault-backed: `Agentic OS/Tasks.md`, syncs across machines, hand-edits adopted), **/schedule** cron calendar (7-day timeline over schedules+watchers), **/library** vault content browser (/api/vault/notes); Overview adds disk/data-store vitals, Ops Pulse tiles, 7-day Fleet Activity |
 | Graph (v20.2) | **/graph** knowledge-graph visualization — canvas force sim over /api/vault/graph (notes=nodes, wikilinks=edges), folder legend/filter, hover neighborhoods, click→Obsidian, orphan/hub stats; loop sleeps when settled, timer fallback drives it in hidden tabs (rAF is suspended there) |
+| Orchestrator (v21) | **Tasks page panel**: goal → Claude plans ≤5 subtasks → each dispatched to **auto** (cost routing) → Claude reviews, ≤2 reworks w/ feedback → Claude assembles; vault archive + Telegram + kanban lifecycle (🤖 task; failure → back to Pending). lib/orchestrator.ts, data/orchestrations.json, ≤2 concurrent |
+| Needs Attention (v21) | **Overview panel** + /api/attention: pending approvals w/ age, failed missions (24h), stalled runs (>10m), failed schedules; scheduler tick sends one ⏳ Telegram nudge per approval pending >10m (data/attention-nudges.json) |
 | server.cmd | prepends `.local\bin` / npm-global / Ollama to PATH (v19.1) — a boot-time PATH once missed the Claude native install and the bridge showed red; if an agent is red but its CLI works in a terminal, suspect server-process PATH |
 
 ## Codebase conventions & gotchas
