@@ -175,3 +175,12 @@ export const IconPencil = (p: SVGProps<SVGSVGElement>) => (
     <path d="M17 3a2.8 2.8 0 0 1 4 4L7.5 20.5 3 21.5l1-4.5L17 3z" />
   </svg>
 );
+
+export const IconGraph = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}>
+    <circle cx="6" cy="6" r="2.5" />
+    <circle cx="18" cy="9" r="2.5" />
+    <circle cx="10" cy="18" r="2.5" />
+    <path d="M8.2 7.1l7.4 1.4M7 8.3l2.2 7.3M16.3 10.9l-4.6 5.4" />
+  </svg>
+);

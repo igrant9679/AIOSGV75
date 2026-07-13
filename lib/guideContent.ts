@@ -269,15 +269,17 @@ and retrieval becomes hybrid keyword + meaning, with vectors cached on disk and 
   },
   {
     id: "knowledge-graph",
-    title: "The Obsidian Knowledge Graph",
-    keywords: "obsidian vault graph wikilinks backlinks home agent hub pages notes librarian",
+    title: "The Knowledge Graph (in-app & Obsidian)",
+    keywords: "obsidian vault graph knowledge map wikilinks backlinks home agent hub pages notes librarian nodes edges orphans hubs force visualization",
     body: `Everything the OS writes lands in your vault under **Agentic OS/** as linked markdown:
 
-- **Home.md** — daily-regenerated map of content linking memory, goals, today's journal/chats, and every agent
+- **Home.md** — daily-regenerated map of content linking memory, goals, the task board, today's journal/chats, and every agent
 - **Agents/<Name>.md** — one hub page per agent; every chat log heading, memory fact, mission result, and journal entry wikilinks back to its author
-- **Chats/** (one file per day) · **Missions/** (one per mission) · **Journal/** · **Goals.md** · **Memory.md**
+- **Chats/** (one file per day) · **Missions/** (one per mission) · **Journal/** · **Goals.md** · **Tasks.md** · **Memory.md**
 
-In Obsidian's graph view, filter with \`path:"Agentic OS"\` to see the OS's brain — agents as hubs with everything radiating off them. Open any agent's page and the **backlinks pane** is a complete dossier of that agent's activity. The Vault Librarian weaves a synthesis note through the graph every Sunday.`,
+**🕸 Graph (/graph)** — the built-in visualization: every vault note is a node, every resolved \`[[wikilink]]\` an edge, laid out live by a force simulation. Node size = connection count, color = folder (legend chips filter to one folder), hover highlights a note's neighborhood, **scroll zooms, drag pans or moves nodes, click opens the note in Obsidian**. The stat row counts notes, links, **orphans** (unlinked notes — feed them to the Librarian), and the top hub. Refresh re-reads the vault.
+
+Obsidian's own graph view works too (filter \`path:"Agentic OS"\`), and any agent page's **backlinks pane** is a complete dossier of that agent's activity. The Vault Librarian weaves a synthesis note through the graph every Sunday.`,
   },
   {
     id: "goals-journal",

@@ -7,7 +7,7 @@ import { ACCENTS, type Accent } from "@/lib/accents";
 import { useMission } from "./store";
 import StatusOrb from "./ui/StatusOrb";
 import Avatar, { type AvatarKind } from "./Avatar";
-import { IconGrid, IconTarget, IconBook, IconBrain, IconGear, IconPlus, IconRocket, IconSwords, IconPulse, IconCheck, IconHelp, IconWrench, IconSpark } from "./icons";
+import { IconGrid, IconTarget, IconBook, IconBrain, IconGear, IconPlus, IconRocket, IconSwords, IconPulse, IconCheck, IconHelp, IconWrench, IconSpark, IconGraph } from "./icons";
 
 interface NavItem {
   href: string;
@@ -32,6 +32,7 @@ const WORKSPACE_NAV: NavItem[] = [
   { href: "/tasks", label: "Tasks", sub: "Operator board", accent: "amber", icon: IconWrench },
   { href: "/schedule", label: "Schedule", sub: "Cron calendar", accent: "lime", icon: IconSpark },
   { href: "/library", label: "Library", sub: "Agent output docs", accent: "violet", icon: IconBook },
+  { href: "/graph", label: "Graph", sub: "Knowledge map", accent: "magenta", icon: IconGraph },
   { href: "/arena", label: "Arena", sub: "Model battles", accent: "rose", icon: IconSwords },
   { href: "/analytics", label: "Analytics", sub: "Cost & usage", accent: "amber", icon: IconPulse },
   { href: "/evals", label: "Evals", sub: "Model report cards", accent: "violet", icon: IconCheck },
@@ -67,7 +68,7 @@ export default function Sidebar() {
     if (href === "/claude") return system?.claudeVersion ? (busy.claude ? "amber" : "lime") : "rose";
     if (href === "/auto") return busy.auto ? "amber" : "lime";
     if (href === "/" || href === "/settings" || href === "/missions" || href === "/arena" || href === "/analytics" || href === "/evals" || href === "/guide" || href === "/tasks" || href === "/schedule") return "lime";
-    if (href === "/goals" || href === "/journal" || href === "/memory" || href === "/library") return vaultOk ? "lime" : "rose";
+    if (href === "/goals" || href === "/journal" || href === "/memory" || href === "/library" || href === "/graph") return vaultOk ? "lime" : "rose";
     const id = href.replace("/agent/", "").replace("/", "");
     if (busy[id]) return "amber";
     const llm = registry.llms.find((l) => l.id === id);
