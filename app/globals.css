@@ -123,7 +123,7 @@ body {
   backdrop-filter: blur(16px);
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
 }
-/* colorful gradient accent along the top edge of every panel */
+/* accent along the top edge of every panel — tinted to the current page's color */
 .panel::before {
   content: "";
   position: absolute;
@@ -133,18 +133,29 @@ body {
   height: 3px;
   background: linear-gradient(
     90deg,
-    var(--ac-cyan),
-    var(--ac-violet),
-    var(--ac-magenta),
-    var(--ac-rose),
-    var(--ac-amber)
+    transparent,
+    var(--page-accent, var(--ac-cyan)) 28%,
+    var(--page-accent, var(--ac-cyan)) 72%,
+    transparent
   );
-  opacity: 0.62;
+  opacity: 0.85;
   pointer-events: none;
   z-index: 3;
+  transition: background 0.4s ease;
 }
 [data-theme="light"] .panel::before {
-  opacity: 0.8;
+  opacity: 0.95;
+}
+
+/* section cards lift with a soft glow in the page's accent color on hover */
+.glow-panel {
+  transition: box-shadow 0.35s ease, border-color 0.35s ease, transform 0.35s ease;
+}
+.glow-panel:hover {
+  border-color: color-mix(in srgb, var(--page-accent, var(--ac-cyan)) 42%, var(--color-line));
+  box-shadow:
+    0 10px 30px rgba(0, 0, 0, 0.42),
+    0 0 26px color-mix(in srgb, var(--page-accent, var(--ac-cyan)) 20%, transparent);
 }
 
 .panel-title {

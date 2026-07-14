@@ -21,7 +21,7 @@ export default function Panel({
       initial={{ opacity: 0, y: 14 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, delay, ease: [0.22, 1, 0.36, 1] }}
-      className={`panel relative overflow-hidden ${className}`}
+      className={`panel glow-panel relative overflow-hidden ${className}`}
     >
       {(title || right) && (
         <header className="flex items-center justify-between gap-3 border-b border-line px-5 py-3">

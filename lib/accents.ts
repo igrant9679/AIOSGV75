@@ -1,5 +1,40 @@
 export type Accent = "cyan" | "magenta" | "amber" | "lime" | "violet" | "rose";
 
+/** Per-page accent — each route gets its own color identity (matches the sidebar). */
+export const ROUTE_ACCENTS: Record<string, Accent> = {
+  "/": "cyan",
+  "/auto": "cyan",
+  "/claude": "violet",
+  "/openclaw": "magenta",
+  "/hermes": "amber",
+  "/hermes-lab": "amber",
+  "/mastermind": "cyan",
+  "/jarvis": "cyan",
+  "/pipeline": "violet",
+  "/builds": "magenta",
+  "/studio": "magenta",
+  "/content": "violet",
+  "/import": "cyan",
+  "/conversations": "cyan",
+  "/missions": "cyan",
+  "/tasks": "amber",
+  "/schedule": "lime",
+  "/library": "violet",
+  "/graph": "magenta",
+  "/arena": "rose",
+  "/analytics": "amber",
+  "/evals": "violet",
+  "/goals": "lime",
+  "/journal": "rose",
+  "/memory": "violet",
+  "/settings": "cyan",
+  "/guide": "magenta",
+};
+
+export function accentForPath(pathname: string): Accent {
+  return ROUTE_ACCENTS[pathname] ?? "cyan";
+}
+
 /**
  * Accent palette. `base` resolves through CSS variables so both themes get
  * legible values (bright neon on dark, deeper tones on light) — use it in

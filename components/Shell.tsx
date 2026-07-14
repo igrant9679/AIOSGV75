@@ -1,6 +1,8 @@
 "use client";
 
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
+import { usePathname } from "next/navigation";
+import { ACCENTS, accentForPath } from "@/lib/accents";
 import { MissionProvider } from "./store";
 import Header from "./Header";
 import Sidebar from "./Sidebar";
@@ -8,9 +10,11 @@ import ApprovalsBar from "./ApprovalsBar";
 import CommandPalette from "./CommandPalette";
 
 export default function Shell({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
+  const pageAccent = ACCENTS[accentForPath(pathname)].base;
   return (
     <MissionProvider>
-      <div className="relative min-h-dvh">
+      <div className="relative min-h-dvh" style={{ "--page-accent": pageAccent } as CSSProperties}>
         {/* ambient layers */}
         <div aria-hidden className="nebula pointer-events-none fixed inset-0" />
         <div aria-hidden className="grid-bg pointer-events-none fixed inset-0" />
