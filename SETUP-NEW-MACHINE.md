@@ -6,6 +6,29 @@ sync), the app itself, and verification.
 
 ---
 
+## Quick install (recommended)
+
+One script installs the prerequisites (Git, Node.js LTS, Ollama), the app
+(clone + build), the local models, Claude Code + optional Codex, a starter
+`.env.local`, and the auto-start service. It's idempotent — safe to re-run.
+
+**Fresh machine** (the repo is public), in PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/igrant9679/AIOSGV75/main/install.ps1 -OutFile "$env:TEMP\mc-install.ps1"; powershell -ExecutionPolicy Bypass -File "$env:TEMP\mc-install.ps1"
+```
+
+**Already have a clone**: double-click **`install.cmd`** in the repo (or
+`powershell -ExecutionPolicy Bypass -File install.ps1`). Add `-DryRun` to see
+what it would do without changing anything; `-Yes` to accept defaults.
+
+It **can't** automate three things (it tells you at the end): `claude` → `/login`,
+pointing `VAULT_DIR` at your synced OneDrive vault, and entering Studio/WordPress
+keys in Settings. The manual walkthrough below covers each in depth and the
+desktop-only companions (Hermes, OpenClaw).
+
+---
+
 ## 0. Understand the topology first
 
 Mission Control is **local-first**: the web app, the agent CLIs, and the vault
