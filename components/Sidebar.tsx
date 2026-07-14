@@ -137,7 +137,7 @@ export default function Sidebar() {
       initial={{ opacity: 0, x: -18 }}
       animate={{ opacity: 1, x: 0 }}
       transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-      className="panel flex w-60 shrink-0 flex-col gap-1 p-3"
+      className="panel flex w-60 shrink-0 flex-col gap-1 overflow-hidden p-3"
       aria-label="Agents"
     >
       <span className="panel-title px-2 pb-2 pt-1">Agents</span>

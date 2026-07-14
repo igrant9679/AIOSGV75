@@ -116,11 +116,35 @@ body {
 
 /* ---- glass panel ---- */
 .panel {
+  position: relative;
   background: rgba(14, 17, 34, 0.66);
   border: 1px solid var(--color-line);
   border-radius: 20px;
   backdrop-filter: blur(16px);
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
+}
+/* colorful gradient accent along the top edge of every panel */
+.panel::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(
+    90deg,
+    var(--ac-cyan),
+    var(--ac-violet),
+    var(--ac-magenta),
+    var(--ac-rose),
+    var(--ac-amber)
+  );
+  opacity: 0.62;
+  pointer-events: none;
+  z-index: 3;
+}
+[data-theme="light"] .panel::before {
+  opacity: 0.8;
 }
 
 .panel-title {

@@ -21,7 +21,7 @@ export default function ApprovalsBar() {
             exit={{ opacity: 0, y: -8 }}
             role="alertdialog"
             aria-label={`${a.source} requests a mission`}
-            className="panel flex items-center gap-3 border-neon-amber/40 px-4 py-3"
+            className="panel flex items-center gap-3 overflow-hidden border-neon-amber/40 px-4 py-3"
           >
             <Avatar
               kind={a.source === "claude" || a.source === "openclaw" || a.source === "hermes" ? (a.source as "claude") : undefined}
