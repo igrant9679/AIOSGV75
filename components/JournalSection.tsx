@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
+import { ACCENTS } from "@/lib/accents";
 import Panel from "./ui/Panel";
 import StatusOrb from "./ui/StatusOrb";
 import MicButton, { type MicState } from "./MicButton";
@@ -14,6 +15,78 @@ function prettyDate(stamp: string) {
     day: "numeric",
     year: "numeric",
   });
+}
+
+function stampOf(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+/** Consecutive days written, counting back from today (or yesterday). */
+function streakOf(dates: Set<string>, today: string): number {
+  const cursor = new Date(`${today}T12:00:00`);
+  if (!dates.has(stampOf(cursor))) cursor.setDate(cursor.getDate() - 1); // today not written yet doesn't break it
+  let n = 0;
+  while (dates.has(stampOf(cursor))) {
+    n++;
+    cursor.setDate(cursor.getDate() - 1);
+  }
+  return n;
+}
+
+/** GitHub-style 12-week writing heatmap; click a cell to open that day. */
+function WritingHeatmap({
+  dates,
+  active,
+  today,
+  onPick,
+}: {
+  dates: Set<string>;
+  active: string | null;
+  today: string | null;
+  onPick: (d: string) => void;
+}) {
+  if (!today) return null;
+  const end = new Date(`${today}T12:00:00`);
+  // pad forward so the final column ends on Saturday, then walk back 12 weeks
+  const cells: { stamp: string; future: boolean }[] = [];
+  const start = new Date(end);
+  start.setDate(start.getDate() - (7 * 12 - 1) - ((end.getDay() + 1) % 7));
+  const cursor = new Date(start);
+  for (let i = 0; i < 7 * 12; i++) {
+    const stamp = stampOf(cursor);
+    cells.push({ stamp, future: stamp > today });
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  const weeks: (typeof cells)[] = [];
+  for (let w = 0; w < 12; w++) weeks.push(cells.slice(w * 7, w * 7 + 7));
+  const c = ACCENTS.rose;
+  return (
+    <div className="flex justify-center gap-[3px]" aria-label="12-week writing activity">
+      {weeks.map((week, wi) => (
+        <div key={wi} className="flex flex-col gap-[3px]">
+          {week.map((cell) => {
+            const wrote = dates.has(cell.stamp);
+            return (
+              <button
+                key={cell.stamp}
+                onClick={() => wrote && onPick(cell.stamp)}
+                disabled={!wrote}
+                title={`${cell.stamp}${wrote ? " — open entry" : ""}`}
+                aria-label={cell.stamp}
+                className={`h-3 w-3 rounded-[3px] transition-transform ${wrote ? "cursor-pointer hover:scale-125" : ""}`}
+                style={{
+                  background: cell.future ? "transparent" : wrote ? c.base : "var(--color-line)",
+                  opacity: cell.future ? 0 : wrote ? (cell.stamp === active ? 1 : 0.75) : 0.5,
+                  outline: cell.stamp === active ? `1.5px solid ${c.base}` : undefined,
+                  outlineOffset: 1,
+                }}
+              />
+            );
+          })}
+        </div>
+      ))}
+    </div>
+  );
 }
 
 export default function JournalSection() {
@@ -179,6 +252,13 @@ export default function JournalSection() {
           </ul>
         </Panel>
 
+        <Panel title="Writing Rhythm" delay={0.08}>
+          <div className="flex flex-col gap-3 p-4">
+            <WritingHeatmap dates={new Set(dates)} active={date} today={today} onPick={(d) => load(d)} />
+            <p className="text-center font-mono text-[9px] tracking-[0.18em] text-ink-faint">LAST 12 WEEKS · CLICK A DAY TO OPEN IT</p>
+          </div>
+        </Panel>
+
         <Panel title="Entry Stats" delay={0.1}>
           <dl className="grid grid-cols-2 gap-3 p-4 font-mono text-[11px]">
             <div>
@@ -186,12 +266,19 @@ export default function JournalSection() {
               <dd className="text-lg font-semibold text-neon-cyan">{words}</dd>
             </div>
             <div>
+              <dt className="text-ink-faint">STREAK</dt>
+              <dd className="text-lg font-semibold" style={{ color: ACCENTS.rose.base }}>
+                {today ? streakOf(new Set(dates), today) : 0}
+                <span className="pl-1 text-[10px] text-ink-faint">days</span>
+              </dd>
+            </div>
+            <div>
               <dt className="text-ink-faint">DAYS LOGGED</dt>
               <dd className="text-lg font-semibold text-neon-magenta">{dates.length}</dd>
             </div>
-            <div className="col-span-2">
+            <div>
               <dt className="text-ink-faint">FILE</dt>
-              <dd className="text-ink-dim">Agentic OS/Journal/{date ?? "…"}.md</dd>
+              <dd className="truncate text-ink-dim">Journal/{date ?? "…"}.md</dd>
             </div>
           </dl>
         </Panel>

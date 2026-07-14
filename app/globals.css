@@ -246,6 +246,19 @@ body {
   );
 }
 
+/* JARVIS voice bars — each bar bounces on its own rhythm. */
+.eq-bar {
+  height: 30%;
+  animation-name: eq-bounce;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+  animation-direction: alternate;
+}
+@keyframes eq-bounce {
+  from { height: 15%; }
+  to { height: 100%; }
+}
+
 /* Running mission cards breathe amber. */
 .mission-running {
   border-color: rgba(251, 191, 36, 0.4) !important;

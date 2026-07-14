@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Panel from "./ui/Panel";
 import StatusOrb from "./ui/StatusOrb";
+import GlowTile from "./ui/GlowTile";
+import EmptyState from "./ui/EmptyState";
 import MicButton, { type MicState } from "./MicButton";
 import { useMission } from "./store";
 
@@ -52,7 +54,7 @@ function VaultSearchPanel() {
             {searching ? "…" : "Go"}
           </button>
         </div>
-        {hits !== null && hits.length === 0 && <p className="px-1 py-2 text-[11px] text-ink-faint">No matches.</p>}
+        {hits !== null && hits.length === 0 && <EmptyState compact accent="violet" title="No matches" hint="Try different words — the index covers every vault note." />}
         {hits?.map((h, i) => (
           <div key={i} className="rounded-lg border border-line bg-white/[0.02] p-2.5">
             <p className="mb-1 truncate font-mono text-[9.5px] text-neon-cyan">{h.file}</p>
@@ -166,16 +168,10 @@ export default function MemorySection() {
         </Panel>
 
         <Panel title="Stats" delay={0.1}>
-          <dl className="grid grid-cols-2 gap-3 p-4 font-mono text-[11px]">
-            <div>
-              <dt className="text-ink-faint">FACTS</dt>
-              <dd className="text-lg font-semibold text-neon-cyan">{factCount}</dd>
-            </div>
-            <div>
-              <dt className="text-ink-faint">SIZE</dt>
-              <dd className="text-lg font-semibold text-neon-magenta">{(content.length / 1024).toFixed(1)}kb</dd>
-            </div>
-          </dl>
+          <div className="grid grid-cols-2 gap-3 p-4">
+            <GlowTile accent="cyan" label="Facts" value={factCount} />
+            <GlowTile accent="magenta" label="Size" value={`${(content.length / 1024).toFixed(1)}kb`} />
+          </div>
         </Panel>
       </div>
     </div>

@@ -7,6 +7,7 @@ import Panel from "./ui/Panel";
 import Markdown from "./Markdown";
 import StatusOrb from "./ui/StatusOrb";
 import EmptyState from "./ui/EmptyState";
+import RingGauge from "./ui/RingGauge";
 import { IconRocket, IconTrash, IconCheck, IconSpark, IconStudio } from "./icons";
 import { useMission } from "./store";
 
@@ -249,14 +250,18 @@ export default function ContentSection() {
                     <motion.span animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1.6, ease: "linear" }} className="text-neon-violet">
                       <IconSpark width={18} height={18} />
                     </motion.span>
-                  ) : (
+                  ) : item.status === "error" ? (
                     <div
                       className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full font-mono text-[11px] font-bold"
-                      style={{ background: `color-mix(in srgb, ${scoreAccent(item.seoScore)} 18%, transparent)`, color: scoreAccent(item.seoScore) }}
-                      title="SEO score"
+                      style={{ background: "color-mix(in srgb, var(--ac-rose) 18%, transparent)", color: "var(--ac-rose)" }}
+                      title="Draft failed"
                     >
-                      {item.status === "error" ? "—" : item.seoScore}
+                      —
                     </div>
+                  ) : (
+                    <span title={`SEO score ${item.seoScore}/100`}>
+                      <RingGauge value={item.seoScore} total={100} color={scoreAccent(item.seoScore)} size={40} label={`${item.seoScore}`} />
+                    </span>
                   )}
                   <button onClick={() => setOpen(isOpen ? null : item.id)} className="min-w-0 flex-1 cursor-pointer text-left">
                     <p className="truncate text-sm font-semibold text-ink">

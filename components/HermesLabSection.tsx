@@ -6,6 +6,7 @@ import { ACCENTS } from "@/lib/accents";
 import type { GoalRun } from "@/lib/goalmode";
 import Panel from "./ui/Panel";
 import StatusOrb from "./ui/StatusOrb";
+import EmptyState from "./ui/EmptyState";
 import MicButton from "./MicButton";
 import DaemonsPanel from "./DaemonsPanel";
 import { IconStop, IconRocket } from "./icons";
@@ -190,7 +191,7 @@ export default function HermesLabSection() {
           <div className="grid gap-4 xl:grid-cols-[280px_1fr]">
             <Panel title="Goals" right={<span className="font-mono text-[11px] text-ink-faint">{runs.length}</span>} delay={0.08}>
               <div className="flex max-h-[520px] flex-col gap-1.5 overflow-y-auto p-3">
-                {runs.length === 0 && <p className="py-6 text-center text-xs text-ink-faint">No goals yet.</p>}
+                {runs.length === 0 && <EmptyState compact accent="amber" title="No goal runs" hint="Launch one above — Hermes works it autonomously." />}
                 {runs.map((r) => (
                   <button
                     key={r.id}
@@ -220,7 +221,7 @@ export default function HermesLabSection() {
               delay={0.1}
             >
               <div className="p-4">
-                {!activeRun && <p className="py-16 text-center text-sm text-ink-faint">Pick a goal to watch its output live.</p>}
+                {!activeRun && <EmptyState accent="amber" title="No feed selected" hint="Pick a goal on the left to watch its output stream live." />}
                 {activeRun && (
                   <>
                     <p className="pb-2 text-sm text-ink">{activeRun.goal}</p>

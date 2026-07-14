@@ -1,15 +1,19 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { motion } from "framer-motion";
 import { ACCENTS, type Accent } from "@/lib/accents";
 import type { PipelineItem, PipelineStage, ItemType } from "@/lib/pipeline";
 import Panel from "./ui/Panel";
 import StatusOrb from "./ui/StatusOrb";
+import EmptyState from "./ui/EmptyState";
+import { celebrate } from "./ui/Celebration";
 import Markdown from "./Markdown";
 import MicButton from "./MicButton";
 import { IconTrash } from "./icons";
 import { useMission } from "./store";
+
+const accentVar = (a: Accent): CSSProperties => ({ "--page-accent": ACCENTS[a].base }) as CSSProperties;
 
 const STAGES: { key: PipelineStage; label: string; sub: string; accent: Accent }[] = [
   { key: "capture", label: "Capture", sub: "raw input", accent: "cyan" },
@@ -35,10 +39,18 @@ export default function PipelineSection() {
 
   const busy = items.some((i) => i.stage === "classify" || i.stage === "execute");
 
+  const prevStages = useRef<Map<string, PipelineStage>>(new Map());
   const load = useCallback(async () => {
     try {
       const res = await fetch("/api/pipeline");
-      if (res.ok) setItems(((await res.json()) as { items: PipelineItem[] }).items ?? []);
+      if (!res.ok) return;
+      const list = ((await res.json()) as { items: PipelineItem[] }).items ?? [];
+      for (const i of list) {
+        const prev = prevStages.current.get(i.id);
+        if (prev && prev !== "shipped" && i.stage === "shipped") celebrate("lime");
+      }
+      prevStages.current = new Map(list.map((i) => [i.id, i.stage]));
+      setItems(list);
     } catch {
       /* ignore */
     }
@@ -106,19 +118,58 @@ export default function PipelineSection() {
         </div>
       </Panel>
 
+      {/* conversion funnel — how much of what's captured makes it to shipped */}
+      {items.length > 0 && (
+        <Panel title="Flow" delay={0.04}>
+          <div className="flex items-end gap-2 px-5 pb-4 pt-3" aria-label="pipeline funnel">
+            {STAGES.map((stage, si) => {
+              const count = items.filter((i) => i.stage === stage.key).length;
+              const max = Math.max(1, ...STAGES.map((s) => items.filter((i) => i.stage === s.key).length));
+              const c = ACCENTS[stage.accent];
+              return (
+                <div key={stage.key} className="flex flex-1 flex-col items-center gap-1.5">
+                  <span className="font-mono text-sm font-bold" style={{ color: c.base }}>
+                    {count}
+                  </span>
+                  <div
+                    className="w-full rounded-t-md transition-[height] duration-500"
+                    style={{
+                      height: 8 + Math.round((count / max) * 44),
+                      background: `linear-gradient(180deg, ${c.base}, ${c.soft})`,
+                      opacity: count > 0 ? 0.9 : 0.25,
+                    }}
+                    title={`${stage.label}: ${count}`}
+                  />
+                  <span className="truncate font-mono text-[8.5px] tracking-[0.1em] text-ink-faint">
+                    {stage.label.toUpperCase()}
+                    {si < STAGES.length - 1 ? " →" : ""}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </Panel>
+      )}
+
       <div className="grid gap-3 lg:grid-cols-5">
         {STAGES.map((stage, si) => {
           const col = items.filter((i) => i.stage === stage.key);
+          const sc = ACCENTS[stage.accent];
           return (
+            <div key={stage.key} style={accentVar(stage.accent)}>
             <Panel
-              key={stage.key}
               title={stage.label}
-              right={<span className="font-mono text-[11px] text-ink-faint">{col.length}</span>}
+              className={stage.key === "gate" && col.length > 0 ? "mission-running" : ""}
+              right={
+                <span className="rounded-full px-2 py-0.5 font-mono text-[10px] font-bold" style={{ background: sc.soft, color: sc.base }}>
+                  {col.length}
+                </span>
+              }
               delay={0.05 + si * 0.04}
             >
               <div className="flex min-h-[120px] flex-col gap-2 p-3">
                 <p className="pb-1 font-mono text-[9px] tracking-[0.12em] text-ink-faint">{stage.sub.toUpperCase()}</p>
-                {col.length === 0 && <p className="py-3 text-center text-[11px] text-ink-faint">—</p>}
+                {col.length === 0 && <EmptyState compact accent={stage.accent} title="Clear" />}
                 {col.map((item) => (
                   <div
                     key={item.id}
@@ -173,6 +224,7 @@ export default function PipelineSection() {
                 ))}
               </div>
             </Panel>
+            </div>
           );
         })}
       </div>

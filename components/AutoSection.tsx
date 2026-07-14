@@ -1,9 +1,11 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import Link from "next/link";
+import { ACCENTS } from "@/lib/accents";
 import Panel from "./ui/Panel";
 import StatusOrb from "./ui/StatusOrb";
+import EmptyState from "./ui/EmptyState";
 import Avatar from "./Avatar";
 import ChatThread from "./chat/ChatThread";
 import Composer from "./chat/Composer";
@@ -20,6 +22,22 @@ export default function AutoSection() {
   const entries = chats[CHAT_ID] ?? [];
   const isBusy = busy[CHAT_ID] ?? false;
   const readyModels = 1 + registry.llms.filter((l) => l.hasKey).length; // claude + keyed LLMs
+
+  // Routing decisions live in this chat's system lines ("→ agent · reason").
+  const routes = useMemo(
+    () =>
+      entries
+        .filter((e) => e.role === "system" && e.text.startsWith("→ "))
+        .map((e) => {
+          const [agent, ...rest] = e.text.slice(2).split(" · ");
+          return { agent: agent.trim(), reason: rest.join(" · ").trim() };
+        })
+        .slice(-6)
+        .reverse(),
+    [entries],
+  );
+  const accentFor = (id: string) =>
+    id === "claude" ? ("violet" as const) : (registry.llms.find((l) => l.id === id || l.name === id)?.accent ?? ("cyan" as const));
 
   const send = useCallback(
     async (text: string) => {
@@ -112,6 +130,28 @@ export default function AutoSection() {
 
       <div className="flex flex-col gap-4">
         <AgentLog source="AUTO" delay={0.05} />
+
+        <Panel title="Recent Routes" delay={0.08}>
+          <div className="flex flex-col gap-1.5 p-3">
+            {routes.length === 0 && (
+              <EmptyState compact accent="cyan" title="No routes yet" hint="Ask something — each pick lands here with its reason." />
+            )}
+            {routes.map((r, i) => {
+              const a = accentFor(r.agent);
+              return (
+                <div key={i} className="flex items-center gap-2.5 rounded-xl border border-line px-3 py-2" style={{ borderLeft: `3px solid ${ACCENTS[a].base}` }}>
+                  <Avatar name={r.agent} accent={a} size={22} />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-xs font-semibold" style={{ color: ACCENTS[a].base }}>
+                      {r.agent}
+                    </p>
+                    {r.reason && <p className="truncate text-[10px] text-ink-faint">{r.reason}</p>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </Panel>
 
         <Panel title="How Routing Works" delay={0.1}>
           <div className="flex flex-col gap-3 p-4 text-[11.5px] leading-5 text-ink-dim">

@@ -8,6 +8,22 @@ import { useSpeech } from "@/lib/useSpeech";
 import { cleanForSpeech, ttsSupported } from "@/lib/tts";
 import Panel from "./ui/Panel";
 import StatusOrb from "./ui/StatusOrb";
+import EmptyState from "./ui/EmptyState";
+
+/** Fake-amplitude voice bars — shown while listening (lime) or speaking (magenta). */
+function Equalizer({ color }: { color: string }) {
+  return (
+    <div className="flex h-6 items-center gap-[3px]" aria-hidden>
+      {Array.from({ length: 24 }, (_, i) => (
+        <span
+          key={i}
+          className="eq-bar w-[3px] rounded-full"
+          style={{ background: color, animationDelay: `${(i % 7) * 0.11}s`, animationDuration: `${0.5 + (i % 5) * 0.12}s` }}
+        />
+      ))}
+    </div>
+  );
+}
 
 /**
  * JARVIS — a voice command center for the whole OS. Speak; it navigates,
@@ -162,19 +178,30 @@ export default function JarvisSection() {
   }, [lines, interim]);
 
   const c = ACCENTS.cyan;
+  const reactor = speaking ? ACCENTS.magenta : listening ? ACCENTS.lime : ACCENTS.cyan;
 
   return (
     <div className="flex flex-col gap-4">
       <Panel title="Hermes-JARVIS">
         <div className="relative flex min-h-[280px] flex-col items-center justify-center gap-4 overflow-hidden p-8">
-          {/* reactor visual */}
+          {/* arc reactor — glow + counter-rotating rings around a pulsing core */}
           <motion.div
             aria-hidden
             className="pointer-events-none absolute h-64 w-64 rounded-full"
-            style={{ background: `radial-gradient(circle, ${c.soft}, transparent 65%)` }}
+            style={{ background: `radial-gradient(circle, ${reactor.soft}, transparent 65%)` }}
             animate={{ scale: speaking ? [1, 1.15, 1] : listening ? [1, 1.06, 1] : 1, opacity: booted ? 1 : 0.3 }}
             transition={{ duration: speaking ? 0.6 : 2, repeat: Infinity }}
           />
+          <svg aria-hidden viewBox="0 0 200 200" className="pointer-events-none absolute h-52 w-52" style={{ opacity: booted ? 0.9 : 0.2 }}>
+            <g className="logo-orbit" style={{ animationDuration: listening || speaking ? "6s" : "22s" }}>
+              <circle cx="100" cy="100" r="88" fill="none" strokeWidth="2" strokeDasharray="40 18" strokeLinecap="round" style={{ stroke: reactor.base }} opacity="0.55" />
+            </g>
+            <g className="logo-orbit-rev" style={{ animationDuration: listening || speaking ? "4s" : "14s" }}>
+              <circle cx="100" cy="100" r="70" fill="none" strokeWidth="1" strokeDasharray="4 8" style={{ stroke: reactor.base }} opacity="0.5" />
+            </g>
+            <circle cx="100" cy="100" r="52" fill="none" strokeWidth="0.75" style={{ stroke: reactor.base }} opacity="0.35" />
+            <circle cx="100" cy="100" r="7" className="logo-core" style={{ fill: reactor.base }} />
+          </svg>
           <AnimatePresence mode="wait">
             {!booted ? (
               <motion.div key="boot" exit={{ opacity: 0 }} className="z-10 flex flex-col items-center gap-2">
@@ -195,6 +222,7 @@ export default function JarvisSection() {
                   <StatusOrb accent={speaking ? "magenta" : listening ? "lime" : "cyan"} pulsing={listening || speaking} size={8} />
                   {speaking ? "SPEAKING" : listening ? "LISTENING" : "STANDING BY"}
                 </div>
+                {(listening || speaking) && <Equalizer color={reactor.base} />}
                 {interim && <p className="max-w-md text-center text-sm text-ink-dim">{interim}</p>}
                 {!supported && <p className="text-center text-xs text-neon-rose">Voice needs Chrome or Edge (Web Speech API). You can still type below.</p>}
                 <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
@@ -232,9 +260,20 @@ export default function JarvisSection() {
         <div className="flex h-[360px] flex-col">
           <div ref={feedRef} className="flex-1 space-y-3 overflow-y-auto p-4">
             {lines.length === 0 && (
-              <p className="py-16 text-center text-sm text-ink-faint">
-                Start listening and speak. Try &quot;open the pipeline&quot;, &quot;go to arena&quot;, or &quot;what should I build next?&quot;
-              </p>
+              <div className="flex flex-col items-center gap-3 py-8">
+                <EmptyState accent="cyan" title="Standing by" hint="Start listening and speak — or tap a command to try one:" />
+                <div className="flex flex-wrap justify-center gap-2">
+                  {["open the pipeline", "go to arena", "what should I build next?"].map((cmd) => (
+                    <button
+                      key={cmd}
+                      onClick={() => handle(cmd)}
+                      className="cursor-pointer rounded-full border border-line px-3 py-1.5 font-mono text-[10.5px] text-ink-dim transition-colors hover:border-line-bright hover:text-neon-cyan"
+                    >
+                      “{cmd}”
+                    </button>
+                  ))}
+                </div>
+              </div>
             )}
             {lines.map((l, i) => (
               <div key={i} className={l.who === "you" ? "flex justify-end" : "flex gap-2"}>

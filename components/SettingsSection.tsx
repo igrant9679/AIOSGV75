@@ -6,6 +6,7 @@ import { motion } from "framer-motion";
 import { ACCENTS, type Accent } from "@/lib/accents";
 import { PROVIDER_PRESETS } from "@/lib/providers";
 import Panel from "./ui/Panel";
+import EmptyState from "./ui/EmptyState";
 import ServiceKeysPanel from "./ServiceKeysPanel";
 import PublishingPanel from "./PublishingPanel";
 import ClusterPanel from "./ClusterPanel";
@@ -257,9 +258,7 @@ export default function SettingsSection() {
           {/* existing */}
           <div className="flex flex-col gap-2">
             {registry.llms.length === 0 && (
-              <p className="py-6 text-center text-xs text-ink-faint">
-                No LLM agents yet — add Kimi, DeepSeek, Grok, Gemini, or anything OpenAI-compatible.
-              </p>
+              <EmptyState accent="cyan" title="No LLM agents" hint="Add Kimi, DeepSeek, Grok, Gemini, or anything OpenAI-compatible." />
             )}
             {registry.llms.map((l) => (
               <div key={l.id} className="rounded-xl border border-line bg-white/[0.02] px-3 py-2.5">

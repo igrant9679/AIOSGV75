@@ -6,6 +6,7 @@ import { ACCENTS, type Accent } from "@/lib/accents";
 import type { WatchConfig, Sweep, Signal } from "@/lib/youtubeWatch";
 import Panel from "./ui/Panel";
 import StatusOrb from "./ui/StatusOrb";
+import EmptyState from "./ui/EmptyState";
 import { IconPlus, IconTrash } from "./icons";
 import { useMission } from "./store";
 
@@ -176,7 +177,11 @@ export default function WatcherSection() {
 
       <Panel title={sweep ? `${sweep.signals.length} signals` : "No sweeps yet"} delay={0.06}>
         <div className="grid gap-3 p-4 md:grid-cols-2">
-          {!sweep && <p className="col-span-full py-10 text-center text-sm text-ink-faint">Add channels above and hit &quot;Scan the skies&quot; to light up the radar.</p>}
+          {!sweep && (
+            <div className="col-span-full">
+              <EmptyState accent="amber" title="Radar dark" hint='Add channels above and hit "Scan the skies" — trending signals light up here.' />
+            </div>
+          )}
           {sweep?.signals.map((s) => {
             const c = ACCENTS[CAT_ACCENT[s.category] ?? "cyan"];
             const isOpen = open === s.videoId;
