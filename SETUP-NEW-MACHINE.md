@@ -305,6 +305,14 @@ EMBED_MODEL=nomic-embed-text
 # OPENCLAW_BIN=openclaw                                          # probe binary override
 # HERMES_BIN=C:\Users\<you>\AppData\Local\hermes\hermes-agent\venv\Scripts\hermes.exe
 # HERMES_CMD=C:\Users\<you>\AppData\Local\hermes\hermes-agent\venv\Scripts\hermes.exe -z {input}
+#   ^ <you> = THIS machine's Windows username (echo $env:USERNAME) — don't
+#     copy another machine's path. Hermes FIRST RUN on a fresh install: the
+#     supervisor launches the dashboard with --skip-build, which serves a
+#     pre-built UI that doesn't exist yet. Build it once by hand in a terminal
+#     (takes a few minutes, looks hung):
+#       & $env:LOCALAPPDATA\hermes\hermes-agent\venv\Scripts\hermes.exe dashboard --no-open
+#     Once it says it's listening on 9119, Ctrl+C it — from then on the app
+#     starts it automatically at every boot.
 
 # ── Telegram delivery (PRIMARY only; defaults to the owner id baked
 #    into lib/telegram.ts if unset) ──────────────────────────────────
