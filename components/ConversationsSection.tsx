@@ -6,6 +6,7 @@ import Panel from "./ui/Panel";
 import Avatar from "./Avatar";
 import Markdown from "./Markdown";
 import { IconBook, IconSpark, IconPulse } from "./icons";
+import { useMission } from "./store";
 
 const VAULT_NAME = "IdrisGV75";
 
@@ -85,6 +86,31 @@ export default function ConversationsSection() {
   const [summing, setSumming] = useState<string[]>([]);
   const [analytics, setAnalytics] = useState<Analytics | null>(null);
 
+  const { registry } = useMission();
+  const [summaryAgent, setSummaryAgent] = useState("auto");
+  useEffect(() => {
+    try {
+      const s = localStorage.getItem("mc-summary-agent");
+      if (s) setSummaryAgent(s);
+    } catch {
+      /* private mode */
+    }
+  }, []);
+  const pickSummaryAgent = (v: string) => {
+    setSummaryAgent(v);
+    try {
+      localStorage.setItem("mc-summary-agent", v);
+    } catch {
+      /* ignore */
+    }
+  };
+  const summaryAgents = [
+    { id: "auto", name: "Auto (cheapest)" },
+    { id: "claude", name: "Claude" },
+    ...registry.llms.map((l) => ({ id: l.id, name: l.name })),
+    ...registry.commandAgents.map((c) => ({ id: c.id, name: c.name })),
+  ];
+
   const load = useCallback(async (query: string, ag: string, ho: string, gr: string) => {
     setLoading(true);
     try {
@@ -125,7 +151,7 @@ export default function ConversationsSection() {
       const res = await fetch("/api/conversations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ids, group }),
+        body: JSON.stringify({ ids, group, agent: summaryAgent }),
       });
       const j = (await res.json()) as { summaries?: Record<string, string> };
       const map = j.summaries ?? {};
@@ -164,10 +190,24 @@ export default function ConversationsSection() {
             <div className="flex flex-col gap-3 p-5">
               <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search topics or keywords…  e.g. rust ownership, marketing plan" className={inputCls} autoFocus />
 
-              {/* group toggle */}
-              <div className="flex items-center gap-1 self-start rounded-lg border border-line p-1">
-                <button className={seg(group === "exchange")} onClick={() => setGroup("exchange")}>Exchanges</button>
-                <button className={seg(group === "session")} onClick={() => setGroup("session")}>Sessions</button>
+              {/* group toggle + summary model */}
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex items-center gap-1 rounded-lg border border-line p-1">
+                  <button className={seg(group === "exchange")} onClick={() => setGroup("exchange")}>Exchanges</button>
+                  <button className={seg(group === "session")} onClick={() => setGroup("session")}>Sessions</button>
+                </div>
+                <label className="flex items-center gap-2 font-mono text-[10px] tracking-[0.1em] text-ink-faint">
+                  SUMMARIES BY
+                  <select
+                    value={summaryAgent}
+                    onChange={(e) => pickSummaryAgent(e.target.value)}
+                    className="cursor-pointer rounded-lg border border-line bg-panel-2 px-2 py-1.5 text-[11px] text-ink outline-none focus:border-line-bright"
+                  >
+                    {summaryAgents.map((a) => (
+                      <option key={a.id} value={a.id}>{a.name}</option>
+                    ))}
+                  </select>
+                </label>
               </div>
 
               {data && (
