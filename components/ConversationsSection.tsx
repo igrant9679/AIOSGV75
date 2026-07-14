@@ -18,10 +18,23 @@ interface Result {
   host: string;
   title: string;
   snippet: string;
+  turns: number;
   wordCount: number;
   file: string;
   body: string;
   score: number;
+}
+
+function relTime(date: string, time: string): string {
+  const t = Date.parse(`${date}T${time}`);
+  if (Number.isNaN(t)) return "";
+  const days = Math.floor((Date.now() - t) / 86_400_000);
+  if (days <= 0) return "today";
+  if (days === 1) return "yesterday";
+  if (days < 7) return `${days}d ago`;
+  if (days < 30) return `${Math.floor(days / 7)}w ago`;
+  if (days < 365) return `${Math.floor(days / 30)}mo ago`;
+  return `${Math.floor(days / 365)}y ago`;
 }
 interface Payload {
   results: Result[];
@@ -147,10 +160,12 @@ export default function ConversationsSection() {
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-semibold text-ink">{highlight(r.title, q)}</p>
                     <p className="mt-0.5 line-clamp-2 text-[11px] leading-4 text-ink-dim">{highlight(r.snippet, q)}</p>
-                    <p className="mt-1 flex flex-wrap items-center gap-x-2 font-mono text-[9px] text-ink-faint">
-                      <span className="text-neon-cyan">{r.agent}</span>
+                    <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 font-mono text-[9px] text-ink-faint">
+                      <span className="font-semibold text-neon-cyan">{r.agent}</span>
                       <span>{r.date} · {r.time}</span>
-                      {r.host && <span>🖥 {r.host}</span>}
+                      <span className="text-ink-dim">{relTime(r.date, r.time)}</span>
+                      <span className={r.host ? "text-ink-dim" : ""}>🖥 {r.host || "unknown"}</span>
+                      {r.turns > 1 && <span>{r.turns} turns</span>}
                       <span>{r.wordCount} words</span>
                     </p>
                   </div>

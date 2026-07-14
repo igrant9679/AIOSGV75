@@ -18,6 +18,7 @@ export interface Exchange {
   title: string; // first user line — the topic
   userText: string;
   assistantText: string; // the agent's output
+  turns: number; // number of back-and-forths in this exchange
   wordCount: number;
   file: string; // vault-relative path (for obsidian:// deep links)
   body: string; // full exchange markdown
@@ -83,7 +84,8 @@ async function parseFile(file: string): Promise<Exchange[]> {
       const body = cur.body.join("\n").trim();
       const { title, userText, assistantText } = extractRoles(body);
       const wordCount = (userText + " " + assistantText).split(/\s+/).filter(Boolean).length;
-      out.push({ id: `${date}#${idx}`, agent, date, time, host, title, userText, assistantText, wordCount, file: rel, body });
+      const turns = (body.match(/^\*\*You:\*\*/gm) || []).length || 1;
+      out.push({ id: `${date}#${idx}`, agent, date, time, host, title, userText, assistantText, turns, wordCount, file: rel, body });
     }
     cur = null;
   };
