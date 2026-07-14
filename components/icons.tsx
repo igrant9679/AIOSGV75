@@ -27,6 +27,15 @@ export const IconSpark = (p: SVGProps<SVGSVGElement>) => (
   </svg>
 );
 
+export const IconStudio = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}>
+    <rect x="3" y="4" width="18" height="14" rx="2" />
+    <circle cx="8.5" cy="9" r="1.5" />
+    <path d="M21 15l-5-5-6 6" />
+    <path d="M3 22h18" />
+  </svg>
+);
+
 export const IconClaw = (p: SVGProps<SVGSVGElement>) => (
   <svg {...base(p)}>
     <path d="M6 20c-1.5-4 0-9 3-12M12 20c-1-3.5.5-8 3-11M18 20c-.5-3 1-6.5 3-8" />

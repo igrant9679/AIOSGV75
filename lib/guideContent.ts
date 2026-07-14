@@ -263,6 +263,27 @@ Full walkthrough for a new machine: **SETUP-NEW-MACHINE.md** in the repo.`,
 **🎙 JARVIS (/jarvis)** — a voice command center for the whole OS. Click Start listening (Chrome/Edge) and speak: say "go to watcher" / "open the pipeline" to navigate, or ask anything ("what should I build next?") and the Auto agent answers out loud. Optional "Jarvis" wake word, selectable voice, and a typed fallback. Built on the browser's Web Speech API — no keys.`,
   },
   {
+    id: "studio",
+    title: "Creative Studio (Image · Voice · Video)",
+    keywords: "studio image voice video generate art dall-e gpt-image openai elevenlabs tts text to speech replicate render media api key paid creative",
+    body: `**Studio** turns prompts into media — pictures, spoken audio, and video — using paid provider APIs. Three tabs, one gallery each; everything is saved into the vault under \`Agentic OS/Studio/\` (images/ · audio/ · video/) so it syncs across machines.
+
+**Connect a provider first.** Studio needs an API key per medium. Add keys in **Settings → API Keys — Creative & Integrations** (or set the env var as a fallback). A tab with no key shows a "🔑 Add a key in Settings" prompt and its orb stays red.
+
+| Medium | Providers | Get a key | Env fallback |
+| --- | --- | --- | --- |
+| **Image** | OpenAI (gpt-image-1, DALL·E 3) | platform.openai.com/api-keys | \`OPENAI_API_KEY\` |
+| **Voice** | OpenAI TTS · ElevenLabs | platform.openai.com · elevenlabs.io | \`OPENAI_API_KEY\` · \`ELEVENLABS_API_KEY\` |
+| **Video** | Replicate (any text-to-video model) | replicate.com/account/api-tokens | \`REPLICATE_API_TOKEN\` |
+
+**Using it**
+- **Image** — type a prompt, pick size (square/landscape/portrait) and quality, Generate. Result appears in the gallery in ~10–30s.
+- **Voice** — type the text to speak, pick an OpenAI voice (alloy, nova, …) or paste an ElevenLabs voice id, Generate → an audio player.
+- **Video** — prompts render on Replicate's servers and take minutes; the card shows **generating** and fills in when done (billed per second). Set the model, e.g. \`minimax/video-01\`.
+
+Each item has download and delete. Costs are estimated into the usage ledger, so Studio spend shows up in **Analytics**. One OpenAI key covers both image and voice.`,
+  },
+  {
     id: "orchestrator-attention",
     title: "Orchestrator & Needs Attention",
     keywords: "orchestrator chief of staff delegate goal decompose dispatch review rework assemble subtasks auto route cheap tokens conserve needs attention stalled blocked waiting pending nudge reminder",
@@ -389,7 +410,9 @@ End a work session by telling any agent: "Remember: <the three facts worth keepi
     id: "settings-env",
     title: "Settings & Environment Reference",
     keywords: "settings env environment variables configuration mcp command agents workspaces vault_dir telegram_target embed openclaw hermes bin cmd",
-    body: `**Settings page**: LLM connections · custom command agents (any local CLI becomes an agent — \`{input}\` placeholder or stdin) · MCP servers for the Claude bridge · workspaces.
+    body: `**Settings page**: LLM connections · **API Keys** for creative providers (OpenAI/ElevenLabs/Replicate) · custom command agents (any local CLI becomes an agent — \`{input}\` placeholder or stdin) · MCP servers for the Claude bridge · workspaces.
+
+**Where keys live** — LLM keys sit in \`data/registry.json\`; creative-provider keys in \`data/services.json\`. Both are entered in the UI and never leave this machine (both git-ignored). Any key can instead be set as an \`.env.local\` variable, which the app uses as a fallback.
 
 **\`.env.local\` reference** (restart the server after changes):
 
@@ -399,10 +422,13 @@ End a work session by telling any agent: "Remember: <the three facts worth keepi
 | \`HERMES_BIN\` / \`HERMES_CMD\` | Hermes binary/command template |
 | \`TELEGRAM_TARGET\` | Telegram recipient id (defaults to your account) |
 | \`EMBED_BASE_URL/API_KEY/MODEL\` | activates semantic retrieval |
+| \`OPENAI_API_KEY\` | Studio image + voice (fallback for the Settings field) |
+| \`ELEVENLABS_API_KEY\` | Studio premium voices (fallback) |
+| \`REPLICATE_API_TOKEN\` | Studio video (fallback) |
 | \`VAULT_DIR\` | Obsidian vault path override |
 | \`ANTHROPIC_API_KEY\` | alternative Claude auth (instead of CLI login) |
 
-**Data files** (\`data/\`, git-ignored): registry.json (LLMs + keys) · missions.json · schedules.json · watchers.json · approvals.json · usage.json · evals.json · arena.json · mcp.json · embeddings-cache.json.`,
+**Data files** (\`data/\`, git-ignored): registry.json (LLMs + keys) · **services.json (creative API keys)** · missions.json · schedules.json · watchers.json · approvals.json · usage.json · evals.json · arena.json · mcp.json · embeddings-cache.json.`,
   },
   {
     id: "troubleshooting",

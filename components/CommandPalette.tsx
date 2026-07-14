@@ -23,6 +23,7 @@ const PAGES: Command[] = [
   { id: "jarvis", label: "JARVIS", hint: "voice command center", accent: "cyan", href: "/jarvis" },
   { id: "pipeline", label: "Pipeline", hint: "inbox → shipped", accent: "violet", href: "/pipeline" },
   { id: "builds", label: "Builds", hint: "games & apps shelf", accent: "magenta", href: "/builds" },
+  { id: "studio", label: "Studio", hint: "image · voice · video", accent: "magenta", href: "/studio" },
   { id: "watcher", label: "YouTube Watcher", hint: "trend radar", accent: "rose", href: "/watcher" },
   { id: "hermeslab", label: "Hermes Lab", hint: "goal mode · control room", accent: "amber", href: "/hermes-lab" },
   { id: "missions", label: "Missions", hint: "multi-agent tasks", accent: "cyan", href: "/missions" },

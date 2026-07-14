@@ -48,6 +48,7 @@ built-in searchable guide (`/guide`, also exported to the vault for agent RAG).
 | Needs Attention (v21) | **Overview panel** + /api/attention: pending approvals w/ age, failed missions (24h), stalled runs (>10m), failed schedules; scheduler tick sends one ⏳ Telegram nudge per approval pending >10m (data/attention-nudges.json) |
 | Studio suite (v22 · Phase 1 from Julian Goldie's "Agentic OS" screenshots) | **⌘K palette** (Shell), **/mastermind** (fleet group chat, sequential round-robin so agents riff, @-mentions, data/mastermind.json), **/builds** (Claude builds single-file HTML games/apps → vault Agentic OS/Builds/, sandboxed iframe play), **/hermes-lab** (Goal Mode: `hermes chat --yolo --max-turns N` in scratch dir w/ live log tail + Telegram; Control Room: iframe of `hermes dashboard` @127.0.0.1:9119), **/watcher** (keyless YouTube RSS trend radar, recency+keyword+views scoring, AI titles/angles, 4h rescan on scheduler, vault-logged) |
 | Studio suite cont. (v22.1) | **/pipeline** (Inbox→Shipped: capture→Claude classifies type/confidence/tags→small items auto-file, projects wait at human gate→approve launches Orchestration→shipped; lib/pipeline.ts reuses orchestrator, syncExecuting on scheduler tick), **/jarvis** (voice command center: Web Speech listen→navigate "go to X" or ask Auto agent→speaks back; wake word + voice picker + typed fallback). Coverage map artifact: https://claude.ai/code/artifact/0b75aba6-1bfe-4187-a40d-37a0056f459d |
+| Creative Studio (v23 · Phase 2) | **/studio** — image · voice · video from prompts via paid APIs, outputs saved to vault `Agentic OS/Studio/{images,audio,video}/`. Image = OpenAI gpt-image-1/DALL·E 3 (b64→png); Voice = OpenAI TTS or ElevenLabs (mp3); Video = Replicate predictions (async, polled forward on every list()). Engine `lib/studio.ts`, routes `/api/studio` (+ `/api/studio/media` serves bytes with escape guard). **Keys entered in Settings → "API Keys — Creative & Integrations"** (`components/ServiceKeysPanel.tsx` → `/api/services` → **`data/services.json`**, git-ignored; `.env.local` `OPENAI_API_KEY`/`ELEVENLABS_API_KEY`/`REPLICATE_API_TOKEN` used as fallback). Store abstraction `lib/services.ts` (catalog + `getServiceKey`/`hasServiceKey`, never leaks keys — GET returns `configured`/`source` only). No key → each tab shows a "🔑 Add a key in Settings" CTA + red orb; costs estimated into the usage ledger. Verified E2E: no-key path, bad-key 401 surfaced cleanly, store/clear round-trip, UI CTA↔composer swap. **NO real keys entered yet — user must add them in Settings to activate.** |
 | server.cmd | prepends `.local\bin` / npm-global / Ollama to PATH (v19.1) — a boot-time PATH once missed the Claude native install and the bridge showed red; if an agent is red but its CLI works in a terminal, suspect server-process PATH |
 
 ## Codebase conventions & gotchas
@@ -66,10 +67,12 @@ built-in searchable guide (`/guide`, also exported to the vault for agent RAG).
 
 ## Open roadmap / next candidates
 
-1. **Phone access** (Tailscale + PWA) — the one deferred roadmap item
-2. **LLM-history import**: distill Idris's ChatGPT/Claude.ai chat exports into topic notes in the vault (pipeline designed 2026-07-12 — waiting on Idris to download the export ZIPs to `Documents\llm-exports`)
-3. Optional: Gemini chat agent (free key at aistudio.google.com; embeddings already local); Hermes on the laptop
-4. Keep feeding the Arena easy-tier battles so simple routing gets cheaper/smarter
+1. **Studio activation** — enter real keys in Settings → API Keys (OpenAI covers image+voice; ElevenLabs for premium voice; Replicate for video), then generate a first asset per medium to confirm live paths. Only the no-key/bad-key paths are proven so far.
+2. **Phase 3 (SEO publishing pipeline)** — the remaining deferred studio phase (Studio Phase 2 shipped in v23)
+3. **Phone access** (Tailscale + PWA) — the older deferred roadmap item
+4. **LLM-history import**: distill Idris's ChatGPT/Claude.ai chat exports into topic notes in the vault (pipeline designed 2026-07-12 — waiting on Idris to download the export ZIPs to `Documents\llm-exports`)
+5. Optional: Gemini chat agent (free key at aistudio.google.com; embeddings already local); Hermes on the laptop
+6. Keep feeding the Arena easy-tier battles so simple routing gets cheaper/smarter
 
 ## Suggested first message for the new session
 
