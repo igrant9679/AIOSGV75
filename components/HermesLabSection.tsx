@@ -7,7 +7,8 @@ import type { GoalRun } from "@/lib/goalmode";
 import Panel from "./ui/Panel";
 import StatusOrb from "./ui/StatusOrb";
 import MicButton from "./MicButton";
-import { IconStop } from "./icons";
+import DaemonsPanel from "./DaemonsPanel";
+import { IconStop, IconRocket } from "./icons";
 import { useMission } from "./store";
 
 /** Hermes Lab — Goal Mode (autonomous long-horizon runs) + Control Room (native dashboard). */
@@ -32,7 +33,29 @@ export default function HermesLabSection() {
   const [maxTurns, setMaxTurns] = useState(50);
   const [err, setErr] = useState("");
   const [dashUp, setDashUp] = useState<boolean | null>(null);
+  const [startingDash, setStartingDash] = useState(false);
   const logRef = useRef<HTMLPreElement>(null);
+
+  const startDashboard = async () => {
+    setStartingDash(true);
+    setErr("");
+    try {
+      const res = await fetch("/api/daemons", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: "hermes-dashboard" }),
+      });
+      const j = (await res.json()) as { ok?: boolean; error?: string };
+      if (j.ok) {
+        addEvent("SERVICES", "Hermes dashboard started", "lime");
+        setDashUp(true);
+      } else setErr(j.error ?? "could not start the dashboard");
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setStartingDash(false);
+    }
+  };
 
   const anyRunning = runs.some((r) => r.status === "running");
   const activeRun = useMemo(() => runs.find((r) => r.id === open) ?? null, [runs, open]);
@@ -96,6 +119,7 @@ export default function HermesLabSection() {
 
   return (
     <div className="flex flex-col gap-4">
+      <DaemonsPanel />
       <Panel title="Hermes Lab">
         <div className="flex flex-col gap-3 p-4">
           <div className="flex items-center gap-3">
@@ -231,9 +255,17 @@ export default function HermesLabSection() {
               terminal, then it appears below.
             </p>
             {dashUp === false ? (
-              <div className="rounded-xl border border-line bg-white/[0.02] p-8 text-center">
+              <div className="flex flex-col items-center gap-3 rounded-xl border border-line bg-white/[0.02] p-8 text-center">
                 <p className="text-sm text-ink-dim">Dashboard not running.</p>
-                <p className="pt-1 font-mono text-[11px] text-ink-faint">In a terminal: <span className="text-neon-amber">hermes dashboard</span> (defaults to port 9119), then reopen this tab.</p>
+                <motion.button
+                  whileTap={{ scale: 0.96 }}
+                  onClick={startDashboard}
+                  disabled={startingDash}
+                  className="flex cursor-pointer items-center gap-2 rounded-lg bg-gradient-to-br from-amber-600 to-neon-amber px-4 py-2 text-sm font-semibold text-black disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <IconRocket width={15} height={15} /> {startingDash ? "Starting…" : "Start dashboard"}
+                </motion.button>
+                <p className="font-mono text-[11px] text-ink-faint">or run <span className="text-neon-amber">hermes dashboard</span> in a terminal (port 9119) — it also auto-starts on boot now.</p>
               </div>
             ) : (
               <iframe

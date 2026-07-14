@@ -210,7 +210,7 @@ The mission prompt can use \`{{event}}\` for what happened. Results ping your **
     keywords: "sync onedrive obsidian sync multi machine second laptop network internet lan chats sessions shared brain vault_dir git pull update railway cloud hosting tailscale primary workstation conflict one engine",
     body: `Mission Control runs a **full instance on each machine**, all sharing one brain. Two channels do the work — and neither needs the machines on the same network:
 
-- **GitHub** ships the *code*: on another machine, \`git clone\` once, then \`git pull && npm run build\` + restart to update. Machines never talk to each other; each runs its own server at its own \`127.0.0.1:3000\`.
+- **GitHub** ships the *code*: on another machine, \`git clone\` once, then to update just double-click **\`update.cmd\`** in the repo — it runs \`git pull\` → \`npm install\` → \`npm run build\` and restarts the server. (Manual equivalent: \`git pull && npm install && npm run build\`, then restart.) Machines never talk to each other; each runs its own server at its own \`127.0.0.1:3000\`. After updating a *different* machine, re-enter its per-machine secrets in Settings (Studio API keys, WordPress connection) — those never sync.
 - **OneDrive** ships the *brain*: the vault lives inside the OneDrive (LSI Media LLC) folder — \`…\\AI Mission Control\\IdrisGV75\` — so shared memory, RAG, goals, the task board, journal, chat logs, mission archives, and this Guide sync through the cloud. New machine = sign into the same OneDrive, sync the library, point \`VAULT_DIR\` in \`.env.local\` at it, and mark it "Always keep on this device".
 
 **One sync engine, ever.** OneDrive is the chosen mechanism — leave Obsidian's built-in Sync core plugin OFF. Two engines rewriting the same files fight each other and breed conflict copies.
@@ -471,8 +471,12 @@ End a work session by telling any agent: "Remember: <the three facts worth keepi
   {
     id: "troubleshooting",
     title: "Troubleshooting",
-    keywords: "error fix broken offline 401 402 port conflict telegram silent hydration stale restart red orb",
+    keywords: "error fix broken offline 401 402 port conflict telegram silent hydration stale restart red orb hermes dashboard control room 9119 services daemon ollama start update other computer laptop",
     body: `**Agent shows red after PC startup** — cold-start probes can time out; they auto-retry and recover within a minute or two. No action needed.
+
+**Hermes Control Room / dashboard not running** — the **Local Services** panel on the Hermes Lab page shows each companion daemon (Hermes dashboard on 9119, Ollama on 11434) with a **Start** button. They also start automatically when Mission Control boots (which happens at login), so a system restart brings them up. Note the dashboard is launched with \`--skip-build --no-open\` — the plain \`hermes dashboard\` rebuilds its web UI first and can hang in the background.
+
+**Updating another computer to the latest version** — double-click **\`update.cmd\`** in the repo on that machine (\`git pull\` → \`npm install\` → \`npm run build\` → restart). Then re-enter that machine's per-machine secrets in Settings (Studio API keys, WordPress connection) — they never sync.
 
 **Claude fails with 401** — the CLI login expired. Run \`claude\` in a terminal and \`/login\` once.
 
