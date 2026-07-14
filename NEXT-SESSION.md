@@ -71,6 +71,26 @@ built-in searchable guide (`/guide`, also exported to the vault for agent RAG).
 - Watch for a stray NBSP (U+00A0) if exact-match editing fails in ChatThread.tsx.
 - One `.env.local` reference table lives in the Guide's "Settings & Environment Reference".
 
+## ⚠ OPEN ISSUE — read first (2026-07-14)
+
+**Idris reports the `.vbs` file(s) were emptied after the last push.** Unresolved — I was
+interrupted mid-investigation. Notes for whoever picks this up:
+
+- `Mission Control Server.vbs` lives in the **Startup folder**
+  (`%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\`), **not in git** — so a
+  `git push` cannot itself touch it. Something else emptied it. Verify with:
+  `Get-Item "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Startup\Mission Control Server.vbs"`
+  (it was **115 bytes** when healthy; check `.Length` and `Get-Content`).
+- **If it's empty/broken, the fix is one step:** run **`install-service.cmd`** in the repo —
+  it regenerates the VBS (pointing at this clone's `server.cmd`) and relaunches it. Auto-start
+  at login is broken until this is done.
+- The healthy content is exactly two lines:
+  `Set sh = CreateObject("WScript.Shell")` /
+  `sh.Run """<repo>\server.cmd""", 0, False`
+- Suspects worth checking: anything that wrote to that path (install.ps1 / install-service.cmd
+  run with a bad `%REPO%`), or an editor/AV truncating it. Note this session repeatedly ran the
+  VBS via `wscript.exe` to restart the prod server — running it should not modify it.
+
 ## Open roadmap / next candidates
 
 1. **Studio + Content activation** — enter real keys: Studio API keys (OpenAI = image+voice; Gemini/ElevenLabs/Replicate) **and** a WordPress connection (Settings → Publishing) to light up publishing. Only no-key/bad-key paths are proven so far; a real Claude draft (100/100 SEO) already confirmed the content half works.
