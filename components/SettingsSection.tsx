@@ -8,6 +8,7 @@ import { PROVIDER_PRESETS } from "@/lib/providers";
 import Panel from "./ui/Panel";
 import ServiceKeysPanel from "./ServiceKeysPanel";
 import PublishingPanel from "./PublishingPanel";
+import ClusterPanel from "./ClusterPanel";
 import Avatar from "./Avatar";
 import StatusOrb from "./ui/StatusOrb";
 import { IconCheck, IconPencil, IconPlus, IconTrash } from "./icons";
@@ -602,6 +603,8 @@ export default function SettingsSection() {
           </p>
         </div>
       </Panel>
+
+      <ClusterPanel />
     </div>
   );
 }

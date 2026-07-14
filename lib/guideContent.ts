@@ -220,7 +220,9 @@ The mission prompt can use \`{{event}}\` for what happened. Results ping your **
 2. *Chat records are shared* — every finished exchange lands in \`Agentic OS/Chats/\` and is readable anywhere (Library page) and searchable via RAG.
 3. *The useful contents are shared* — memory facts, goals, journal entries reach every agent on every machine. End sessions with "Remember: … / goal / journal" and any machine picks up the thread.
 
-**Deliberately per-machine:** schedules & watchers (one PRIMARY machine runs them — duplicates double-fire and two Telegram gateways steal each other's updates), API keys, arena standings, and the usage ledger (each machine's Auto learns its own history).
+**Deliberately per-machine:** schedules & watchers (one master runs them — duplicates double-fire), API keys, arena standings, and the usage ledger (each machine's Auto learns its own history).
+
+**Machine group & master failover** (Settings → **Machine Group & Roles**) — instead of picking the master by hand, enable clustering and give each machine a role: **Primary** (preferred master), **Backup** (takes over if the primary goes down), or **Workstation** (never master). Machines coordinate through a lease file in the shared vault — the master renews it every ~30s; if it stops (machine off), a backup claims the expired lease and starts running the schedules/watchers/automations. It's eventually-consistent (OneDrive-synced), so failover takes a couple of minutes and a brief overlap is possible by design. The panel shows every machine, who's online, who holds master, and each install's folder; you can force "make this machine master" or "step down". Caveat: a backup runs schedules and watchers, but machine-specific tools (Telegram via OpenClaw, Hermes) only work where they're installed. Off by default — a lone machine just runs everything.
 
 **Why not host it in the cloud (Railway etc.)?** The server is the engine room — it spawns local CLIs, reads the vault from disk, and talks to localhost Ollama; none of that exists in a cloud container, and the dashboard has no auth layer (it can run commands, so it binds 127.0.0.1 only). Remote access, when wanted, = **Tailscale** private mesh, not public hosting.
 
@@ -466,7 +468,7 @@ End a work session by telling any agent: "Remember: <the three facts worth keepi
 | \`VAULT_DIR\` | Obsidian vault path override |
 | \`ANTHROPIC_API_KEY\` | alternative Claude auth (instead of CLI login) |
 
-**Data files** (\`data/\`, git-ignored): registry.json (LLMs + keys) · **services.json (creative API keys)** · **publish.json (WordPress connection)** · **llm-import.json (history scan index)** · missions.json · schedules.json · watchers.json · approvals.json · usage.json · evals.json · arena.json · mcp.json · embeddings-cache.json.`,
+**Data files** (\`data/\`, git-ignored): registry.json (LLMs + keys) · **services.json (creative API keys)** · **publish.json (WordPress connection)** · **llm-import.json (history scan index)** · **cluster.json (this machine's group role + install folder)** · missions.json · schedules.json · watchers.json · approvals.json · usage.json · evals.json · arena.json · mcp.json · embeddings-cache.json.`,
   },
   {
     id: "troubleshooting",

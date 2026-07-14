@@ -5,6 +5,7 @@ import { maybeRescan } from "./youtubeWatch";
 import { syncExecuting } from "./pipeline";
 import { ensureScaffold } from "./vault";
 import { readRegistry } from "./registry";
+import { clusterTick } from "./cluster";
 
 async function refreshScaffold(): Promise<void> {
   const reg = await readRegistry().catch(() => null);
@@ -24,7 +25,11 @@ export function startScheduler(): void {
   if (started) return;
   started = true;
   console.log("[mission-control] schedule tick armed (30s interval)");
-  setInterval(() => {
+  // Master-only duties are gated on holding the cluster lease. With clustering
+  // off (default) clusterTick() returns true, so a lone machine runs as always.
+  setInterval(async () => {
+    const isMaster = await clusterTick().catch(() => true);
+    if (!isMaster) return;
     checkDueSchedules().catch(() => {});
     checkWatchers().catch(() => {});
     nudgeStaleApprovals().catch(() => {});
@@ -33,7 +38,9 @@ export function startScheduler(): void {
     void refreshScaffold(); // no-op unless the day rolled over
   }, 30_000);
   // catch anything already due shortly after boot
-  setTimeout(() => {
+  setTimeout(async () => {
+    const isMaster = await clusterTick().catch(() => true);
+    if (!isMaster) return;
     checkDueSchedules().catch(() => {});
     checkWatchers().catch(() => {});
     void refreshScaffold();
