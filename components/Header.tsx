@@ -49,31 +49,25 @@ export default function Header() {
       className="panel flex items-center justify-between gap-4 overflow-hidden px-5 py-3"
     >
       <div className="flex items-center gap-3">
-        <div className="relative h-10 w-10">
-          <motion.div
-            className="absolute inset-0 rounded-xl"
-            style={{ background: "conic-gradient(from 140deg, #22d3ee, #a78bfa, #e879f9, #fb7185, #fbbf24, #22d3ee)", filter: "blur(11px)", opacity: 0.8 }}
-            animate={{ rotate: 360 }}
-            transition={{ repeat: Infinity, duration: 14, ease: "linear" }}
+        <div className="relative h-9 w-9">
+          <div
+            className="absolute inset-0 rounded-lg"
+            style={{
+              background: "conic-gradient(from 180deg, #22d3ee, #e879f9, #a78bfa, #22d3ee)",
+              filter: "blur(10px)",
+              opacity: 0.6,
+            }}
           />
           <div
-            className="relative flex h-10 w-10 items-center justify-center rounded-xl"
-            style={{ background: "linear-gradient(135deg, #22d3ee 0%, #6366f1 36%, #e879f9 66%, #fb4d6a 100%)", boxShadow: "0 4px 18px rgba(251,77,106,0.4)" }}
+            className="relative flex h-9 w-9 items-center justify-center rounded-lg border border-line font-mono text-sm font-bold text-neon-cyan"
+            style={{ background: "rgba(14,17,34,0.66)", backdropFilter: "blur(16px)" }}
           >
-            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="white" strokeWidth="1.7" strokeLinecap="round">
-              <circle cx="12" cy="12" r="8.5" opacity="0.5" />
-              <circle cx="12" cy="12" r="4" />
-              <circle cx="12" cy="12" r="1.5" fill="white" stroke="none" />
-              <path d="M12 12l6.4-4.6" opacity="0.9" />
-            </svg>
+            MC
           </div>
         </div>
         <div>
-          <h1
-            className="bg-clip-text font-display text-lg font-black tracking-[0.16em] text-transparent"
-            style={{ backgroundImage: "linear-gradient(100deg, var(--ac-cyan), var(--ac-violet), var(--ac-magenta), #f43f5e, var(--ac-amber))" }}
-          >
-            MISSION CONTROL
+          <h1 className="font-display text-lg font-bold tracking-[0.18em] text-ink">
+            MISSION<span className="text-neon-cyan text-glow-cyan">CONTROL</span>
           </h1>
           <p className="font-mono text-[10px] tracking-[0.28em] text-ink-faint">
             LOCAL AI OPERATIONS DECK
