@@ -1,6 +1,7 @@
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
+import crypto from "crypto";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import { runAgentText } from "./runners";
@@ -39,6 +40,8 @@ export interface ConvoMeta {
   messageCount: number;
   wordCount: number;
   processed: boolean;
+  /** Content fingerprint — lets "already distilled" survive an id change. */
+  fp?: string | null;
 }
 
 export interface ImportJob {
@@ -55,6 +58,8 @@ export interface ImportState {
   scannedAt: number;
   exportsDir: string;
   sources: Record<string, number>;
+  /** Duplicate copies discarded by the last scan (id + content dedup). */
+  duplicates?: number;
   conversations: ConvoMeta[];
   job: ImportJob;
 }
@@ -202,20 +207,98 @@ async function extractZips(dir: string): Promise<void> {
   }
 }
 
-/** Parse every export file into full conversations (deduped by id). */
-export async function parseAllConversations(): Promise<ImportedConversation[]> {
+const norm = (s: string) => s.toLowerCase().replace(/\s+/g, " ").trim();
+
+/**
+ * Content fingerprint: a hash of the conversation's opening user message.
+ * A re-export of the same chat — even under a different id, even after you
+ * kept talking in it — opens identically, so the fingerprint matches.
+ *
+ * Returns null for very short openers ("hi", "thanks"), which would otherwise
+ * collide across genuinely different conversations. Those fall back to id-only
+ * dedup, which is the safe direction to fail.
+ */
+export function fingerprint(c: ImportedConversation): string | null {
+  const opener = norm(c.messages.find((m) => m.role === "user")?.text ?? "");
+  if (opener.length < 40) return null;
+  return crypto.createHash("sha1").update(opener.slice(0, 800)).digest("hex").slice(0, 16);
+}
+
+/** True if `short` is an opening-prefix of `long` — i.e. the same chat, continued. */
+function isPrefixOf(short: ImportedConversation, long: ImportedConversation): boolean {
+  if (short.messages.length > long.messages.length) return false;
+  const k = Math.min(short.messages.length, 3);
+  for (let i = 0; i < k; i++) {
+    if (norm(short.messages[i].text).slice(0, 200) !== norm(long.messages[i].text).slice(0, 200)) return false;
+  }
+  return true;
+}
+
+/** Richest wins: most messages, then most words. */
+function richer(a: ImportedConversation, b: ImportedConversation): ImportedConversation {
+  if (a.messages.length !== b.messages.length) return a.messages.length > b.messages.length ? a : b;
+  return wordCount(a) >= wordCount(b) ? a : b;
+}
+
+export interface DedupResult {
+  conversations: ImportedConversation[];
+  duplicates: number; // copies discarded
+}
+
+/**
+ * Parse every export file and deduplicate in two passes:
+ *   1. by id — the same conversation present in two overlapping exports
+ *   2. by content fingerprint — the same conversation re-exported under a new
+ *      id, verified as a true continuation (opening messages match) so two
+ *      different chats that merely share an opener are never merged.
+ * In both passes the RICHEST copy survives, so re-exporting after months of
+ * extra messages upgrades the record instead of keeping the stale one.
+ */
+export async function parseAllConversationsDeduped(): Promise<DedupResult> {
   const dir = exportsDir();
   await extractZips(dir);
   const files = await walkJson(dir);
+
+  let seen = 0;
   const byId = new Map<string, ImportedConversation>();
   for (const f of files) {
     const raw = await fs.readFile(f, "utf8").catch(() => "");
     if (!raw) continue;
     for (const c of parseRaw(raw)) {
-      if (c.messages.length && !byId.has(c.id)) byId.set(c.id, c);
+      if (!c.messages.length) continue;
+      seen++;
+      const prev = byId.get(c.id);
+      byId.set(c.id, prev ? richer(prev, c) : c);
     }
   }
-  return [...byId.values()];
+
+  // pass 2 — content fingerprint
+  const byFp = new Map<string, ImportedConversation>();
+  const kept: ImportedConversation[] = [];
+  for (const c of byId.values()) {
+    const fp = fingerprint(c);
+    if (!fp) {
+      kept.push(c); // too short to fingerprint safely — keep it
+      continue;
+    }
+    const prev = byFp.get(fp);
+    if (!prev) {
+      byFp.set(fp, c);
+      continue;
+    }
+    // Same opener. Only merge if one genuinely continues the other.
+    const [s, l] = prev.messages.length <= c.messages.length ? [prev, c] : [c, prev];
+    if (isPrefixOf(s, l)) byFp.set(fp, l);
+    else kept.push(c); // same opener, different conversation — keep both
+  }
+
+  const conversations = [...kept, ...byFp.values()];
+  return { conversations, duplicates: Math.max(0, seen - conversations.length) };
+}
+
+/** Parse every export file into full conversations (deduped). */
+export async function parseAllConversations(): Promise<ImportedConversation[]> {
+  return (await parseAllConversationsDeduped()).conversations;
 }
 
 function wordCount(c: ImportedConversation): number {
@@ -224,12 +307,18 @@ function wordCount(c: ImportedConversation): number {
 
 export async function scan(): Promise<ImportState> {
   await fs.mkdir(exportsDir(), { recursive: true }).catch(() => {});
-  const all = await parseAllConversations();
+  const { conversations: all, duplicates } = await parseAllConversationsDeduped();
   const prev = await readState();
-  const processed = new Set(prev.conversations.filter((c) => c.processed).map((c) => c.id));
+  // "Already distilled" is remembered by id AND by content fingerprint, so a
+  // conversation re-exported under a new id is still recognised as done.
+  const doneIds = new Set(prev.conversations.filter((c) => c.processed).map((c) => c.id));
+  const doneFps = new Set(
+    prev.conversations.filter((c) => c.processed && c.fp).map((c) => c.fp as string),
+  );
   const sources: Record<string, number> = {};
   const conversations: ConvoMeta[] = all.map((c) => {
     sources[c.source] = (sources[c.source] ?? 0) + 1;
+    const fp = fingerprint(c);
     return {
       id: c.id,
       source: c.source,
@@ -237,13 +326,15 @@ export async function scan(): Promise<ImportState> {
       createdAt: c.createdAt,
       messageCount: c.messages.length,
       wordCount: wordCount(c),
-      processed: processed.has(c.id),
+      processed: doneIds.has(c.id) || (fp ? doneFps.has(fp) : false),
+      fp,
     };
   });
   const state: ImportState = {
     scannedAt: Date.now(),
     exportsDir: exportsDir(),
     sources,
+    duplicates,
     conversations,
     job: prev.job.status === "running" ? prev.job : { ...EMPTY_JOB },
   };
@@ -419,9 +510,16 @@ export async function startDistill(writer = "claude", max = 40): Promise<ImportS
     return state; // already running
   }
   const all = await parseAllConversations();
-  const processed = new Set(state.conversations.filter((c) => c.processed).map((c) => c.id));
+  // Skip anything already distilled — by id, or by content fingerprint so a
+  // re-exported duplicate under a new id is never distilled twice.
+  const doneIds = new Set(state.conversations.filter((c) => c.processed).map((c) => c.id));
+  const doneFps = new Set(state.conversations.filter((c) => c.processed && c.fp).map((c) => c.fp as string));
   const remaining = all
-    .filter((c) => !processed.has(c.id))
+    .filter((c) => {
+      if (doneIds.has(c.id)) return false;
+      const fp = fingerprint(c);
+      return !(fp && doneFps.has(fp));
+    })
     .sort((a, b) => b.messages.length - a.messages.length);
   const todo = max > 0 ? remaining.slice(0, Math.min(max, 500)) : remaining;
 

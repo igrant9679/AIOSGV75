@@ -28,6 +28,7 @@ interface Summary {
   scannedAt: number;
   vaultOk: boolean;
   sources: Record<string, number>;
+  duplicates: number;
   total: number;
   processed: number;
   messages: number;
@@ -177,6 +178,14 @@ export default function ImportSection() {
                 <span className="rounded-full border border-line bg-white/[0.03] px-3 py-1 font-mono text-[11px] text-neon-lime">
                   {fmtNum(sum.processed)} distilled · {fmtNum(unprocessed)} remaining
                 </span>
+                {sum.duplicates > 0 && (
+                  <span
+                    className="rounded-full border border-line bg-white/[0.03] px-3 py-1 font-mono text-[11px] text-neon-amber"
+                    title="Same conversation found in more than one export (matched by id or by content, even under a different id). The richest copy was kept."
+                  >
+                    {fmtNum(sum.duplicates)} duplicate{sum.duplicates === 1 ? "" : "s"} skipped
+                  </span>
+                )}
               </div>
             </div>
           </Panel>

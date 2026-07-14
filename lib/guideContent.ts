@@ -371,6 +371,10 @@ Each item has download and delete. Costs are estimated into the usage ledger, so
 
 **3. Scan** (free, local) — parses everything into a preview: how many conversations per source, total messages, and the date range. Nothing leaves your machine.
 
+**Duplicates are handled for you.** Drop as many exports as you like — overlapping, re-downloaded, years apart — and the scan deduplicates in two passes: by conversation **id**, then by **content fingerprint** (the opening message), which catches the same chat re-exported under a *new* id. In both passes the **richest copy wins**, so re-exporting a conversation you've since continued upgrades the record rather than keeping the stale one. Two genuinely different chats that merely open with the same short "hey" are never merged. The scan reports how many duplicate copies it skipped.
+
+Better still, **"already distilled" is remembered by content, not just id** — so a conversation you distilled months ago won't be distilled again just because a fresh export gave it a new id. You can re-download your full archive any time and safely re-run; only genuinely new conversations cost anything.
+
 **4. Distill** (uses an agent, bounded) — the chosen **writer** (any agent in your fleet: Claude for best quality, Llama/Ollama for free-and-local, DeepSeek for cheap) condenses your conversations into topic-grouped Markdown notes — durable facts, decisions, and preferences — saved to the vault under \`Agentic OS/History/\`. It runs the richest conversations first in batches of 12 (one writer call per batch); set a **max per run** so cost stays bounded, or tick **EVERYTHING** to walk the whole archive in one go — the UI shows roughly how many writer calls that means before you commit. Either way it's **resumable** — re-run to continue where it left off. "Reset processed" re-opens everything for a fresh pass.
 
 **How the notes join your brain:**
