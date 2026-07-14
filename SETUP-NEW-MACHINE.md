@@ -359,6 +359,18 @@ server immediately. Re-run any time to repair it. This is the fix if the server
 when the server was only ever started by hand in a terminal (closing the window
 kills it); the VBS runs it hidden and detached so neither happens.
 
+**Repo in a different folder on this machine?** By default the script points at
+whatever folder it lives in, which is right in the normal case. You can override
+that — pass the folder as an argument:
+
+```
+install-service.cmd "D:\code\my-mission-control"
+```
+
+and if the folder it resolves has no `server.cmd` in it, it stops and asks you to
+type the path instead of writing a broken launcher. Pasted quotes and a trailing
+backslash are both fine.
+
 <details><summary>What it does by hand</summary>
 
 `server.cmd` starts the prod server safely (skips if port 3000 is taken, binds

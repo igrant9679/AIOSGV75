@@ -71,25 +71,32 @@ built-in searchable guide (`/guide`, also exported to the vault for agent RAG).
 - Watch for a stray NBSP (U+00A0) if exact-match editing fails in ChatThread.tsx.
 - One `.env.local` reference table lives in the Guide's "Settings & Environment Reference".
 
-## ⚠ OPEN ISSUE — read first (2026-07-14)
+## ✅ RESOLVED — the "emptied .vbs" scare (2026-07-14)
 
-**Idris reports the `.vbs` file(s) were emptied after the last push.** Unresolved — I was
-interrupted mid-investigation. Notes for whoever picks this up:
+**Nothing was actually broken.** On inspection `Mission Control Server.vbs` in the Startup
+folder was intact — 115 bytes, correct two lines, last modified 2026-07-09 (i.e. untouched by
+any push). A recursive search of `Documents` found no other `.vbs` file. Conclusion: a false
+alarm or a look at the wrong file; **no cause to hunt for.**
 
-- `Mission Control Server.vbs` lives in the **Startup folder**
-  (`%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\`), **not in git** — so a
-  `git push` cannot itself touch it. Something else emptied it. Verify with:
-  `Get-Item "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Startup\Mission Control Server.vbs"`
-  (it was **115 bytes** when healthy; check `.Length` and `Get-Content`).
-- **If it's empty/broken, the fix is one step:** run **`install-service.cmd`** in the repo —
-  it regenerates the VBS (pointing at this clone's `server.cmd`) and relaunches it. Auto-start
-  at login is broken until this is done.
-- The healthy content is exactly two lines:
-  `Set sh = CreateObject("WScript.Shell")` /
-  `sh.Run """<repo>\server.cmd""", 0, False`
-- Suspects worth checking: anything that wrote to that path (install.ps1 / install-service.cmd
-  run with a bad `%REPO%`), or an editor/AV truncating it. Note this session repeatedly ran the
-  VBS via `wscript.exe` to restart the prod server — running it should not modify it.
+Regenerated it anyway via `install-service.cmd` and confirmed the server came back up on
+127.0.0.1:3000 with no stray duplicate processes. The healthy content is exactly:
+
+```
+Set sh = CreateObject("WScript.Shell")
+sh.Run """<repo>\server.cmd""", 0, False
+```
+
+**`install-service.cmd` now takes an optional folder** (v31.1) — every machine keeps the repo
+somewhere different, so the resolve order is: **argument** → the folder the script lives in →
+**interactive prompt**. It refuses to write a launcher pointing at a folder with no
+`server.cmd`, and strips pasted quotes / a trailing backslash:
+
+```
+install-service.cmd "D:\code\my-mission-control"
+```
+
+(Beware `set "VAR=%VAR:"=%"` in cmd — that quote-strip idiom unbalances quotes and dies with
+". was unexpected at this time". Use `set VAR=%VAR:"=%` with no outer quotes.)
 
 ## Open roadmap / next candidates
 

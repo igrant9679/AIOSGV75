@@ -523,6 +523,8 @@ End a work session by telling any agent: "Remember: <the three facts worth keepi
 
 **Server won't auto-start, or dies when I close the terminal** — it was only ever started by hand in a terminal (closing the window kills the child process). Fix: run **\`install-service.cmd\`** in the repo once. It installs a hidden launcher into your Startup folder so the server runs detached (no window to close) and starts at every login. Stop it with \`stop.cmd\`.
 
+**The startup launcher is empty, broken, or points at the wrong folder** — re-run **\`install-service.cmd\`**; it rewrites \`Mission Control Server.vbs\` in your Startup folder from scratch and relaunches the server. It normally targets the folder it lives in, but since every machine keeps the repo somewhere different you can name the folder explicitly: \`install-service.cmd "D:\\code\\my-mission-control"\`. If that folder has no \`server.cmd\`, it asks you to type the right path rather than writing a launcher that points nowhere.
+
 **Claude fails with 401** — the CLI login expired. Run \`claude\` in a terminal and \`/login\` once.
 
 **API LLM errors** — 401 bad key · 402 no credit (top up with the provider) · a model failing repeatedly is skipped by Auto until it succeeds again.
