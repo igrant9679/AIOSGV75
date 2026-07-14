@@ -1,12 +1,34 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { ACCENTS, type Accent } from "@/lib/accents";
 import type { UsageEntry } from "@/lib/usage";
 import Panel from "./ui/Panel";
 import NumberTicker from "./ui/NumberTicker";
+import EmptyState from "./ui/EmptyState";
 import Avatar, { type AvatarKind } from "./Avatar";
 import { useMission } from "./store";
+
+/** Tiny inline trend — one bar per day, in the stat's accent. */
+function TrendSpark({ values, accent }: { values: number[]; accent: Accent }) {
+  const c = ACCENTS[accent];
+  const max = Math.max(...values, 1);
+  return (
+    <span className="flex items-end gap-[2px]" aria-hidden>
+      {values.map((v, i) => (
+        <span
+          key={i}
+          className="w-[4px] rounded-t-sm"
+          style={{
+            height: v === 0 ? 2 : 3 + Math.round((v / max) * 11),
+            background: v > 0 ? c.base : "var(--color-line)",
+            opacity: v > 0 ? 0.45 + 0.55 * (v / max) : 0.8,
+          }}
+        />
+      ))}
+    </span>
+  );
+}
 
 const DAY = 86_400_000;
 
@@ -27,7 +49,7 @@ function Bars({ data, accent, format }: { data: { label: string; value: number }
             className="w-full rounded-t-sm transition-colors"
             style={{
               height: `${Math.max(2, (d.value / max) * 78)}px`,
-              background: d.value > 0 ? c.base : "rgba(148,163,255,0.12)",
+              background: d.value > 0 ? c.base : "var(--color-line)",
               opacity: d.value > 0 ? 0.85 : 1,
             }}
           />
@@ -97,22 +119,36 @@ export default function AnalyticsSection() {
   return (
     <div className="grid gap-4 xl:grid-cols-3">
       <div className="flex flex-col gap-4 xl:col-span-2">
-        {/* headline stats */}
+        {/* headline stats — each panel takes its stat's accent + a 14-day trend */}
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-          {[
-            { label: "Spend · 30d", value: <NumberTicker value={stats.spend} decimals={2} prefix="$" />, accent: "amber" },
-            { label: "Runs · 30d", value: <NumberTicker value={stats.runs} />, accent: "cyan" },
-            { label: "Tokens Out", value: <NumberTicker value={stats.tokensOut} />, accent: "magenta" },
-            { label: "Avg Latency", value: <NumberTicker value={stats.avgMs / 1000} decimals={1} suffix="s" />, accent: "lime" },
-          ].map((s, i) => (
-            <Panel key={s.label} delay={i * 0.04}>
-              <div className="px-4 py-3.5">
-                <p className="panel-title">{s.label}</p>
-                <p className="mt-1 font-mono text-2xl font-bold" style={{ color: ACCENTS[s.accent as Accent].base }}>
-                  {s.value}
-                </p>
-              </div>
-            </Panel>
+          {(
+            [
+              { label: "Spend · 30d", value: <NumberTicker value={stats.spend} decimals={2} prefix="$" />, accent: "amber", trend: stats.days.map((d) => d.spend) },
+              { label: "Runs · 30d", value: <NumberTicker value={stats.runs} />, accent: "cyan", trend: stats.days.map((d) => d.runs) },
+              { label: "Tokens Out", value: <NumberTicker value={stats.tokensOut} />, accent: "magenta", trend: null },
+              { label: "Avg Latency", value: <NumberTicker value={stats.avgMs / 1000} decimals={1} suffix="s" />, accent: "lime", trend: null },
+            ] as { label: string; value: ReactNode; accent: Accent; trend: number[] | null }[]
+          ).map((s, i) => (
+            <div key={s.label} style={{ "--page-accent": ACCENTS[s.accent].base } as CSSProperties}>
+              <Panel delay={i * 0.04}>
+                <div
+                  className="px-4 py-3.5"
+                  style={{ background: `radial-gradient(140px 80px at 100% 0%, ${ACCENTS[s.accent].soft}, transparent 70%)` }}
+                >
+                  <p className="panel-title">{s.label}</p>
+                  <p className="mt-1 font-mono text-2xl font-bold" style={{ color: ACCENTS[s.accent].base }}>
+                    {s.value}
+                  </p>
+                  <div className="mt-2 flex h-4 items-center">
+                    {s.trend ? (
+                      <TrendSpark values={s.trend} accent={s.accent} />
+                    ) : (
+                      <span className="font-mono text-[9px] tracking-[0.18em] text-ink-faint">30-DAY WINDOW</span>
+                    )}
+                  </div>
+                </div>
+              </Panel>
+            </div>
           ))}
         </div>
 
@@ -132,7 +168,7 @@ export default function AnalyticsSection() {
         <Panel title="By Agent" delay={0.14}>
           <div className="flex flex-col gap-2 p-4">
             {loaded && stats.agentRows.length === 0 && (
-              <p className="py-6 text-center text-xs text-ink-faint">No runs recorded yet — chat with an agent or fly a mission.</p>
+              <EmptyState accent="amber" title="No runs recorded" hint="Chat with an agent or fly a mission — every run lands in this ledger." />
             )}
             {stats.agentRows.map((r) => {
               const c = ACCENTS[accentFor(r.agent)];
@@ -150,7 +186,13 @@ export default function AnalyticsSection() {
                       </p>
                     </div>
                     <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-white/5">
-                      <div className="h-full rounded-full" style={{ width: `${(r.runs / maxAgentRuns) * 100}%`, background: c.base }} />
+                      <div
+                        className="h-full rounded-full"
+                        style={{
+                          width: `${(r.runs / maxAgentRuns) * 100}%`,
+                          background: `linear-gradient(90deg, ${c.gradFrom}, ${c.gradTo})`,
+                        }}
+                      />
                     </div>
                   </div>
                 </div>

@@ -1,14 +1,18 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import { motion } from "framer-motion";
 import { ACCENTS, type Accent } from "@/lib/accents";
 import type { BoardTask, BoardStatus } from "@/lib/tasks";
 import Panel from "./ui/Panel";
 import NumberTicker from "./ui/NumberTicker";
+import EmptyState from "./ui/EmptyState";
 import OrchestratorPanel from "./OrchestratorPanel";
 import { IconPlus, IconTrash } from "./icons";
 import { useMission } from "./store";
+
+/** Scope the panel accent (top edge, title tick, hover glow) to one color. */
+const accentVar = (a: Accent): CSSProperties => ({ "--page-accent": ACCENTS[a].base }) as CSSProperties;
 
 const LANES: { status: BoardStatus; label: string; accent: Accent }[] = [
   { status: "pending", label: "Pending", accent: "amber" },
@@ -109,42 +113,50 @@ export default function TasksSection() {
   return (
     <div className="flex flex-col gap-4">
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <Panel title="Kanban Tasks">
-          <div className="p-4">
-            <span style={{ color: ACCENTS.amber.base }}>
-              <NumberTicker value={tasks.length} className="text-3xl font-bold" />
-            </span>
-            <p className="pt-1 font-mono text-[10px] tracking-[0.14em] text-ink-faint">OPERATOR BOARD</p>
-          </div>
-        </Panel>
-        <Panel title="Cron Jobs" delay={0.04}>
-          <div className="p-4">
-            <span style={{ color: ACCENTS.cyan.base }}>
-              <NumberTicker value={schedules.length} className="text-3xl font-bold" />
-            </span>
-            <p className="pt-1 font-mono text-[10px] tracking-[0.14em] text-ink-faint">SCHEDULED JOBS</p>
-          </div>
-        </Panel>
-        <Panel title="Done" delay={0.08}>
-          <div className="p-4">
-            <span style={{ color: ACCENTS.lime.base }}>
-              <NumberTicker value={doneCount} className="text-3xl font-bold" />
-            </span>
-            <p className="pt-1 font-mono text-[10px] tracking-[0.14em] text-ink-faint">
-              {tasks.filter((t) => t.status === "in_progress").length} IN PROGRESS
-            </p>
-          </div>
-        </Panel>
-        <Panel title="Next Cron" delay={0.12}>
-          <div className="p-4">
-            <p className="text-3xl font-bold" style={{ color: ACCENTS.violet.base }}>
-              {countdownLabel}
-            </p>
-            <p className="truncate pt-1 font-mono text-[10px] tracking-[0.14em] text-ink-faint">
-              {nextCron ? nextCron.title.toUpperCase() : "NO ENABLED SCHEDULES"}
-            </p>
-          </div>
-        </Panel>
+        <div style={accentVar("amber")}>
+          <Panel title="Kanban Tasks">
+            <div className="p-4" style={{ background: `radial-gradient(150px 80px at 100% 0%, ${ACCENTS.amber.soft}, transparent 70%)` }}>
+              <span style={{ color: ACCENTS.amber.base }}>
+                <NumberTicker value={tasks.length} className="text-3xl font-bold" />
+              </span>
+              <p className="pt-1 font-mono text-[10px] tracking-[0.14em] text-ink-faint">OPERATOR BOARD</p>
+            </div>
+          </Panel>
+        </div>
+        <div style={accentVar("cyan")}>
+          <Panel title="Cron Jobs" delay={0.04}>
+            <div className="p-4" style={{ background: `radial-gradient(150px 80px at 100% 0%, ${ACCENTS.cyan.soft}, transparent 70%)` }}>
+              <span style={{ color: ACCENTS.cyan.base }}>
+                <NumberTicker value={schedules.length} className="text-3xl font-bold" />
+              </span>
+              <p className="pt-1 font-mono text-[10px] tracking-[0.14em] text-ink-faint">SCHEDULED JOBS</p>
+            </div>
+          </Panel>
+        </div>
+        <div style={accentVar("lime")}>
+          <Panel title="Done" delay={0.08}>
+            <div className="p-4" style={{ background: `radial-gradient(150px 80px at 100% 0%, ${ACCENTS.lime.soft}, transparent 70%)` }}>
+              <span style={{ color: ACCENTS.lime.base }}>
+                <NumberTicker value={doneCount} className="text-3xl font-bold" />
+              </span>
+              <p className="pt-1 font-mono text-[10px] tracking-[0.14em] text-ink-faint">
+                {tasks.filter((t) => t.status === "in_progress").length} IN PROGRESS
+              </p>
+            </div>
+          </Panel>
+        </div>
+        <div style={accentVar("violet")}>
+          <Panel title="Next Cron" delay={0.12}>
+            <div className="p-4" style={{ background: `radial-gradient(150px 80px at 100% 0%, ${ACCENTS.violet.soft}, transparent 70%)` }}>
+              <p className="text-3xl font-bold" style={{ color: ACCENTS.violet.base }}>
+                {countdownLabel}
+              </p>
+              <p className="truncate pt-1 font-mono text-[10px] tracking-[0.14em] text-ink-faint">
+                {nextCron ? nextCron.title.toUpperCase() : "NO ENABLED SCHEDULES"}
+              </p>
+            </div>
+          </Panel>
+        </div>
       </div>
 
       <OrchestratorPanel delay={0.14} />
@@ -174,12 +186,40 @@ export default function TasksSection() {
       <div className="grid gap-4 xl:grid-cols-3">
         {LANES.map((lane, i) => {
           const laneTasks = tasks.filter((t) => t.status === lane.status);
+          const lc = ACCENTS[lane.accent];
           return (
-            <Panel key={lane.status} title={lane.label} right={<span className="font-mono text-[11px] text-ink-faint">{laneTasks.length}</span>} delay={0.1 + i * 0.04}>
+            <div key={lane.status} style={accentVar(lane.accent)}>
+            <Panel
+              title={lane.label}
+              right={
+                <span
+                  className="rounded-full px-2 py-0.5 font-mono text-[10px] font-bold"
+                  style={{ background: lc.soft, color: lc.base }}
+                >
+                  {laneTasks.length}
+                </span>
+              }
+              delay={0.1 + i * 0.04}
+            >
               <div className="flex flex-col gap-2 p-3">
-                {laneTasks.length === 0 && <p className="py-6 text-center text-xs text-ink-faint">Empty lane.</p>}
+                {laneTasks.length === 0 && (
+                  <EmptyState
+                    compact
+                    accent={lane.accent}
+                    title="Lane clear"
+                    hint={lane.status === "pending" ? "Add a task above or let the Orchestrator file one." : undefined}
+                  />
+                )}
                 {laneTasks.map((task) => (
-                  <div key={task.id} className="group rounded-xl border border-line bg-white/[0.02] px-3 py-2.5">
+                  <motion.div
+                    key={task.id}
+                    whileHover={{ y: -2 }}
+                    className="group rounded-xl border border-line px-3 py-2.5 transition-colors hover:border-line-bright"
+                    style={{
+                      borderLeft: `3px solid ${lc.base}`,
+                      background: `radial-gradient(140px 60px at 0% 0%, ${lc.soft}, transparent 75%)`,
+                    }}
+                  >
                     <div className="flex items-start gap-2">
                       <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full" style={{ background: ACCENTS[lane.accent].base }} />
                       <p className="min-w-0 flex-1 text-sm leading-5 text-ink">{task.title}</p>
@@ -214,10 +254,11 @@ export default function TasksSection() {
                         )}
                       </span>
                     </div>
-                  </div>
+                  </motion.div>
                 ))}
               </div>
             </Panel>
+            </div>
           );
         })}
       </div>

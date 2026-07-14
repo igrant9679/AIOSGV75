@@ -35,6 +35,45 @@ export function accentForPath(pathname: string): Accent {
   return ROUTE_ACCENTS[pathname] ?? "cyan";
 }
 
+/** Page identity shown in the hero strip above every page's content. */
+export const ROUTE_META: Record<string, { title: string; tagline: string }> = {
+  "/": { title: "Overview", tagline: "Fleet & vitals" },
+  "/auto": { title: "Auto", tagline: "Smart router" },
+  "/claude": { title: "Claude", tagline: "Primary operator · CLI bridge" },
+  "/openclaw": { title: "OpenClaw", tagline: "Assistant gateway" },
+  "/hermes": { title: "Hermes", tagline: "Nous research agent" },
+  "/hermes-lab": { title: "Hermes Lab", tagline: "Goal mode · Control room" },
+  "/mastermind": { title: "Mastermind", tagline: "All agents, one room" },
+  "/jarvis": { title: "JARVIS", tagline: "Voice command center" },
+  "/pipeline": { title: "Pipeline", tagline: "Inbox → Shipped" },
+  "/builds": { title: "Builds", tagline: "Games & apps shelf" },
+  "/studio": { title: "Studio", tagline: "Image · Voice · Video" },
+  "/content": { title: "Content", tagline: "SEO drafts → publish" },
+  "/import": { title: "Import", tagline: "Fold in AI chat history" },
+  "/conversations": { title: "Conversations", tagline: "Search every chat" },
+  "/missions": { title: "Missions", tagline: "Multi-agent operations" },
+  "/tasks": { title: "Tasks", tagline: "Operator board" },
+  "/schedule": { title: "Schedule", tagline: "Cron calendar" },
+  "/library": { title: "Library", tagline: "Agent output docs" },
+  "/graph": { title: "Graph", tagline: "Knowledge map" },
+  "/arena": { title: "Arena", tagline: "Model battles" },
+  "/analytics": { title: "Analytics", tagline: "Cost & usage ledger" },
+  "/evals": { title: "Evals", tagline: "Model report cards" },
+  "/goals": { title: "Goals", tagline: "Checkbox targets" },
+  "/journal": { title: "Journal", tagline: "One file per day" },
+  "/memory": { title: "Memory", tagline: "Shared by all agents" },
+  "/settings": { title: "Settings", tagline: "LLMs · agents · spaces" },
+  "/guide": { title: "Guide", tagline: "Searchable manual" },
+  "/watcher": { title: "Watcher", tagline: "Trend radar" },
+};
+
+export function metaForPath(pathname: string): { title: string; tagline: string } {
+  const known = ROUTE_META[pathname];
+  if (known) return known;
+  const seg = pathname.split("/").filter(Boolean).pop() ?? "deck";
+  return { title: seg.charAt(0).toUpperCase() + seg.slice(1), tagline: "Agent channel" };
+}
+
 /**
  * Accent palette. `base` resolves through CSS variables so both themes get
  * legible values (bright neon on dark, deeper tones on light) — use it in

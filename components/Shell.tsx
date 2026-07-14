@@ -8,6 +8,7 @@ import Header from "./Header";
 import Sidebar from "./Sidebar";
 import ApprovalsBar from "./ApprovalsBar";
 import CommandPalette from "./CommandPalette";
+import PageHero from "./ui/PageHero";
 
 export default function Shell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
@@ -25,7 +26,10 @@ export default function Shell({ children }: { children: ReactNode }) {
           <ApprovalsBar />
           <div className="flex flex-1 flex-col gap-4 md:flex-row">
             <Sidebar />
-            <main className="min-w-0 flex-1">{children}</main>
+            <main className="min-w-0 flex-1">
+              <PageHero />
+              {children}
+            </main>
           </div>
           <footer className="flex items-center justify-between px-1 font-mono text-[10px] tracking-[0.2em] text-ink-faint">
             <span>MISSION CONTROL · LOCAL DECK</span>

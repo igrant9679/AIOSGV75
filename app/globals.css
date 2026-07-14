@@ -221,6 +221,13 @@ body {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.45; }
 }
+.hero-scan {
+  animation: hero-scan 3.4s ease-in-out infinite;
+}
+@keyframes hero-scan {
+  0% { transform: translateX(-8rem); }
+  65%, 100% { transform: translateX(110rem); }
+}
 
 /* ---- keyframes ---- */
 @keyframes radar-sweep {

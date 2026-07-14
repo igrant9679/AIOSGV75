@@ -1,10 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { ACCENTS, type Accent } from "@/lib/accents";
+import { ACCENTS } from "@/lib/accents";
 import Panel from "./ui/Panel";
+import GlowTile from "./ui/GlowTile";
+import EmptyState from "./ui/EmptyState";
 import DeepSpaceScan from "./DeepSpaceScan";
 import StatusOrb from "./ui/StatusOrb";
 import NumberTicker from "./ui/NumberTicker";
@@ -25,23 +27,6 @@ function agoShort(ts: number): string {
   if (s < 3600) return `${Math.floor(s / 60)}m`;
   if (s < 86400) return `${Math.floor(s / 3600)}h`;
   return `${Math.floor(s / 86400)}d`;
-}
-
-/** Stat tile with a soft accent glow bleeding in from the top-right corner. */
-function GlowTile({ accent, label, value, children }: { accent: Accent; label: string; value: ReactNode; children?: ReactNode }) {
-  const c = ACCENTS[accent];
-  return (
-    <div
-      className="relative overflow-hidden rounded-xl border border-line p-3"
-      style={{ background: `radial-gradient(130px 80px at 100% 0%, ${c.soft}, transparent 70%)` }}
-    >
-      <p className="panel-title">{label}</p>
-      <p className="mt-1 font-mono text-2xl font-bold" style={{ color: c.base }}>
-        {value}
-      </p>
-      {children && <div className="mt-2 flex h-4 items-center">{children}</div>}
-    </div>
-  );
 }
 
 /** Circular gauge — fill fraction of responders that are up. */
@@ -204,7 +189,7 @@ export default function OverviewSection() {
         <Panel title="Fleet Activity · 7 Days" delay={0.12}>
           <div className="flex flex-col gap-2 p-4">
             {fleetActivity.length === 0 && (
-              <p className="py-4 text-center text-xs text-ink-faint">No recorded runs yet — activity appears after chats, missions, and schedules run.</p>
+              <EmptyState accent="cyan" title="Scanning for activity" hint="Runs appear here after chats, missions, and schedules fly." />
             )}
             {fleetActivity.map((row) => {
               const known = fleet.find((f) => f.id === row.agent);

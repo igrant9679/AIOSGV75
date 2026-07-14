@@ -25,6 +25,8 @@ export const GUIDE_SECTIONS: GuideSection[] = [
 
 **Theme** — the sun/moon button in the header toggles light/dark. Your choice is remembered per browser.
 
+**Reading the deck** — every page opens with an identity strip (page name + purpose, underlined by a scanning hairline in that page's color); panel titles carry a tick in the same color, and in light mode each panel's glass is tinted toward it. Stat tiles glow from the corner in their metric's color; empty panels show a small radar sweep ("scanning") instead of blank space — that means the feature works and simply has no data yet.
+
 **After code changes** — the background server serves a production build; run \`npm run build\` then restart (stop.cmd → desktop shortcut) to pick up changes.`,
   },
   {
