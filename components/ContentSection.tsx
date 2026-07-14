@@ -47,7 +47,7 @@ function scoreAccent(score: number): string {
 }
 
 export default function ContentSection() {
-  const { registry, addEvent } = useMission();
+  const { registry, agents, addEvent } = useMission();
   const [items, setItems] = useState<ContentItem[]>([]);
   const [vaultOk, setVaultOk] = useState(true);
   const [targets, setTargets] = useState<{ wordpress: boolean; ghost: boolean; webflow: boolean }>({
@@ -64,12 +64,15 @@ export default function ContentSection() {
   const [open, setOpen] = useState<string | null>(null);
   const [acting, setActing] = useState<string | null>(null);
 
+  // Claude + router + installed built-ins + keyed/local LLMs + custom agents
+  // (deduped) — same writer pool as the History Import page.
   const agentOptions = [
     { id: "claude", name: "Claude" },
     { id: "auto", name: "Auto (router)" },
-    ...registry.llms.map((l) => ({ id: l.id, name: l.name })),
+    ...agents.filter((a) => a.available).map((a) => ({ id: a.id, name: a.name })),
+    ...registry.llms.filter((l) => l.hasKey).map((l) => ({ id: l.id, name: l.name })),
     ...registry.commandAgents.map((c) => ({ id: c.id, name: c.name })),
-  ];
+  ].filter((o, i, arr) => arr.findIndex((x) => x.id === o.id) === i);
 
   const loadItems = useCallback(async () => {
     try {

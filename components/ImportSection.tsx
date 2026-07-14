@@ -47,7 +47,7 @@ const fmtNum = (n: number) => n.toLocaleString();
 const SOURCE_LABEL: Record<string, string> = { chatgpt: "ChatGPT", claude: "Claude" };
 
 export default function ImportSection() {
-  const { registry, addEvent } = useMission();
+  const { registry, agents, addEvent } = useMission();
   const [sum, setSum] = useState<Summary | null>(null);
   const [writer, setWriter] = useState("claude");
   const [max, setMax] = useState(40);
@@ -55,12 +55,17 @@ export default function ImportSection() {
   const [busy, setBusy] = useState<"scan" | "distill" | "reset" | null>(null);
   const [err, setErr] = useState("");
 
+  // Every agent that can actually run on THIS machine: Claude + the router,
+  // installed built-ins (Hermes/OpenClaw/Codex), keyed/local LLMs, and custom
+  // command agents. The registry is per-machine — add models in Settings to
+  // grow this list.
   const agentOptions = [
     { id: "claude", name: "Claude" },
     { id: "auto", name: "Auto (router)" },
-    ...registry.llms.map((l) => ({ id: l.id, name: l.name })),
+    ...agents.filter((a) => a.available).map((a) => ({ id: a.id, name: a.name })),
+    ...registry.llms.filter((l) => l.hasKey).map((l) => ({ id: l.id, name: l.name })),
     ...registry.commandAgents.map((c) => ({ id: c.id, name: c.name })),
-  ];
+  ].filter((o, i, arr) => arr.findIndex((x) => x.id === o.id) === i);
 
   const load = useCallback(async () => {
     try {
