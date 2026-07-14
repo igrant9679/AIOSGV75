@@ -112,6 +112,7 @@ install-service.cmd "D:\code\my-mission-control"
 4. Optional: Gemini chat agent (free key at aistudio.google.com; embeddings already local); Hermes on the laptop
 5. Content pipeline niceties (deferred): upload the hero image to WP media + embed it in the post; more publish targets (Ghost, Webflow); bulk keyword → article runs
 6. Keep feeding the Arena easy-tier battles so simple routing gets cheaper/smarter
+7. Deferred (user held off 2026-07-14): **named cluster groups** — `group` field in cluster config + `Cluster/<group>/…` namespacing + a Group-name field in the Machine Group panel, for multiple failover groups sharing ONE vault. Not needed today: separate groups = separate vaults (VAULT_DIR), which also separates the brain — that's the current answer to "start a new Group"
 
 ## Suggested first message for the new session
 
