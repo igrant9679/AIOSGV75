@@ -10,15 +10,87 @@ import Panel from "./ui/Panel";
 import StatusOrb from "./ui/StatusOrb";
 import EmptyState from "./ui/EmptyState";
 
-/** Fake-amplitude voice bars — shown while listening (lime) or speaking (magenta). */
+const EQ_BARS = 24;
+
+/** Simulated voice bars — fallback when the mic stream isn't available (TTS playback, denied mic). */
 function Equalizer({ color }: { color: string }) {
   return (
     <div className="flex h-6 items-center gap-[3px]" aria-hidden>
-      {Array.from({ length: 24 }, (_, i) => (
+      {Array.from({ length: EQ_BARS }, (_, i) => (
         <span
           key={i}
           className="eq-bar w-[3px] rounded-full"
           style={{ background: color, animationDelay: `${(i % 7) * 0.11}s`, animationDuration: `${0.5 + (i % 5) * 0.12}s` }}
+        />
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Real-amplitude voice bars — taps the mic via Web Audio (getUserMedia →
+ * AnalyserNode) and drives bar heights from the live frequency spectrum,
+ * bypassing React state (direct style writes in a rAF loop). Falls back to the
+ * simulated Equalizer if the mic stream can't be opened.
+ */
+function LiveEqualizer({ color }: { color: string }) {
+  const barsRef = useRef<(HTMLSpanElement | null)[]>([]);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let raf = 0;
+    let ctx: AudioContext | null = null;
+    let stream: MediaStream | null = null;
+    let alive = true;
+    (async () => {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        if (!alive) {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
+        }
+        ctx = new AudioContext();
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 128; // 64 bins — plenty for 24 bars
+        analyser.smoothingTimeConstant = 0.75;
+        ctx.createMediaStreamSource(stream).connect(analyser);
+        const data = new Uint8Array(analyser.frequencyBinCount);
+        const tick = () => {
+          if (!alive) return;
+          analyser.getByteFrequencyData(data);
+          for (let i = 0; i < EQ_BARS; i++) {
+            const el = barsRef.current[i];
+            if (!el) continue;
+            // voice energy lives in the low bins — spread bars across the lower half
+            const v = data[2 + Math.floor((i / EQ_BARS) * (data.length / 2))] / 255;
+            el.style.height = `${Math.max(10, Math.round(v * 100))}%`;
+          }
+          raf = requestAnimationFrame(tick);
+        };
+        tick();
+      } catch {
+        if (alive) setFailed(true);
+      }
+    })();
+    return () => {
+      alive = false;
+      cancelAnimationFrame(raf);
+      stream?.getTracks().forEach((t) => t.stop());
+      ctx?.close().catch(() => {});
+    };
+  }, []);
+
+  if (failed) return <Equalizer color={color} />;
+  return (
+    <div className="flex h-6 items-center gap-[3px]" aria-hidden>
+      {Array.from({ length: EQ_BARS }, (_, i) => (
+        <span
+          key={i}
+          ref={(el) => {
+            barsRef.current[i] = el;
+          }}
+          className="w-[3px] rounded-full transition-[height] duration-75"
+          style={{ background: color, height: "10%" }}
         />
       ))}
     </div>
@@ -222,7 +294,7 @@ export default function JarvisSection() {
                   <StatusOrb accent={speaking ? "magenta" : listening ? "lime" : "cyan"} pulsing={listening || speaking} size={8} />
                   {speaking ? "SPEAKING" : listening ? "LISTENING" : "STANDING BY"}
                 </div>
-                {(listening || speaking) && <Equalizer color={reactor.base} />}
+                {listening ? <LiveEqualizer color={reactor.base} /> : speaking ? <Equalizer color={reactor.base} /> : null}
                 {interim && <p className="max-w-md text-center text-sm text-ink-dim">{interim}</p>}
                 {!supported && <p className="text-center text-xs text-neon-rose">Voice needs Chrome or Edge (Web Speech API). You can still type below.</p>}
                 <div className="flex flex-wrap items-center justify-center gap-2 pt-1">

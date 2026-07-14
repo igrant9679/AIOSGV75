@@ -4,7 +4,7 @@ import { runAgentText } from "./runners";
 import { vaultInfo, vaultAvailable, todayStamp } from "./vault";
 import { generateImage } from "./studio";
 import { hasServiceKey } from "./services";
-import { publishToWordPress } from "./publish";
+import { publishTo, type PublishTarget } from "./publish";
 
 /**
  * SEO Content pipeline — brief → fleet drafts an optimized article → scored
@@ -34,6 +34,7 @@ export interface ContentItem {
   checks: SeoCheck[];
   status: "drafting" | "draft" | "error" | "published";
   publishedUrl?: string;
+  publishedTo?: PublishTarget;
   error?: string;
   agent: string;
   createdAt: number;
@@ -335,13 +336,17 @@ export async function generateHero(id: string): Promise<ContentItem> {
   return item;
 }
 
-/** Push an article to WordPress (as a draft by default). */
-export async function publishContent(id: string, status: "draft" | "publish" = "draft"): Promise<ContentItem> {
+/** Push an article to a publish target (WordPress/Ghost/Webflow), draft by default. */
+export async function publishContent(
+  id: string,
+  status: "draft" | "publish" = "draft",
+  target: PublishTarget = "wordpress",
+): Promise<ContentItem> {
   const item = await findContent(id);
   if (!item) throw new Error("article not found");
   if (item.status === "drafting") throw new Error("article is still drafting");
   const html = mdToHtml(item.bodyMarkdown);
-  const result = await publishToWordPress({
+  const result = await publishTo(target, {
     title: item.title,
     content: html,
     excerpt: item.metaDescription,
@@ -349,7 +354,8 @@ export async function publishContent(id: string, status: "draft" | "publish" = "
     status,
   });
   item.status = "published";
-  item.publishedUrl = result.url;
+  if (result.url) item.publishedUrl = result.url;
+  item.publishedTo = target;
   await saveItem(item);
   return item;
 }

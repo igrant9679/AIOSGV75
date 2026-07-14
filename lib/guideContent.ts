@@ -29,7 +29,9 @@ export const GUIDE_SECTIONS: GuideSection[] = [
 
 **Deck interactions** — press \`?\` anywhere for the keyboard-shortcut overlay (\`Ctrl+K\` is the command palette). The footer's left side is a live ticker of the latest event — click it to jump to the page it came from. On **Tasks**, drag cards between kanban lanes (the ◀ ▶ buttons still work). On **Missions**, each card shows a stage rail (one segment per agent + a violet synthesis cap) and running missions breathe amber; an agent's avatar pulses while it's replying. Finishing a task, landing a mission, shipping a pipeline item, or crowning an Arena winner fires a small confetti burst (disabled if your OS asks for reduced motion). **Analytics** projects month-end spend from your last-7-day pace (chip on the Activity panel, dashed pace line on Spend/day).
 
-**Page widgets** — **Pipeline** opens with a Flow funnel (counts per stage, capture → shipped; the Human Gate column breathes amber while items wait on you). **Journal** has a 12-week writing heatmap (click a day to open it) and tracks your writing streak. **Content** shows each article's SEO score as a filled ring. **Auto** keeps a "Recent Routes" panel — which model each task went to and why. **JARVIS** has an arc-reactor orb that spins up while listening (lime) or speaking (magenta), a voice equalizer, and tappable example commands.
+**Page widgets** — **Pipeline** opens with a Flow funnel (counts per stage, capture → shipped; the Human Gate column breathes amber while items wait on you). **Journal** has a 12-week writing heatmap (click a day to open it) and tracks your writing streak. **Content** shows each article's SEO score as a filled ring. **Auto** keeps a "Recent Routes" panel — which model each task went to and why. **JARVIS** has an arc-reactor orb that spins up while listening (lime) or speaking (magenta), a voice equalizer driven by your **real mic level** while listening (simulated during speech playback or if mic access is denied), and tappable example commands.
+
+**Agent theme takeover** — on agent chat pages (Auto, Claude, OpenClaw, Hermes, and any agent you've added) the whole sky recolors to that agent's accent, not just a tint: the multicolor nebula crossfades out and a monochrome nebula in the agent's color takes over. Navigate between two agents and watch the atmosphere shift.
 
 **After code changes** — the background server serves a production build; run \`npm run build\` then restart (stop.cmd → desktop shortcut) to pick up changes.`,
   },
@@ -363,9 +365,9 @@ The raw exports and scan index stay on this machine; only the distilled notes go
 
 **Getting it out**
 - **Export** — download the Markdown, or copy clean HTML to paste anywhere.
-- **Publish to WordPress** — connect a site in **Settings → Publishing** (site URL + username + an **Application Password** from WordPress → Users → Profile). Then "Push to WordPress" creates the post **as a draft** (you review and hit publish inside WP). Credentials live in \`data/publish.json\` (git-ignored) or \`WP_SITE\`/\`WP_USERNAME\`/\`WP_APP_PASSWORD\` env vars.
+- **Publish to WordPress, Ghost, or Webflow** — connect any (or all) in **Settings → Publishing**. WordPress = site URL + username + an **Application Password** (WordPress → Users → Profile). Ghost = site URL + an **Admin API key** (Ghost Settings → Integrations → Add custom integration; the \`id:secret\` string). Webflow = an **API token** (Site settings → Apps & integrations) + the CMS **collection ID** + the slug of the rich-text body field (default \`post-body\`). Each connected target gets its own "Push to …" button on every article; every push lands **as a draft** (you review and publish inside the platform). Credentials live in \`data/publish.json\` (git-ignored) or env fallbacks \`WP_*\` / \`GHOST_SITE\`+\`GHOST_ADMIN_API_KEY\` / \`WEBFLOW_TOKEN\`+\`WEBFLOW_COLLECTION_ID\`+\`WEBFLOW_BODY_FIELD\`.
 
-Without a WordPress connection the pipeline still works end-to-end — you just export instead of pushing.`,
+Without a publishing connection the pipeline still works end-to-end — you just export instead of pushing.`,
   },
   {
     id: "orchestrator-attention",
@@ -511,6 +513,8 @@ End a work session by telling any agent: "Remember: <the three facts worth keepi
 | \`ELEVENLABS_API_KEY\` | Studio premium voices (fallback) |
 | \`REPLICATE_API_TOKEN\` | Studio video (fallback) |
 | \`WP_SITE\` / \`WP_USERNAME\` / \`WP_APP_PASSWORD\` | WordPress publishing target for the Content pipeline (fallback for Settings → Publishing) |
+| \`GHOST_SITE\` / \`GHOST_ADMIN_API_KEY\` | Ghost publishing target (Admin API key = \`id:secret\`) |
+| \`WEBFLOW_TOKEN\` / \`WEBFLOW_COLLECTION_ID\` / \`WEBFLOW_BODY_FIELD\` | Webflow CMS publishing target |
 | \`LLM_EXPORTS_DIR\` | folder scanned by History Import (default \`Documents\\llm-exports\`) |
 | \`VAULT_DIR\` | Obsidian vault path override |
 | \`ANTHROPIC_API_KEY\` | alternative Claude auth (instead of CLI login) |

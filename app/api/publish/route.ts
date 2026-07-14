@@ -1,15 +1,51 @@
-import { publishStatus, setWordPress } from "@/lib/publish";
+import { publishStatus, setWordPress, setGhost, setWebflow, type PublishTarget } from "@/lib/publish";
 
 export const dynamic = "force-dynamic";
 
-/** GET — redacted publishing-target status (site/username but never the password). */
+/** GET — redacted publishing-target status (sites/usernames but never secrets). */
 export async function GET() {
   return Response.json(await publishStatus());
 }
 
-/** POST { site, username, appPassword } — save the WordPress connection. */
+/**
+ * POST — save one target's connection.
+ * { target: "wordpress", site, username, appPassword }
+ * { target: "ghost", site, adminApiKey }
+ * { target: "webflow", token, collectionId, bodyField? }
+ * (no target = wordpress, for backwards compatibility)
+ */
 export async function POST(request: Request) {
-  const body = (await request.json()) as { site?: string; username?: string; appPassword?: string };
+  const body = (await request.json()) as {
+    target?: PublishTarget;
+    site?: string;
+    username?: string;
+    appPassword?: string;
+    adminApiKey?: string;
+    token?: string;
+    collectionId?: string;
+    bodyField?: string;
+  };
+  const target = body.target ?? "wordpress";
+
+  if (target === "ghost") {
+    const site = (body.site ?? "").trim();
+    const adminApiKey = (body.adminApiKey ?? "").trim();
+    if (!/^https?:\/\/.+/i.test(site)) return Response.json({ error: "site must be a full https:// URL" }, { status: 400 });
+    if (!/^[a-f0-9]+:[a-f0-9]+$/i.test(adminApiKey))
+      return Response.json({ error: "Admin API key must look like id:secret (Ghost Settings → Integrations)" }, { status: 400 });
+    await setGhost({ site, adminApiKey });
+    return Response.json({ ok: true });
+  }
+
+  if (target === "webflow") {
+    const token = (body.token ?? "").trim();
+    const collectionId = (body.collectionId ?? "").trim();
+    const bodyField = (body.bodyField ?? "post-body").trim();
+    if (!token || !collectionId) return Response.json({ error: "API token and collection ID are required" }, { status: 400 });
+    await setWebflow({ token, collectionId, bodyField });
+    return Response.json({ ok: true });
+  }
+
   const site = (body.site ?? "").trim();
   const username = (body.username ?? "").trim();
   const appPassword = (body.appPassword ?? "").trim();
@@ -19,8 +55,11 @@ export async function POST(request: Request) {
   return Response.json({ ok: true });
 }
 
-/** DELETE — clear the stored WordPress connection. */
-export async function DELETE() {
-  await setWordPress(null);
+/** DELETE ?target=wordpress|ghost|webflow — clear that stored connection. */
+export async function DELETE(request: Request) {
+  const target = (new URL(request.url).searchParams.get("target") ?? "wordpress") as PublishTarget;
+  if (target === "ghost") await setGhost(null);
+  else if (target === "webflow") await setWebflow(null);
+  else await setWordPress(null);
   return Response.json({ ok: true });
 }

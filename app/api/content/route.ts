@@ -14,6 +14,7 @@ export async function POST(request: Request) {
     agent?: string;
     id?: string;
     status?: "draft" | "publish";
+    target?: "wordpress" | "ghost" | "webflow";
   };
   try {
     if (body.action === "draft") {
@@ -29,7 +30,7 @@ export async function POST(request: Request) {
     }
     if (body.action === "publish") {
       if (!body.id) return Response.json({ error: "id required" }, { status: 400 });
-      const item = await publishContent(body.id, body.status || "draft");
+      const item = await publishContent(body.id, body.status || "draft", body.target || "wordpress");
       return Response.json({ ok: true, item });
     }
     return Response.json({ error: "unknown action" }, { status: 400 });

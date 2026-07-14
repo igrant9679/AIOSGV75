@@ -229,6 +229,27 @@ body {
   65%, 100% { transform: translateX(110rem); }
 }
 
+/* Agent-page theme takeover: the multicolor nebula crossfades out and a
+   monochrome nebula in the page's accent takes the whole sky. */
+.nebula,
+.nebula-accent {
+  transition: opacity 0.7s ease;
+}
+.nebula-accent {
+  opacity: 0;
+  background:
+    radial-gradient(680px 360px at 8% -8%, color-mix(in srgb, var(--page-accent, var(--ac-cyan)) 26%, transparent), transparent 62%),
+    radial-gradient(760px 420px at 94% -4%, color-mix(in srgb, var(--page-accent, var(--ac-cyan)) 20%, transparent), transparent 62%),
+    radial-gradient(560px 320px at 48% 118%, color-mix(in srgb, var(--page-accent, var(--ac-cyan)) 18%, transparent), transparent 62%),
+    radial-gradient(900px 500px at 55% 45%, color-mix(in srgb, var(--page-accent, var(--ac-cyan)) 8%, transparent), transparent 72%);
+}
+.theme-takeover .nebula {
+  opacity: 0;
+}
+.theme-takeover .nebula-accent {
+  opacity: 1;
+}
+
 /* Ambient wash in the current page's accent — every page re-tints the sky. */
 .page-tint {
   background: radial-gradient(

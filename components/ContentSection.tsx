@@ -50,7 +50,12 @@ export default function ContentSection() {
   const { registry, addEvent } = useMission();
   const [items, setItems] = useState<ContentItem[]>([]);
   const [vaultOk, setVaultOk] = useState(true);
-  const [wpConfigured, setWpConfigured] = useState(false);
+  const [targets, setTargets] = useState<{ wordpress: boolean; ghost: boolean; webflow: boolean }>({
+    wordpress: false,
+    ghost: false,
+    webflow: false,
+  });
+  const anyTarget = targets.wordpress || targets.ghost || targets.webflow;
   const [imageReady, setImageReady] = useState(false);
   const [keyword, setKeyword] = useState("");
   const [agent, setAgent] = useState("claude");
@@ -82,7 +87,10 @@ export default function ContentSection() {
   const loadStatus = useCallback(async () => {
     try {
       const [pub, svc] = await Promise.all([fetch("/api/publish"), fetch("/api/services")]);
-      if (pub.ok) setWpConfigured(((await pub.json()) as { wordpress: { configured: boolean } }).wordpress.configured);
+      if (pub.ok) {
+        const j = (await pub.json()) as Record<"wordpress" | "ghost" | "webflow", { configured: boolean }>;
+        setTargets({ wordpress: j.wordpress.configured, ghost: j.ghost?.configured ?? false, webflow: j.webflow?.configured ?? false });
+      }
       if (svc.ok) {
         const services = ((await svc.json()) as { services: { id: string; categories: string[]; configured: boolean }[] }).services;
         setImageReady(services.some((s) => s.categories.includes("image") && s.configured));
@@ -143,7 +151,11 @@ export default function ContentSection() {
         setErr(j.error ?? `${action} failed`);
         addEvent("CONTENT", `${action} failed: ${(j.error ?? "").slice(0, 50)}`, "rose");
       } else if (j.item) {
-        addEvent("CONTENT", action === "publish" ? `Published to WordPress` : `Hero image generated`, "lime");
+        addEvent(
+          "CONTENT",
+          action === "publish" ? `Published to ${String(extra?.target ?? "wordpress")}` : `Hero image generated`,
+          "lime",
+        );
         setItems((xs) => xs.map((x) => (x.id === id ? j.item! : x)));
       }
     } catch (e) {
@@ -226,11 +238,11 @@ export default function ContentSection() {
               <IconRocket width={15} height={15} /> {busy ? "Starting…" : "Draft article"}
             </motion.button>
           </div>
-          {!wpConfigured && (
+          {!anyTarget && (
             <p className="text-[11px] leading-4 text-ink-faint">
-              Tip: connect a WordPress site in{" "}
+              Tip: connect WordPress, Ghost, or Webflow in{" "}
               <Link href="/settings" className="text-neon-violet hover:underline">Settings → Publishing</Link> to push drafts
-              straight to your blog. Without it, you can still export Markdown/HTML.
+              straight to your site. Without it, you can still export Markdown/HTML.
             </p>
           )}
         </div>
@@ -275,7 +287,7 @@ export default function ContentSection() {
                     <span className="rounded bg-neon-lime/10 px-2 py-0.5 font-mono text-[9px] tracking-wide text-neon-lime">PUBLISHED</span>
                   )}
                   {item.publishedUrl && (
-                    <a href={item.publishedUrl} target="_blank" rel="noreferrer" className="cursor-pointer rounded p-1 text-ink-faint hover:text-neon-cyan" aria-label="Open on WordPress">↗</a>
+                    <a href={item.publishedUrl} target="_blank" rel="noreferrer" className="cursor-pointer rounded p-1 text-ink-faint hover:text-neon-cyan" aria-label="Open published post">↗</a>
                   )}
                   <button onClick={() => remove(item.id)} aria-label="Delete article" className="cursor-pointer rounded p-1 text-ink-faint transition-colors hover:text-neon-rose">
                     <IconTrash width={13} height={13} />
@@ -348,17 +360,31 @@ export default function ContentSection() {
                     <div className="flex flex-wrap items-center gap-2">
                       <button onClick={() => downloadMd(item)} className="cursor-pointer rounded-lg border border-line px-3 py-2 text-xs text-ink-dim transition-colors hover:bg-white/[0.06]">↓ Markdown</button>
                       <button onClick={() => copyHtml(item)} className="cursor-pointer rounded-lg border border-line px-3 py-2 text-xs text-ink-dim transition-colors hover:bg-white/[0.06]">⧉ Copy HTML</button>
-                      {wpConfigured ? (
-                        <button
-                          onClick={() => act(item.id, "publish", { status: "draft" })}
-                          disabled={acting === item.id + "publish"}
-                          className="ml-auto flex cursor-pointer items-center gap-2 rounded-lg bg-gradient-to-br from-lime-600 to-neon-lime px-4 py-2 text-xs font-semibold text-black disabled:cursor-not-allowed disabled:opacity-40"
-                        >
-                          <IconCheck width={14} height={14} /> {acting === item.id + "publish" ? "Publishing…" : "Push to WordPress (draft)"}
-                        </button>
+                      {anyTarget ? (
+                        <span className="ml-auto flex flex-wrap items-center gap-2">
+                          {(
+                            [
+                              { id: "wordpress", label: "WordPress", on: targets.wordpress },
+                              { id: "ghost", label: "Ghost", on: targets.ghost },
+                              { id: "webflow", label: "Webflow", on: targets.webflow },
+                            ] as const
+                          )
+                            .filter((t) => t.on)
+                            .map((t) => (
+                              <button
+                                key={t.id}
+                                onClick={() => act(item.id, "publish", { status: "draft", target: t.id })}
+                                disabled={acting === item.id + "publish"}
+                                className="flex cursor-pointer items-center gap-2 rounded-lg bg-gradient-to-br from-lime-600 to-neon-lime px-4 py-2 text-xs font-semibold text-black disabled:cursor-not-allowed disabled:opacity-40"
+                              >
+                                <IconCheck width={14} height={14} />{" "}
+                                {acting === item.id + "publish" ? "Publishing…" : `Push to ${t.label} (draft)`}
+                              </button>
+                            ))}
+                        </span>
                       ) : (
                         <Link href="/settings" className="ml-auto cursor-pointer rounded-lg border border-dashed border-line px-4 py-2 text-xs text-ink-faint transition-colors hover:bg-white/[0.06]">
-                          🔌 Connect WordPress to publish
+                          🔌 Connect WordPress, Ghost, or Webflow to publish
                         </Link>
                       )}
                     </div>
