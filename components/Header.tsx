@@ -58,10 +58,7 @@ export default function Header() {
               opacity: 0.6,
             }}
           />
-          <div
-            className="relative flex h-9 w-9 items-center justify-center rounded-lg border border-line font-mono text-sm font-bold text-neon-cyan"
-            style={{ background: "rgba(14,17,34,0.66)", backdropFilter: "blur(16px)" }}
-          >
+          <div className="relative flex h-9 w-9 items-center justify-center rounded-lg border border-line bg-panel-2/90 font-mono text-sm font-bold text-neon-cyan backdrop-blur">
             MC
           </div>
         </div>
