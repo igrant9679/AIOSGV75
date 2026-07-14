@@ -37,11 +37,38 @@ function dayKey(ts: number): string {
   return `${d.getMonth() + 1}/${d.getDate()}`;
 }
 
-function Bars({ data, accent, format }: { data: { label: string; value: number }[]; accent: Accent; format: (v: number) => string }) {
-  const max = Math.max(...data.map((d) => d.value), 1);
+function Bars({
+  data,
+  accent,
+  format,
+  refValue,
+  refLabel,
+}: {
+  data: { label: string; value: number }[];
+  accent: Accent;
+  format: (v: number) => string;
+  refValue?: number;
+  refLabel?: string;
+}) {
+  const max = Math.max(...data.map((d) => d.value), refValue ?? 0, 1);
   const c = ACCENTS[accent];
   return (
-    <div className="flex h-28 items-end gap-1 px-1">
+    <div className="relative">
+      {refValue !== undefined && refValue > 0 && (
+        <div
+          className="pointer-events-none absolute inset-x-1 z-10"
+          style={{ bottom: `${14 + (refValue / max) * 78}px` }}
+          title={refLabel}
+        >
+          <div className="border-t border-dashed" style={{ borderColor: c.base, opacity: 0.7 }} />
+          {refLabel && (
+            <span className="absolute -top-4 right-0 font-mono text-[8.5px]" style={{ color: c.base }}>
+              {refLabel}
+            </span>
+          )}
+        </div>
+      )}
+      <div className="flex h-28 items-end gap-1 px-1">
       {data.map((d, i) => (
         <div key={i} className="group flex min-w-0 flex-1 flex-col items-center gap-1" title={`${d.label}: ${format(d.value)}`}>
           <span className="hidden font-mono text-[8.5px] text-ink-dim group-hover:block">{format(d.value)}</span>
@@ -56,6 +83,7 @@ function Bars({ data, accent, format }: { data: { label: string; value: number }
           <span className="truncate font-mono text-[8.5px] text-ink-faint">{d.label}</span>
         </div>
       ))}
+      </div>
     </div>
   );
 }
@@ -111,7 +139,16 @@ export default function AnalyticsSection() {
       days.push({ label: key, runs: dayEntries.length, spend: dayEntries.reduce((s, e) => s + (e.costUsd ?? 0), 0) });
     }
 
-    return { spend, spendToday, tokensOut, avgMs, runs: entries.length, agentRows, days };
+    // Month-end projection: month-to-date actuals + last-7-day daily pace for
+    // the remaining days.
+    const nowD = new Date();
+    const monthStart = new Date(nowD.getFullYear(), nowD.getMonth(), 1).getTime();
+    const mtdSpend = entries.filter((e) => e.ts >= monthStart).reduce((s, e) => s + (e.costUsd ?? 0), 0);
+    const avg7 = entries.filter((e) => e.ts > Date.now() - 7 * DAY).reduce((s, e) => s + (e.costUsd ?? 0), 0) / 7;
+    const daysInMonth = new Date(nowD.getFullYear(), nowD.getMonth() + 1, 0).getDate();
+    const projMonthEnd = mtdSpend + avg7 * Math.max(0, daysInMonth - nowD.getDate());
+
+    return { spend, spendToday, tokensOut, avgMs, runs: entries.length, agentRows, days, avg7, projMonthEnd };
   }, [entries]);
 
   const maxAgentRuns = Math.max(...stats.agentRows.map((r) => r.runs), 1);
@@ -152,7 +189,21 @@ export default function AnalyticsSection() {
           ))}
         </div>
 
-        <Panel title="Activity — Last 14 Days" delay={0.1}>
+        <Panel
+          title="Activity — Last 14 Days"
+          right={
+            stats.projMonthEnd > 0 ? (
+              <span
+                className="rounded-full px-2 py-0.5 font-mono text-[10px] font-bold"
+                style={{ background: ACCENTS.amber.soft, color: ACCENTS.amber.base }}
+                title="Month-to-date spend plus the last-7-day daily pace for the remaining days"
+              >
+                MONTH-END ≈ ${stats.projMonthEnd.toFixed(2)}
+              </span>
+            ) : undefined
+          }
+          delay={0.1}
+        >
           <div className="grid gap-4 p-4 md:grid-cols-2">
             <div>
               <p className="panel-title mb-2">Runs / day</p>
@@ -160,7 +211,13 @@ export default function AnalyticsSection() {
             </div>
             <div>
               <p className="panel-title mb-2">Spend / day</p>
-              <Bars data={stats.days.map((d) => ({ label: d.label, value: d.spend }))} accent="amber" format={(v) => `$${v.toFixed(3)}`} />
+              <Bars
+                data={stats.days.map((d) => ({ label: d.label, value: d.spend }))}
+                accent="amber"
+                format={(v) => `$${v.toFixed(3)}`}
+                refValue={stats.avg7}
+                refLabel={`7d pace $${stats.avg7.toFixed(2)}/day`}
+              />
             </div>
           </div>
         </Panel>

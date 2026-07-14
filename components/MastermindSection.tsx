@@ -6,6 +6,7 @@ import { ACCENTS, type Accent } from "@/lib/accents";
 import type { MastermindChat } from "@/lib/mastermind";
 import Panel from "./ui/Panel";
 import StatusOrb from "./ui/StatusOrb";
+import EmptyState from "./ui/EmptyState";
 import Avatar from "./Avatar";
 import Markdown from "./Markdown";
 import MicButton from "./MicButton";
@@ -258,7 +259,7 @@ export default function MastermindSection() {
 
         <Panel title="History" right={<span className="font-mono text-[11px] text-ink-faint">{chats.length}</span>} delay={0.1}>
           <div className="flex max-h-[560px] flex-col gap-1.5 overflow-y-auto p-3">
-            {chats.length === 0 && <p className="py-6 text-center text-xs text-ink-faint">No masterminds yet.</p>}
+            {chats.length === 0 && <EmptyState compact accent="cyan" title="No sessions" hint="Start a room above — every mastermind is archived here." />}
             {chats.map((c) => (
               <div
                 key={c.id}

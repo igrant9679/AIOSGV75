@@ -6,6 +6,7 @@ import { motion } from "framer-motion";
 import { ACCENTS, type Accent } from "@/lib/accents";
 import Panel from "./ui/Panel";
 import StatusOrb from "./ui/StatusOrb";
+import EmptyState from "./ui/EmptyState";
 import { IconStudio, IconSpark, IconTrash, IconMic, IconRocket } from "./icons";
 import { useMission } from "./store";
 
@@ -346,7 +347,7 @@ export default function StudioSection() {
       <Panel title={`${activeTab.label} Gallery`} delay={0.05} right={<span className="font-mono text-[10px] text-ink-faint">{tabItems.length} item{tabItems.length === 1 ? "" : "s"}</span>}>
         <div className="p-5">
           {tabItems.length === 0 ? (
-            <p className="py-8 text-center text-xs text-ink-faint">Nothing here yet — generate your first {tab}.</p>
+            <EmptyState accent="magenta" title="Gallery empty" hint={`Generate your first ${tab} above — outputs are saved to the vault.`} />
           ) : (
             <div className={tab === "voice" ? "flex flex-col gap-3" : "grid grid-cols-2 gap-4 md:grid-cols-3"}>
               {tabItems.map((item) => (

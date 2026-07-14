@@ -87,7 +87,7 @@ export function TypingIndicator({
 }) {
   return (
     <div className="mb-3 flex items-end gap-2.5">
-      <Avatar kind={agent} name={agentName} accent={accent} size={32} />
+      <Avatar kind={agent} name={agentName} accent={accent} size={32} busy />
       <div className="flex items-center gap-1.5 rounded-2xl rounded-bl-md border border-line bg-white/[0.04] px-4 py-3.5">
         {[0, 1, 2].map((i) => (
           <span

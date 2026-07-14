@@ -7,6 +7,7 @@ import type { BoardTask, BoardStatus } from "@/lib/tasks";
 import Panel from "./ui/Panel";
 import NumberTicker from "./ui/NumberTicker";
 import EmptyState from "./ui/EmptyState";
+import { celebrate } from "./ui/Celebration";
 import OrchestratorPanel from "./OrchestratorPanel";
 import { IconPlus, IconTrash } from "./icons";
 import { useMission } from "./store";
@@ -44,6 +45,7 @@ export default function TasksSection() {
   const [schedules, setSchedules] = useState<ScheduleLite[]>([]);
   const [title, setTitle] = useState("");
   const [now, setNow] = useState(() => Date.now());
+  const [dragOver, setDragOver] = useState<BoardStatus | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -88,8 +90,19 @@ export default function TasksSection() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: task.id, status }),
     });
-    if (status === "done") addEvent("TASKS", `Task done: ${task.title.slice(0, 60)}`, "lime");
+    if (status === "done") {
+      addEvent("TASKS", `Task done: ${task.title.slice(0, 60)}`, "lime");
+      celebrate("lime");
+    }
     load();
+  };
+
+  const dropOn = (status: BoardStatus) => (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(null);
+    const id = e.dataTransfer.getData("text/plain");
+    const task = tasks.find((t) => t.id === id);
+    if (task && task.status !== status) move(task, status);
   };
 
   const remove = async (task: BoardTask) => {
@@ -201,20 +214,33 @@ export default function TasksSection() {
               }
               delay={0.1 + i * 0.04}
             >
-              <div className="flex flex-col gap-2 p-3">
+              <div
+                className="flex min-h-24 flex-col gap-2 rounded-b-[inherit] p-3 transition-colors"
+                style={dragOver === lane.status ? { background: lc.soft } : undefined}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  if (dragOver !== lane.status) setDragOver(lane.status);
+                }}
+                onDragLeave={(e) => {
+                  if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOver(null);
+                }}
+                onDrop={dropOn(lane.status)}
+              >
                 {laneTasks.length === 0 && (
                   <EmptyState
                     compact
                     accent={lane.accent}
-                    title="Lane clear"
-                    hint={lane.status === "pending" ? "Add a task above or let the Orchestrator file one." : undefined}
+                    title={dragOver === lane.status ? "Drop it here" : "Lane clear"}
+                    hint={lane.status === "pending" ? "Add a task above, drag one in, or let the Orchestrator file one." : "Drag cards here."}
                   />
                 )}
                 {laneTasks.map((task) => (
-                  <motion.div
+                  <div
                     key={task.id}
-                    whileHover={{ y: -2 }}
-                    className="group rounded-xl border border-line px-3 py-2.5 transition-colors hover:border-line-bright"
+                    draggable
+                    onDragStart={(e) => e.dataTransfer.setData("text/plain", task.id)}
+                    onDragEnd={() => setDragOver(null)}
+                    className="group cursor-grab rounded-xl border border-line px-3 py-2.5 transition-[transform,border-color] hover:-translate-y-0.5 hover:border-line-bright active:cursor-grabbing"
                     style={{
                       borderLeft: `3px solid ${lc.base}`,
                       background: `radial-gradient(140px 60px at 0% 0%, ${lc.soft}, transparent 75%)`,
@@ -254,7 +280,7 @@ export default function TasksSection() {
                         )}
                       </span>
                     </div>
-                  </motion.div>
+                  </div>
                 ))}
               </div>
             </Panel>

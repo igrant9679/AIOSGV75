@@ -7,6 +7,7 @@ import type { EvalCase, EvalRun } from "@/lib/evals";
 import Panel from "./ui/Panel";
 import Avatar, { type AvatarKind } from "./Avatar";
 import StatusOrb from "./ui/StatusOrb";
+import EmptyState from "./ui/EmptyState";
 import { useMission } from "./store";
 import { IconPlus, IconTrash, IconCheck } from "./icons";
 
@@ -159,7 +160,7 @@ export default function EvalsSection() {
 
         <Panel title={latest ? `Latest Run · ${new Date(latest.ts).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false })}${latest.status === "running" ? " · running" : ""}` : "Latest Run"} delay={0.06}>
           <div className="overflow-x-auto p-4">
-            {!latest && <p className="py-6 text-center text-xs text-ink-faint">No runs yet — pick agents and run the suite.</p>}
+            {!latest && <EmptyState accent="violet" title="No report cards" hint="Pick agents and run the suite — scores land here and trend over time." />}
             {latest && (
               <table className="w-full text-left font-mono text-[11px]">
                 <thead>

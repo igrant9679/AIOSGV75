@@ -7,6 +7,7 @@ import type { Build } from "@/lib/builds";
 import Panel from "./ui/Panel";
 import NumberTicker from "./ui/NumberTicker";
 import StatusOrb from "./ui/StatusOrb";
+import EmptyState from "./ui/EmptyState";
 import MicButton from "./MicButton";
 import { IconTrash } from "./icons";
 import { useMission } from "./store";
@@ -161,9 +162,9 @@ export default function BuildsSection() {
       >
         <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-3">
           {builds.length === 0 && (
-            <p className="col-span-full py-10 text-center text-sm text-ink-faint">
-              Nothing on the shelf yet — commission your first build above.
-            </p>
+            <div className="col-span-full">
+              <EmptyState accent="magenta" title="Shelf empty" hint="Commission your first build above — Claude writes it, you play it in-place." />
+            </div>
           )}
           {builds.map((b) => (
             <div key={b.id} className="group rounded-2xl border border-line bg-white/[0.02] p-4 transition-colors hover:border-line-bright">

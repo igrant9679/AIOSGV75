@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import Panel from "./ui/Panel";
+import EmptyState from "./ui/EmptyState";
 import Avatar from "./Avatar";
 import Markdown from "./Markdown";
 import { IconBook, IconSpark, IconPulse } from "./icons";
@@ -256,7 +257,11 @@ export default function ConversationsSection() {
             <div className="flex flex-col gap-2 p-4">
               {data && !data.vaultOk && <p className="py-6 text-center text-xs text-neon-rose">Vault not reachable — conversations live in the synced vault.</p>}
               {data && data.vaultOk && results.length === 0 && (
-                <p className="py-8 text-center text-xs text-ink-faint">{q.trim() ? `No conversations match “${q}”.` : "No conversations yet — chat with an agent and it's saved here."}</p>
+                <EmptyState
+                  accent="cyan"
+                  title={q.trim() ? "No matches" : "No conversations"}
+                  hint={q.trim() ? `Nothing matches “${q}” — try fewer or different words.` : "Chat with any agent and the exchange is saved and searchable here."}
+                />
               )}
               {results.map((r) => {
                 const isOpen = open === r.id;

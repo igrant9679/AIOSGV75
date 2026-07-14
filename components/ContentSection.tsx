@@ -6,6 +6,7 @@ import { motion } from "framer-motion";
 import Panel from "./ui/Panel";
 import Markdown from "./Markdown";
 import StatusOrb from "./ui/StatusOrb";
+import EmptyState from "./ui/EmptyState";
 import { IconRocket, IconTrash, IconCheck, IconSpark, IconStudio } from "./icons";
 import { useMission } from "./store";
 
@@ -237,7 +238,7 @@ export default function ContentSection() {
       {/* list */}
       <Panel title="Articles" delay={0.05} right={<span className="font-mono text-[10px] text-ink-faint">{items.length}</span>}>
         <div className="flex flex-col gap-3 p-5">
-          {items.length === 0 && <p className="py-8 text-center text-xs text-ink-faint">No articles yet — draft your first from a keyword above.</p>}
+          {items.length === 0 && <EmptyState accent="violet" title="No articles drafted" hint="Draft your first from a keyword above — the fleet writes, scores, and files it." />}
           {items.map((item) => {
             const isOpen = open === item.id;
             return (

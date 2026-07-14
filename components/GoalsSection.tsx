@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import Panel from "./ui/Panel";
 import RingDial from "./ui/RingDial";
 import NumberTicker from "./ui/NumberTicker";
+import EmptyState from "./ui/EmptyState";
 import StatusOrb from "./ui/StatusOrb";
 import MicButton, { type MicState } from "./MicButton";
 import { IconPlus, IconCheck, IconTrash } from "./icons";
@@ -142,11 +143,8 @@ export default function GoalsSection() {
         {/* task list */}
         <div className="min-h-80 px-3 py-3">
           {loaded && tasks.length === 0 && (
-            <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
-              <p className="text-sm font-medium text-ink">No goals yet</p>
-              <p className="max-w-xs text-xs leading-5 text-ink-faint">
-                Type or dictate one above — it lands in your Obsidian vault as a checkbox task.
-              </p>
+            <div className="py-8">
+              <EmptyState accent="lime" title="No goals set" hint="Type or dictate one above — it lands in your Obsidian vault as a checkbox task." />
             </div>
           )}
           <ul className="flex flex-col gap-1">

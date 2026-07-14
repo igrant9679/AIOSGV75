@@ -6,6 +6,8 @@ import { ACCENTS, type Accent } from "@/lib/accents";
 import type { Mission } from "@/lib/missions";
 import Panel from "./ui/Panel";
 import StatusOrb from "./ui/StatusOrb";
+import EmptyState from "./ui/EmptyState";
+import { celebrate } from "./ui/Celebration";
 import Avatar, { type AvatarKind } from "./Avatar";
 import Markdown from "./Markdown";
 import MicButton, { type MicState } from "./MicButton";
@@ -122,6 +124,7 @@ export default function ArenaSection() {
       body: JSON.stringify({ winner: winnerId, participants: battle.agentIds, prompt: battle.prompt }),
     });
     addEvent("ARENA", `${byId(winnerId)?.name ?? winnerId} takes the crown 👑`, "amber");
+    celebrate("amber");
     loadStandings();
   };
 
@@ -190,6 +193,39 @@ export default function ArenaSection() {
         </Panel>
 
         {battle && (
+          <div className="panel flex items-center justify-center gap-4 px-5 py-3">
+            {battle.results.map((r, i) => {
+              const c = byId(r.agentId);
+              const col = ACCENTS[c?.accent ?? "cyan"];
+              return (
+                <span key={r.agentId} className="flex items-center gap-4">
+                  {i > 0 && (
+                    <span className="font-display text-lg font-bold tracking-[0.2em] text-neon-rose text-glow-magenta">
+                      VS
+                    </span>
+                  )}
+                  <span className="flex flex-col items-center gap-1">
+                    <span className="relative">
+                      {(r.status === "running" || r.status === "pending") && fighting && (
+                        <span
+                          aria-hidden
+                          className="absolute inset-0 animate-ping rounded-full"
+                          style={{ background: col.soft }}
+                        />
+                      )}
+                      <Avatar kind={c?.kind} name={c?.name ?? r.agentId} accent={c?.accent ?? "cyan"} size={40} busy={fighting && r.status !== "done" && r.status !== "error"} />
+                    </span>
+                    <span className="font-mono text-[10px] font-bold" style={{ color: col.base }}>
+                      {(c?.name ?? r.agentId).toUpperCase()}
+                    </span>
+                  </span>
+                </span>
+              );
+            })}
+          </div>
+        )}
+
+        {battle && (
           <div className={`grid gap-3 ${cols >= 3 ? "lg:grid-cols-3" : cols === 2 ? "lg:grid-cols-2" : ""} ${cols === 4 ? "xl:grid-cols-4" : ""}`}>
             {battle.results.map((r) => {
               const c = byId(r.agentId);
@@ -254,9 +290,44 @@ export default function ArenaSection() {
         <Panel title="Leaderboard" delay={0.05}>
           <div className="flex flex-col gap-2 p-3">
             {standings.length === 0 && (
-              <p className="px-2 py-4 text-center text-[11px] leading-5 text-ink-faint">
-                No battles judged yet. Winners you crown build a ranking of which model earns MoA seats.
-              </p>
+              <EmptyState
+                accent="rose"
+                title="No battles judged"
+                hint="Winners you crown build a ranking of which model earns MoA seats."
+              />
+            )}
+            {standings.length >= 2 && (
+              <div className="flex items-end justify-center gap-2 px-2 pb-3 pt-2" aria-label="podium">
+                {[1, 0, 2]
+                  .filter((rank) => rank < standings.length)
+                  .map((rank) => {
+                    const s = standings[rank];
+                    const c = byId(s.agentId);
+                    const col = ACCENTS[c?.accent ?? "cyan"];
+                    const heights = [88, 64, 48];
+                    const medals = ["#fbbf24", "#a8b0c8", "#d08b4c"];
+                    return (
+                      <div key={s.agentId} className="flex w-16 flex-col items-center gap-1.5">
+                        <Avatar kind={c?.kind} name={c?.name ?? s.agentId} accent={c?.accent ?? "cyan"} size={rank === 0 ? 36 : 28} />
+                        <span className="w-full truncate text-center font-mono text-[9px] font-bold" style={{ color: col.base }}>
+                          {(c?.name ?? s.agentId).toUpperCase()}
+                        </span>
+                        <div
+                          className="flex w-full items-start justify-center rounded-t-lg pt-1.5"
+                          style={{
+                            height: heights[rank],
+                            background: `linear-gradient(180deg, ${col.soft}, transparent)`,
+                            borderTop: `2px solid ${medals[rank]}`,
+                          }}
+                        >
+                          <span className="font-mono text-[11px] font-bold" style={{ color: medals[rank] }}>
+                            {rank + 1}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
             )}
             {standings.map((s, i) => {
               const c = byId(s.agentId);

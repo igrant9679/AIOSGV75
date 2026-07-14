@@ -1,10 +1,19 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import { ACCENTS, type Accent } from "@/lib/accents";
 import Panel from "./ui/Panel";
 import NumberTicker from "./ui/NumberTicker";
 import StatusOrb from "./ui/StatusOrb";
+import RingGauge from "./ui/RingGauge";
+
+const accentVar = (a: Accent): CSSProperties => ({ "--page-accent": ACCENTS[a].base }) as CSSProperties;
+
+const FREQ_MS: Record<"hourly" | "daily" | "weekly", number> = {
+  hourly: 3_600_000,
+  daily: 86_400_000,
+  weekly: 604_800_000,
+};
 
 /** Visual cron calendar over schedules + watchers (create/edit lives on /missions). */
 
@@ -100,59 +109,104 @@ export default function ScheduleSection() {
   return (
     <div className="flex flex-col gap-4">
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <Panel title="Total Jobs">
-          <div className="p-4">
-            <span style={{ color: ACCENTS.cyan.base }}>
-              <NumberTicker value={schedules.length + watchers.length} className="text-3xl font-bold" />
-            </span>
-            <p className="pt-1 font-mono text-[10px] tracking-[0.14em] text-ink-faint">
-              {schedules.length} SCHEDULES · {watchers.length} WATCHERS
-            </p>
-          </div>
-        </Panel>
-        <Panel title="Enabled" delay={0.04}>
-          <div className="p-4">
-            <span style={{ color: ACCENTS.lime.base }}>
-              <NumberTicker value={enabled.length + watchers.filter((w) => w.enabled).length} className="text-3xl font-bold" />
-            </span>
-            <p className="pt-1 font-mono text-[10px] tracking-[0.14em] text-ink-faint">LIVE AUTOMATIONS</p>
-          </div>
-        </Panel>
-        <Panel title="Deliveries" delay={0.08}>
-          <div className="p-4">
-            <span style={{ color: ACCENTS.magenta.base }}>
-              <NumberTicker value={enabled.filter((s) => s.deliver === "telegram").length} className="text-3xl font-bold" />
-            </span>
-            <p className="pt-1 font-mono text-[10px] tracking-[0.14em] text-ink-faint">TO TELEGRAM · REST TO VAULT</p>
-          </div>
-        </Panel>
-        <Panel title="Next Run" delay={0.12}>
-          <div className="p-4">
-            <p className="text-3xl font-bold" style={{ color: ACCENTS.violet.base }}>
-              {next ? rel(next.nextRun, now) : "—"}
-            </p>
-            <p className="truncate pt-1 font-mono text-[10px] tracking-[0.14em] text-ink-faint">
-              {next ? next.title.toUpperCase() : "NOTHING SCHEDULED"}
-            </p>
-          </div>
-        </Panel>
+        <div style={accentVar("cyan")}>
+          <Panel title="Total Jobs">
+            <div className="p-4" style={{ background: `radial-gradient(150px 80px at 100% 0%, ${ACCENTS.cyan.soft}, transparent 70%)` }}>
+              <span style={{ color: ACCENTS.cyan.base }}>
+                <NumberTicker value={schedules.length + watchers.length} className="text-3xl font-bold" />
+              </span>
+              <p className="pt-1 font-mono text-[10px] tracking-[0.14em] text-ink-faint">
+                {schedules.length} SCHEDULES · {watchers.length} WATCHERS
+              </p>
+            </div>
+          </Panel>
+        </div>
+        <div style={accentVar("lime")}>
+          <Panel title="Enabled" delay={0.04}>
+            <div className="p-4" style={{ background: `radial-gradient(150px 80px at 100% 0%, ${ACCENTS.lime.soft}, transparent 70%)` }}>
+              <span style={{ color: ACCENTS.lime.base }}>
+                <NumberTicker value={enabled.length + watchers.filter((w) => w.enabled).length} className="text-3xl font-bold" />
+              </span>
+              <p className="pt-1 font-mono text-[10px] tracking-[0.14em] text-ink-faint">LIVE AUTOMATIONS</p>
+            </div>
+          </Panel>
+        </div>
+        <div style={accentVar("magenta")}>
+          <Panel title="Deliveries" delay={0.08}>
+            <div className="p-4" style={{ background: `radial-gradient(150px 80px at 100% 0%, ${ACCENTS.magenta.soft}, transparent 70%)` }}>
+              <span style={{ color: ACCENTS.magenta.base }}>
+                <NumberTicker value={enabled.filter((s) => s.deliver === "telegram").length} className="text-3xl font-bold" />
+              </span>
+              <p className="pt-1 font-mono text-[10px] tracking-[0.14em] text-ink-faint">TO TELEGRAM · REST TO VAULT</p>
+            </div>
+          </Panel>
+        </div>
+        <div style={accentVar("violet")}>
+          <Panel title="Next Run" delay={0.12}>
+            <div
+              className="flex items-center gap-3 p-4"
+              style={{ background: `radial-gradient(150px 80px at 100% 0%, ${ACCENTS.violet.soft}, transparent 70%)` }}
+            >
+              {next && (
+                <RingGauge
+                  value={FREQ_MS[next.freq] - Math.max(0, next.nextRun - now)}
+                  total={FREQ_MS[next.freq]}
+                  color={ACCENTS.violet.base}
+                  size={56}
+                  label={rel(next.nextRun, now).replace("in ", "")}
+                />
+              )}
+              <div className="min-w-0">
+                <p className="text-2xl font-bold" style={{ color: ACCENTS.violet.base }}>
+                  {next ? rel(next.nextRun, now) : "—"}
+                </p>
+                <p className="truncate pt-1 font-mono text-[10px] tracking-[0.14em] text-ink-faint">
+                  {next ? next.title.toUpperCase() : "NOTHING SCHEDULED"}
+                </p>
+              </div>
+            </div>
+          </Panel>
+        </div>
       </div>
 
       {groups.map((g, gi) => {
         const list = schedules.filter((s) => s.freq === g.key);
         if (list.length === 0) return null;
+        const gc = ACCENTS[FREQ_ACCENT[g.key]];
         return (
-          <Panel key={g.key} title={`${g.label}`} right={<span className="font-mono text-[11px] text-ink-faint">{list.length} JOBS</span>} delay={0.14 + gi * 0.05}>
+          <div key={g.key} style={accentVar(FREQ_ACCENT[g.key])}>
+          <Panel
+            title={`${g.label}`}
+            right={
+              <span className="rounded-full px-2 py-0.5 font-mono text-[10px] font-bold" style={{ background: gc.soft, color: gc.base }}>
+                {list.length} JOBS
+              </span>
+            }
+            delay={0.14 + gi * 0.05}
+          >
             <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-3">
               {list.map((s) => {
                 const c = ACCENTS[FREQ_ACCENT[s.freq]];
+                const elapsed = FREQ_MS[s.freq] - Math.max(0, s.nextRun - now);
                 return (
-                  <div key={s.id} className="rounded-xl border border-line bg-white/[0.02] p-3" style={{ borderLeft: `3px solid ${c.base}` }}>
+                  <div
+                    key={s.id}
+                    className="rounded-xl border border-line p-3 transition-colors hover:border-line-bright"
+                    style={{
+                      borderLeft: `3px solid ${c.base}`,
+                      background: `radial-gradient(150px 70px at 100% 0%, ${c.soft}, transparent 75%)`,
+                    }}
+                  >
                     <div className="flex items-center justify-between">
                       <span className="font-mono text-[11px]" style={{ color: c.base }}>
                         {s.freq === "hourly" ? "*:00" : s.freq === "weekly" ? `${WEEKDAYS[s.weekday ?? 0]} ${s.time}` : s.time}
                       </span>
-                      <StatusOrb accent={s.enabled ? "lime" : "rose"} pulsing={false} size={7} />
+                      <span className="flex items-center gap-2">
+                        {s.enabled && (
+                          <RingGauge value={elapsed} total={FREQ_MS[s.freq]} color={c.base} size={22} label="" />
+                        )}
+                        <StatusOrb accent={s.enabled ? "lime" : "rose"} pulsing={false} size={7} />
+                      </span>
                     </div>
                     <p className="pt-1 text-sm font-semibold text-ink">{s.title}</p>
                     <p className="line-clamp-2 pt-0.5 text-[11px] leading-4 text-ink-faint">{s.prompt}</p>
@@ -182,6 +236,7 @@ export default function ScheduleSection() {
               })}
             </div>
           </Panel>
+          </div>
         );
       })}
 
@@ -207,27 +262,47 @@ export default function ScheduleSection() {
           {Array.from({ length: 7 }, (_, i) => {
             const d = new Date(now + i * 86_400_000);
             const todays = enabled.filter((s) => firesOn(s, i));
+            const dayPct = ((d.getHours() * 60 + d.getMinutes()) / 1440) * 100;
             return (
-              <div key={i} className="flex items-center gap-3">
-                <span className="w-24 shrink-0 font-mono text-[11px] text-ink-faint">
-                  {i === 0 ? "today" : WEEKDAYS[d.getDay()]} <span className="text-ink-dim">{d.getDate()}</span>
-                </span>
-                <span className="flex flex-1 flex-wrap items-center gap-1.5">
-                  {todays.length === 0 && <span className="text-[11px] text-ink-faint">—</span>}
-                  {todays.map((s) => {
-                    const c = ACCENTS[FREQ_ACCENT[s.freq]];
-                    return (
-                      <span
-                        key={s.id}
-                        title={`${s.title} · ${s.freq === "hourly" ? "hourly" : s.time}`}
-                        className="rounded-full px-2 py-0.5 font-mono text-[10px]"
-                        style={{ background: c.soft, color: c.base }}
-                      >
-                        {s.freq === "hourly" ? "24×" : s.time} {s.title.length > 22 ? s.title.slice(0, 22) + "…" : s.title}
-                      </span>
-                    );
-                  })}
-                </span>
+              <div
+                key={i}
+                className={`flex flex-col gap-1 rounded-lg px-2 py-1.5 ${i === 0 ? "border border-line" : ""}`}
+                style={i === 0 ? { background: `radial-gradient(300px 60px at 0% 0%, ${ACCENTS.lime.soft}, transparent 80%)` } : undefined}
+              >
+                <div className="flex items-center gap-3">
+                  <span className="w-24 shrink-0 font-mono text-[11px] text-ink-faint">
+                    {i === 0 ? <span style={{ color: ACCENTS.lime.base }}>today</span> : WEEKDAYS[d.getDay()]}{" "}
+                    <span className="text-ink-dim">{d.getDate()}</span>
+                  </span>
+                  <span className="flex flex-1 flex-wrap items-center gap-1.5">
+                    {todays.length === 0 && <span className="text-[11px] text-ink-faint">—</span>}
+                    {todays.map((s) => {
+                      const c = ACCENTS[FREQ_ACCENT[s.freq]];
+                      return (
+                        <span
+                          key={s.id}
+                          title={`${s.title} · ${s.freq === "hourly" ? "hourly" : s.time}`}
+                          className="rounded-full px-2 py-0.5 font-mono text-[10px]"
+                          style={{ background: c.soft, color: c.base }}
+                        >
+                          {s.freq === "hourly" ? "24×" : s.time} {s.title.length > 22 ? s.title.slice(0, 22) + "…" : s.title}
+                        </span>
+                      );
+                    })}
+                  </span>
+                </div>
+                {i === 0 && (
+                  <div className="relative ml-24 h-1 overflow-hidden rounded-full" style={{ background: "var(--color-line)" }} aria-label="time of day">
+                    <div
+                      className="absolute inset-y-0 left-0 rounded-full"
+                      style={{ width: `${dayPct}%`, background: `linear-gradient(90deg, ${ACCENTS.lime.gradFrom}, ${ACCENTS.lime.base})` }}
+                    />
+                    <div
+                      className="absolute top-1/2 h-2.5 w-2.5 -translate-y-1/2 rounded-full"
+                      style={{ left: `calc(${dayPct}% - 5px)`, background: ACCENTS.lime.base, boxShadow: `0 0 8px ${ACCENTS.lime.glow}` }}
+                    />
+                  </div>
+                )}
               </div>
             );
           })}

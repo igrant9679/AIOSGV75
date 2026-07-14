@@ -28,18 +28,21 @@ function Glyph({ kind, size }: { kind: AvatarKind; size: number }) {
 
 /**
  * Gradient logo avatar. Known kinds get an icon; custom agents pass `name` +
- * `accent` and get a monogram on the same gradient treatment.
+ * `accent` and get a monogram on the same gradient treatment. `busy` adds a
+ * pulsing ring while the agent is streaming a reply.
  */
 export default function Avatar({
   kind,
   name,
   accent,
   size = 34,
+  busy = false,
 }: {
   kind?: AvatarKind;
   name?: string;
   accent?: Accent;
   size?: number;
+  busy?: boolean;
 }) {
   const known = kind ? CONFIG[kind] : undefined;
   const c = ACCENTS[known?.accent ?? accent ?? "cyan"];
@@ -47,8 +50,8 @@ export default function Avatar({
   return (
     <span
       role="img"
-      aria-label={label}
-      className="flex shrink-0 items-center justify-center rounded-full font-display font-bold text-white"
+      aria-label={busy ? `${label} (working)` : label}
+      className="relative flex shrink-0 items-center justify-center rounded-full font-display font-bold text-white"
       style={{
         width: size,
         height: size,
@@ -57,6 +60,13 @@ export default function Avatar({
         boxShadow: `0 2px 10px ${c.glow.replace("0.55", "0.3")}`,
       }}
     >
+      {busy && (
+        <span
+          aria-hidden
+          className="absolute inset-0 animate-ping rounded-full border-2"
+          style={{ borderColor: c.base, opacity: 0.6 }}
+        />
+      )}
       {kind ? <Glyph kind={kind} size={size} /> : (name ?? "?").trim().charAt(0).toUpperCase()}
     </span>
   );

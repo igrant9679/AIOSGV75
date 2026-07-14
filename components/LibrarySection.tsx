@@ -5,6 +5,7 @@ import { ACCENTS } from "@/lib/accents";
 import Panel from "./ui/Panel";
 import NumberTicker from "./ui/NumberTicker";
 import StatusOrb from "./ui/StatusOrb";
+import EmptyState from "./ui/EmptyState";
 import Markdown from "./Markdown";
 import { useMission } from "./store";
 
@@ -131,7 +132,7 @@ export default function LibrarySection() {
               ))}
             </div>
             <div className="flex max-h-[560px] flex-col gap-1.5 overflow-y-auto pr-1">
-              {visible.length === 0 && <p className="py-6 text-center text-xs text-ink-faint">No documents.</p>}
+              {visible.length === 0 && <EmptyState compact accent="violet" title="No documents" hint="Agent output lands here as the OS writes to the vault." />}
               {visible.map((n) => (
                 <button
                   key={n.path}

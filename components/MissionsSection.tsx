@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { ACCENTS, type Accent } from "@/lib/accents";
 import type { Mission, MissionStrategy } from "@/lib/missions";
@@ -8,6 +8,9 @@ import type { Schedule, Frequency, Delivery } from "@/lib/schedules";
 import Panel from "./ui/Panel";
 import StatusOrb from "./ui/StatusOrb";
 import NumberTicker from "./ui/NumberTicker";
+import GlowTile from "./ui/GlowTile";
+import EmptyState from "./ui/EmptyState";
+import { celebrate } from "./ui/Celebration";
 import Avatar, { type AvatarKind } from "./Avatar";
 import Markdown from "./Markdown";
 import MicButton, { type MicState } from "./MicButton";
@@ -96,10 +99,18 @@ export default function MissionsSection() {
     if (fallback) setSynthesizer(fallback.id);
   }, [candidates, registry.llms, synthesizer]);
 
+  // Fire a celebration when a mission we saw running lands as done.
+  const prevStatuses = useRef<Map<string, string>>(new Map());
   const poll = useCallback(async () => {
     try {
       const res = await fetch("/api/missions");
-      if (res.ok) setMissions(((await res.json()) as { missions: Mission[] }).missions ?? []);
+      if (!res.ok) return;
+      const list = ((await res.json()) as { missions: Mission[] }).missions ?? [];
+      for (const m of list) {
+        if (prevStatuses.current.get(m.id) === "running" && m.status === "done") celebrate("cyan");
+      }
+      prevStatuses.current = new Map(list.map((m) => [m.id, m.status]));
+      setMissions(list);
     } catch {
       /* server restarting */
     }
@@ -369,9 +380,7 @@ export default function MissionsSection() {
         <Panel title="Mission Log" delay={0.05}>
           <div className="flex flex-col gap-2 p-4">
             {missions.length === 0 && (
-              <p className="py-8 text-center text-xs text-ink-faint">
-                No missions yet. Pick 2+ agents, describe a task, and launch.
-              </p>
+              <EmptyState accent="cyan" title="No missions flown" hint="Pick 2+ agents, describe a task, and launch." />
             )}
             <AnimatePresence initial={false}>
               {missions.map((m) => {
@@ -382,7 +391,7 @@ export default function MissionsSection() {
                     layout
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="overflow-hidden rounded-xl border border-line bg-white/[0.02]"
+                    className={`overflow-hidden rounded-xl border border-line bg-white/[0.02] ${m.status === "running" ? "mission-running" : ""}`}
                   >
                     <button
                       onClick={() => setExpanded(open ? null : m.id)}
@@ -403,7 +412,7 @@ export default function MissionsSection() {
                           const c = candidateById(r.agentId);
                           return (
                             <span key={r.agentId} title={`${r.agentId}: ${r.status}`} className="relative">
-                              <Avatar kind={c?.kind} name={c?.name ?? r.agentId} accent={c?.accent ?? "cyan"} size={24} />
+                              <Avatar kind={c?.kind} name={c?.name ?? r.agentId} accent={c?.accent ?? "cyan"} size={24} busy={r.status === "running"} />
                               <span
                                 className="absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full border border-void"
                                 style={{ background: ACCENTS[statusAccent(r.status)].base }}
@@ -413,6 +422,34 @@ export default function MissionsSection() {
                         })}
                       </div>
                     </button>
+
+                    {/* stage rail — one segment per agent, plus synthesis */}
+                    <div className="flex items-center gap-1 px-4 pb-2.5" aria-label="mission progress">
+                      {m.results.map((r) => (
+                        <span
+                          key={r.agentId}
+                          title={`${candidateById(r.agentId)?.name ?? r.agentId}: ${r.status}`}
+                          className={`h-1 flex-1 rounded-full ${r.status === "running" ? "animate-pulse" : ""}`}
+                          style={{
+                            background: r.status === "pending" ? "var(--color-line)" : ACCENTS[statusAccent(r.status)].base,
+                            opacity: r.status === "pending" ? 0.7 : 0.9,
+                          }}
+                        />
+                      ))}
+                      {m.strategy !== "single" && (
+                        <span
+                          title={`synthesis: ${m.synthesis ? "done" : m.synthesisError ? "error" : m.status === "running" ? "waiting" : "pending"}`}
+                          className={`h-1 w-8 shrink-0 rounded-full ${m.status === "running" && !m.synthesis ? "animate-pulse" : ""}`}
+                          style={{
+                            background: m.synthesis
+                              ? ACCENTS.violet.base
+                              : m.synthesisError
+                                ? ACCENTS.rose.base
+                                : "var(--color-line)",
+                          }}
+                        />
+                      )}
+                    </div>
 
                     {open && (
                       <div className="flex flex-col gap-3 border-t border-line px-4 py-3">
@@ -473,29 +510,21 @@ export default function MissionsSection() {
 
       <div className="flex flex-col gap-4">
         <Panel title="Fleet Status" delay={0.05}>
-          <div className="grid grid-cols-2 gap-4 p-4">
-            <div>
-              <p className="panel-title">Missions Flown</p>
-              <p className="font-mono text-xl font-bold text-neon-cyan">
-                <NumberTicker value={doneCount} />
-              </p>
-            </div>
-            <div>
-              <p className="panel-title">Agents Ready</p>
-              <p className="font-mono text-xl font-bold text-neon-lime">
-                <NumberTicker value={candidates.filter((c) => c.online).length} />
-              </p>
-            </div>
+          <div className="grid grid-cols-2 gap-3 p-4">
+            <GlowTile accent="cyan" label="Missions Flown" value={<NumberTicker value={doneCount} />} />
+            <GlowTile accent="lime" label="Agents Ready" value={<NumberTicker value={candidates.filter((c) => c.online).length} />} />
           </div>
         </Panel>
 
         <Panel title="Schedules" delay={0.08}>
           <div className="flex flex-col gap-2 p-3">
             {schedules.length === 0 && (
-              <p className="px-2 py-4 text-center text-[11px] leading-5 text-ink-faint">
-                None yet. Switch the launcher to &ldquo;On a schedule&rdquo; to run a mission hourly, daily, or weekly —
-                with results sent to your Telegram.
-              </p>
+              <EmptyState
+                compact
+                accent="lime"
+                title="No schedules"
+                hint='Switch the launcher to "On a schedule" to run missions hourly, daily, or weekly.'
+              />
             )}
             {schedules.map((s) => (
               <div key={s.id} className="rounded-xl border border-line bg-white/[0.02] p-3">

@@ -3,6 +3,7 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { ACCENTS } from "@/lib/accents";
 import Panel from "./ui/Panel";
+import EmptyState from "./ui/EmptyState";
 import { useMission } from "./store";
 
 export default function EventFeed({ className = "", delay = 0 }: { className?: string; delay?: number }) {
@@ -11,11 +12,7 @@ export default function EventFeed({ className = "", delay = 0 }: { className?: s
   return (
     <Panel title="Event Stream" className={className} delay={delay}>
       <div className="scanlines relative max-h-72 overflow-y-auto p-3">
-        {events.length === 0 && (
-          <p className="px-2 py-6 text-center font-mono text-xs text-ink-faint">
-            Awaiting first telemetry pulse…
-          </p>
-        )}
+        {events.length === 0 && <EmptyState accent="cyan" title="Awaiting telemetry" hint="Events stream in as agents, missions, and schedules act." />}
         <ul className="flex flex-col gap-1.5">
           <AnimatePresence initial={false}>
             {events.map((e) => {
