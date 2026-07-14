@@ -255,18 +255,29 @@ export default function HermesLabSection() {
               terminal, then it appears below.
             </p>
             {dashUp === false ? (
-              <div className="flex flex-col items-center gap-3 rounded-xl border border-line bg-white/[0.02] p-8 text-center">
-                <p className="text-sm text-ink-dim">Dashboard not running.</p>
-                <motion.button
-                  whileTap={{ scale: 0.96 }}
-                  onClick={startDashboard}
-                  disabled={startingDash}
-                  className="flex cursor-pointer items-center gap-2 rounded-lg bg-gradient-to-br from-amber-600 to-neon-amber px-4 py-2 text-sm font-semibold text-black disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  <IconRocket width={15} height={15} /> {startingDash ? "Starting…" : "Start dashboard"}
-                </motion.button>
-                <p className="font-mono text-[11px] text-ink-faint">or run <span className="text-neon-amber">hermes dashboard</span> in a terminal (port 9119) — it also auto-starts on boot now.</p>
-              </div>
+              hermes?.available ? (
+                <div className="flex flex-col items-center gap-3 rounded-xl border border-line bg-white/[0.02] p-8 text-center">
+                  <p className="text-sm text-ink-dim">Dashboard not running.</p>
+                  <motion.button
+                    whileTap={{ scale: 0.96 }}
+                    onClick={startDashboard}
+                    disabled={startingDash}
+                    className="flex cursor-pointer items-center gap-2 rounded-lg bg-gradient-to-br from-amber-600 to-neon-amber px-4 py-2 text-sm font-semibold text-black disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    <IconRocket width={15} height={15} /> {startingDash ? "Starting…" : "Start dashboard"}
+                  </motion.button>
+                  <p className="font-mono text-[11px] text-ink-faint">or run <span className="text-neon-amber">hermes dashboard --skip-build --no-open</span> in a terminal (port 9119) — it also auto-starts on boot now.</p>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center gap-3 rounded-xl border border-line bg-white/[0.02] p-8 text-center">
+                  <p className="text-sm text-ink-dim">Hermes isn&apos;t installed on this machine.</p>
+                  <p className="max-w-lg font-mono text-[11px] leading-5 text-ink-faint">
+                    The Control Room runs wherever Hermes is installed. To use it here, install the Nous Hermes Agent on this
+                    machine and set <span className="text-neon-amber">HERMES_BIN</span> in <span className="text-neon-amber">.env.local</span> —
+                    then it starts here automatically. (This is about what&apos;s installed, not the machine&apos;s group role.)
+                  </p>
+                </div>
+              )
             ) : (
               <iframe
                 src={DASHBOARD_URL}

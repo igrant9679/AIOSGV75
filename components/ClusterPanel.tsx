@@ -221,8 +221,9 @@ export default function ClusterPanel() {
               </div>
             ))}
             <p className="pt-1 text-[11px] leading-4 text-ink-faint">
-              Note: machine-specific tools only work where they&apos;re installed — a backup taking over runs schedules and
-              watchers, but Telegram delivery (OpenClaw) and Hermes only run on machines that have them.
+              Note: a backup that takes over runs the schedules, watchers, and automations. With every component installed
+              on each machine it can also run Hermes and deliver via Telegram — just keep only ONE Telegram gateway
+              (OpenClaw) polling the bot at a time, since two conflict.
             </p>
           </div>
         )}

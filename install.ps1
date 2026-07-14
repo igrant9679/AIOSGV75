@@ -150,7 +150,7 @@ else {
     "EMBED_BASE_URL=http://localhost:11434/v1",
     "EMBED_MODEL=nomic-embed-text",
     "",
-    "# Desktop-only companions - uncomment on the machine that has them:",
+    "# Companion agents - uncomment each once you've installed it on this machine:",
     "# OPENCLAW_CMD=openclaw agent --agent main --message {input}",
     "# HERMES_BIN=C:\Users\<you>\AppData\Local\hermes\hermes-agent\venv\Scripts\hermes.exe",
     "# HERMES_CMD=C:\Users\<you>\AppData\Local\hermes\hermes-agent\venv\Scripts\hermes.exe -z {input}"
