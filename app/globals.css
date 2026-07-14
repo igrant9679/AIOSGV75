@@ -193,6 +193,35 @@ body {
   text-shadow: 0 0 18px rgba(251, 191, 36, 0.55);
 }
 
+/* ---- logo emblem + wordmark ---- */
+.logo-title {
+  background: linear-gradient(100deg, var(--ac-cyan) 0%, var(--ac-violet) 28%, var(--ac-magenta) 55%, var(--ac-cyan) 100%);
+  background-size: 300% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: logo-shimmer 9s linear infinite;
+}
+.logo-orbit {
+  animation: radar-sweep 18s linear infinite;
+  transform-origin: center;
+}
+.logo-orbit-rev {
+  animation: radar-sweep 11s linear infinite reverse;
+  transform-origin: center;
+}
+.logo-core {
+  animation: core-pulse 2.6s ease-in-out infinite;
+}
+@keyframes logo-shimmer {
+  from { background-position: 0% 50%; }
+  to { background-position: 300% 50%; }
+}
+@keyframes core-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
 /* ---- keyframes ---- */
 @keyframes radar-sweep {
   from { transform: rotate(0deg); }

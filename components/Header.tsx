@@ -49,22 +49,68 @@ export default function Header() {
       className="panel flex items-center justify-between gap-4 overflow-hidden px-5 py-3"
     >
       <div className="flex items-center gap-3">
-        <div className="relative h-9 w-9">
+        {/* Orbital command emblem: gradient ring + counter-rotating orbit carrying
+            satellites (the fleet) around a pulsing core (the deck). */}
+        <div className="relative h-10 w-10">
           <div
-            className="absolute inset-0 rounded-lg"
+            className="absolute inset-0 rounded-full"
             style={{
-              background: "conic-gradient(from 180deg, #22d3ee, #e879f9, #a78bfa, #22d3ee)",
-              filter: "blur(10px)",
-              opacity: 0.6,
+              background:
+                "conic-gradient(from 180deg, var(--ac-cyan), var(--ac-magenta), var(--ac-violet), var(--ac-cyan))",
+              filter: "blur(12px)",
+              opacity: 0.5,
             }}
           />
-          <div className="relative flex h-9 w-9 items-center justify-center rounded-lg border border-line bg-panel-2/90 font-mono text-sm font-bold text-neon-cyan backdrop-blur">
-            MC
-          </div>
+          <svg viewBox="0 0 40 40" className="relative h-10 w-10" aria-hidden>
+            <defs>
+              <linearGradient id="mc-emblem" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" style={{ stopColor: "var(--ac-cyan)" }} />
+                <stop offset="50%" style={{ stopColor: "var(--ac-violet)" }} />
+                <stop offset="100%" style={{ stopColor: "var(--ac-magenta)" }} />
+              </linearGradient>
+            </defs>
+            <g className="logo-orbit">
+              <circle
+                cx="20"
+                cy="20"
+                r="17"
+                fill="none"
+                stroke="url(#mc-emblem)"
+                strokeWidth="1.6"
+                strokeLinecap="round"
+                strokeDasharray="80 27"
+              />
+              <circle cx="20" cy="3" r="2" style={{ fill: "var(--ac-cyan)" }} />
+            </g>
+            <g className="logo-orbit-rev">
+              <circle
+                cx="20"
+                cy="20"
+                r="12"
+                fill="none"
+                strokeWidth="1"
+                strokeDasharray="3 5"
+                opacity="0.7"
+                style={{ stroke: "var(--ac-violet)" }}
+              />
+              <circle cx="32" cy="20" r="1.6" style={{ fill: "var(--ac-magenta)" }} />
+              <circle cx="8" cy="20" r="1.2" style={{ fill: "var(--ac-lime)" }} />
+            </g>
+            <circle
+              cx="20"
+              cy="20"
+              r="7.5"
+              fill="none"
+              strokeWidth="0.8"
+              opacity="0.5"
+              style={{ stroke: "var(--ac-cyan)" }}
+            />
+            <circle cx="20" cy="20" r="4.5" fill="url(#mc-emblem)" className="logo-core" />
+          </svg>
         </div>
         <div>
-          <h1 className="font-display text-lg font-bold tracking-[0.18em] text-ink">
-            MISSION<span className="text-neon-cyan text-glow-cyan">CONTROL</span>
+          <h1 className="font-display text-lg font-bold tracking-[0.18em]">
+            <span className="logo-title">MISSIONCONTROL</span>
           </h1>
           <p className="font-mono text-[10px] tracking-[0.28em] text-ink-faint">
             LOCAL AI OPERATIONS DECK

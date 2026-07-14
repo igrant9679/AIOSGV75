@@ -25,7 +25,18 @@ export default function Panel({
     >
       {(title || right) && (
         <header className="flex items-center justify-between gap-3 border-b border-line px-5 py-3">
-          {title ? <h2 className="panel-title">{title}</h2> : <span />}
+          {title ? (
+            <h2 className="panel-title flex items-center gap-2">
+              <span
+                aria-hidden
+                className="h-3 w-[3px] shrink-0 rounded-full"
+                style={{ background: "var(--page-accent, var(--ac-cyan))" }}
+              />
+              {title}
+            </h2>
+          ) : (
+            <span />
+          )}
           {right}
         </header>
       )}

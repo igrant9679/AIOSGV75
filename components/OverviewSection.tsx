@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { motion } from "framer-motion";
-import { ACCENTS } from "@/lib/accents";
+import { ACCENTS, type Accent } from "@/lib/accents";
 import Panel from "./ui/Panel";
 import DeepSpaceScan from "./DeepSpaceScan";
 import StatusOrb from "./ui/StatusOrb";
@@ -25,6 +25,51 @@ function agoShort(ts: number): string {
   if (s < 3600) return `${Math.floor(s / 60)}m`;
   if (s < 86400) return `${Math.floor(s / 3600)}h`;
   return `${Math.floor(s / 86400)}d`;
+}
+
+/** Stat tile with a soft accent glow bleeding in from the top-right corner. */
+function GlowTile({ accent, label, value, children }: { accent: Accent; label: string; value: ReactNode; children?: ReactNode }) {
+  const c = ACCENTS[accent];
+  return (
+    <div
+      className="relative overflow-hidden rounded-xl border border-line p-3"
+      style={{ background: `radial-gradient(130px 80px at 100% 0%, ${c.soft}, transparent 70%)` }}
+    >
+      <p className="panel-title">{label}</p>
+      <p className="mt-1 font-mono text-2xl font-bold" style={{ color: c.base }}>
+        {value}
+      </p>
+      {children && <div className="mt-2 flex h-4 items-center">{children}</div>}
+    </div>
+  );
+}
+
+/** Circular gauge — fill fraction of responders that are up. */
+function RingGauge({ value, total, color }: { value: number; total: number; color: string }) {
+  const pct = total > 0 ? value / total : 1;
+  const r = 24;
+  const circ = 2 * Math.PI * r;
+  return (
+    <div className="relative h-16 w-16 shrink-0">
+      <svg viewBox="0 0 60 60" className="h-16 w-16 -rotate-90">
+        <circle cx="30" cy="30" r={r} fill="none" stroke="var(--color-line)" strokeWidth="5" />
+        <circle
+          cx="30"
+          cy="30"
+          r={r}
+          fill="none"
+          strokeWidth="5"
+          strokeLinecap="round"
+          strokeDasharray={circ}
+          strokeDashoffset={circ * (1 - pct)}
+          style={{ stroke: color, transition: "stroke-dashoffset 0.7s ease" }}
+        />
+      </svg>
+      <span className="absolute inset-0 flex items-center justify-center font-mono text-[11px] font-bold" style={{ color }}>
+        {Math.round(pct * 100)}%
+      </span>
+    </div>
+  );
 }
 
 export default function OverviewSection() {
@@ -104,6 +149,19 @@ export default function OverviewSection() {
   const readyLlms = registry.llms.filter((l) => l.hasKey).length;
   const respondersUp = fleet.filter((f) => f.online).length + readyLlms;
   const respondersTotal = fleet.length + registry.llms.length;
+  const integrityAccent =
+    respondersTotal > 0 && respondersUp === respondersTotal
+      ? ACCENTS.lime
+      : respondersUp >= respondersTotal / 2
+        ? ACCENTS.amber
+        : ACCENTS.rose;
+
+  // Today's runs in 2-hour windows → the Ops Pulse sparkline.
+  const hourBuckets = Array.from({ length: 12 }, () => 0);
+  for (const e of todayRuns) {
+    hourBuckets[Math.min(11, Math.floor((e.ts - todayStart) / 7_200_000))]++;
+  }
+  const maxBucket = Math.max(1, ...hourBuckets);
 
   return (
     <div className="grid gap-4 xl:grid-cols-3">
@@ -192,60 +250,77 @@ export default function OverviewSection() {
         <AttentionPanel delay={0.06} />
 
         <Panel title="Ops Pulse" delay={0.08}>
-          <div className="grid grid-cols-2 gap-4 p-4">
-            <div>
-              <p className="panel-title">Queue</p>
-              <p className="font-mono text-xl font-bold text-neon-cyan">
-                <NumberTicker value={queue} />
-              </p>
-            </div>
-            <div>
-              <p className="panel-title">Today</p>
-              <p className="font-mono text-xl font-bold text-neon-lime">
-                <NumberTicker value={todayRuns.length} />
-              </p>
-            </div>
-            <div>
-              <p className="panel-title">Errors · Today</p>
-              <p className="font-mono text-xl font-bold" style={{ color: todayErrors > 0 ? ACCENTS.rose.base : ACCENTS.lime.base }}>
-                <NumberTicker value={todayErrors} />
-              </p>
-            </div>
-            <div>
-              <p className="panel-title">Integrity</p>
-              <p className="font-mono text-xl font-bold text-neon-violet">
-                {respondersUp} <span className="text-ink-faint">of</span> {respondersTotal}
-              </p>
+          <div className="grid grid-cols-2 gap-3 p-4">
+            <GlowTile accent="cyan" label="Queue" value={<NumberTicker value={queue} />}>
+              {queue > 0 ? (
+                <span className="flex items-center gap-1.5">
+                  {Array.from({ length: Math.min(queue, 5) }).map((_, i) => (
+                    <span
+                      key={i}
+                      className="h-2 w-2 animate-pulse rounded-full"
+                      style={{ background: ACCENTS.cyan.base, animationDelay: `${i * 160}ms` }}
+                    />
+                  ))}
+                  <span className="font-mono text-[10px] text-ink-faint">live</span>
+                </span>
+              ) : (
+                <span className="font-mono text-[10px] text-ink-faint">idle</span>
+              )}
+            </GlowTile>
+
+            <GlowTile accent="lime" label="Runs · Today" value={<NumberTicker value={todayRuns.length} />}>
+              <span className="flex items-end gap-[3px]" aria-label="today's runs by 2-hour window">
+                {hourBuckets.map((n, i) => (
+                  <span
+                    key={i}
+                    title={`${n} runs`}
+                    className="w-[5px] rounded-t-sm"
+                    style={{
+                      height: n === 0 ? 2 : 4 + Math.round((n / maxBucket) * 12),
+                      background: n > 0 ? ACCENTS.lime.base : "var(--color-line)",
+                      opacity: n > 0 ? 0.5 + 0.5 * (n / maxBucket) : 0.8,
+                    }}
+                  />
+                ))}
+              </span>
+            </GlowTile>
+
+            <GlowTile
+              accent={todayErrors > 0 ? "rose" : "lime"}
+              label="Errors · Today"
+              value={<NumberTicker value={todayErrors} />}
+            >
+              <span className="font-mono text-[10px] text-ink-faint">
+                {todayErrors > 0
+                  ? `${Math.round((todayErrors / Math.max(1, todayRuns.length)) * 100)}% of today's runs`
+                  : "clean sheet"}
+              </span>
+            </GlowTile>
+
+            <div
+              className="relative flex items-center gap-3 overflow-hidden rounded-xl border border-line p-3"
+              style={{ background: `radial-gradient(130px 80px at 100% 0%, ${integrityAccent.soft}, transparent 70%)` }}
+            >
+              <RingGauge value={respondersUp} total={respondersTotal} color={integrityAccent.base} />
+              <div className="min-w-0">
+                <p className="panel-title">Integrity</p>
+                <p className="mt-1 font-mono text-lg font-bold" style={{ color: integrityAccent.base }}>
+                  {respondersUp}
+                  <span className="text-ink-faint">/</span>
+                  {respondersTotal}
+                </p>
+                <p className="font-mono text-[10px] text-ink-faint">responders up</p>
+              </div>
             </div>
           </div>
         </Panel>
 
         <Panel title="Claude Mission Totals" delay={0.16}>
-          <div className="grid grid-cols-2 gap-4 p-4">
-            <div>
-              <p className="panel-title">Missions</p>
-              <p className="font-mono text-xl font-bold text-neon-cyan">
-                <NumberTicker value={claudeStats.runs} />
-              </p>
-            </div>
-            <div>
-              <p className="panel-title">Spend</p>
-              <p className="font-mono text-xl font-bold text-neon-amber">
-                <NumberTicker value={claudeStats.totalCostUsd} decimals={3} prefix="$" />
-              </p>
-            </div>
-            <div>
-              <p className="panel-title">Tokens Out</p>
-              <p className="font-mono text-xl font-bold text-neon-magenta">
-                <NumberTicker value={claudeStats.outputTokens} />
-              </p>
-            </div>
-            <div>
-              <p className="panel-title">Turns</p>
-              <p className="font-mono text-xl font-bold text-neon-lime">
-                <NumberTicker value={claudeStats.turns} />
-              </p>
-            </div>
+          <div className="grid grid-cols-2 gap-3 p-4">
+            <GlowTile accent="cyan" label="Missions" value={<NumberTicker value={claudeStats.runs} />} />
+            <GlowTile accent="amber" label="Spend" value={<NumberTicker value={claudeStats.totalCostUsd} decimals={3} prefix="$" />} />
+            <GlowTile accent="magenta" label="Tokens Out" value={<NumberTicker value={claudeStats.outputTokens} />} />
+            <GlowTile accent="lime" label="Turns" value={<NumberTicker value={claudeStats.turns} />} />
           </div>
         </Panel>
       </div>

@@ -6,6 +6,7 @@ import { ACCENTS, type Accent } from "@/lib/accents";
 import type { AttentionItem } from "@/lib/attention";
 import Panel from "./ui/Panel";
 import StatusOrb from "./ui/StatusOrb";
+import { IconCheck } from "./icons";
 
 const KIND_META: Record<AttentionItem["kind"], { accent: Accent; href: string }> = {
   approval: { accent: "amber", href: "/" }, // resolved from the global ApprovalsBar
@@ -57,9 +58,21 @@ export default function AttentionPanel({ delay = 0 }: { delay?: number }) {
     >
       <div className="flex flex-col gap-2 p-4">
         {items.length === 0 && (
-          <p className="flex items-center gap-2 py-2 text-xs text-ink-faint">
-            <StatusOrb accent="lime" pulsing={false} size={7} /> All clear — nothing is blocked on you.
-          </p>
+          <div className="flex flex-col items-center gap-2 py-5">
+            <div className="relative flex h-14 w-14 items-center justify-center">
+              <span aria-hidden className="absolute inset-0 rounded-full" style={{ background: ACCENTS.lime.soft }} />
+              <span
+                aria-hidden
+                className="absolute inset-0 rounded-full border"
+                style={{ borderColor: ACCENTS.lime.border, animation: "pulse-ring 2.8s ease-out infinite" }}
+              />
+              <IconCheck width={22} height={22} style={{ color: ACCENTS.lime.base }} />
+            </div>
+            <p className="font-mono text-[11px] font-bold tracking-[0.22em]" style={{ color: ACCENTS.lime.base }}>
+              ALL SYSTEMS NOMINAL
+            </p>
+            <p className="text-[11px] text-ink-faint">Nothing is blocked on you.</p>
+          </div>
         )}
         {items.slice(0, 8).map((item) => {
           const meta = KIND_META[item.kind];
@@ -68,11 +81,17 @@ export default function AttentionPanel({ delay = 0 }: { delay?: number }) {
             <Link
               key={`${item.kind}-${item.id}`}
               href={meta.href}
-              className="block rounded-xl border border-line bg-white/[0.02] px-3 py-2 transition-colors hover:border-line-bright"
-              style={{ borderLeft: `3px solid ${c.base}` }}
+              className="block rounded-xl border border-line px-3 py-2 transition-colors hover:border-line-bright"
+              style={{
+                borderLeft: `3px solid ${c.base}`,
+                background: `radial-gradient(140px 60px at 0% 50%, ${c.soft}, transparent 75%)`,
+              }}
             >
               <span className="flex items-center justify-between gap-2">
-                <span className="truncate text-xs font-semibold text-ink">{item.label}</span>
+                <span className="flex min-w-0 items-center gap-2">
+                  <StatusOrb accent={meta.accent} size={7} />
+                  <span className="truncate text-xs font-semibold text-ink">{item.label}</span>
+                </span>
                 <span className="shrink-0 font-mono text-[10px]" style={{ color: c.base }}>
                   {ago(item.ts)}
                 </span>
