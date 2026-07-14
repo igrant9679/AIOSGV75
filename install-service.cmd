@@ -1,0 +1,56 @@
+@echo off
+setlocal
+title Mission Control - Install Auto-Start
+
+rem ---------------------------------------------------------------------------
+rem  Sets Mission Control to start automatically at login and run HIDDEN, so it
+rem  keeps running after you close any terminal. Portable: it points at whatever
+rem  folder this script lives in, so it works for any user / clone location.
+rem  Re-run any time to repair or re-point the auto-start.
+rem ---------------------------------------------------------------------------
+
+rem Repo = the folder this script is in (strip trailing backslash)
+set "REPO=%~dp0"
+if "%REPO:~-1%"=="\" set "REPO=%REPO:~0,-1%"
+
+set "STARTUP=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup"
+set "VBS=%STARTUP%\Mission Control Server.vbs"
+
+echo Installing auto-start...
+echo   app folder: %REPO%
+echo   launcher:   %VBS%
+echo.
+
+if not exist "%REPO%\server.cmd" (
+  echo ERROR: server.cmd not found next to this script. Run this from inside the
+  echo        mission-control folder.
+  pause
+  exit /b 1
+)
+
+rem Write a tiny launcher that runs server.cmd with window style 0 (hidden) and
+rem does not wait. That hidden, detached launch is why it survives closing any
+rem window; putting it in the Startup folder is why it runs at every login.
+> "%VBS%" echo Set sh = CreateObject("WScript.Shell")
+>> "%VBS%" echo sh.Run """%REPO%\server.cmd""", 0, False
+
+if not exist "%VBS%" (
+  echo ERROR: could not write the startup launcher - check permissions.
+  pause
+  exit /b 1
+)
+
+echo Auto-start installed. Launching now (hidden)...
+wscript.exe "%VBS%"
+
+echo.
+echo Done:
+echo   - Starts automatically at every login.
+echo   - Runs hidden, so closing a terminal will not stop it.
+echo   - Open it at http://127.0.0.1:3000  (or the Mission Control shortcut).
+echo   - Stop it any time with stop.cmd.
+echo.
+echo If a copy is already running in a terminal window, close that window and
+echo either run this again or just reboot once for a clean hidden start.
+echo.
+pause

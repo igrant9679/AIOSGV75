@@ -478,6 +478,8 @@ End a work session by telling any agent: "Remember: <the three facts worth keepi
 
 **Updating another computer to the latest version** — double-click **\`update.cmd\`** in the repo on that machine (\`git pull\` → \`npm install\` → \`npm run build\` → restart). Then re-enter that machine's per-machine secrets in Settings (Studio API keys, WordPress connection) — they never sync.
 
+**Server won't auto-start, or dies when I close the terminal** — it was only ever started by hand in a terminal (closing the window kills the child process). Fix: run **\`install-service.cmd\`** in the repo once. It installs a hidden launcher into your Startup folder so the server runs detached (no window to close) and starts at every login. Stop it with \`stop.cmd\`.
+
 **Claude fails with 401** — the CLI login expired. Run \`claude\` in a terminal and \`/login\` once.
 
 **API LLM errors** — 401 bad key · 402 no credit (top up with the provider) · a model failing repeatedly is skipped by Auto until it succeeds again.

@@ -328,18 +328,28 @@ Open http://127.0.0.1:3000. On first boot the app scaffolds
 
 ### 4e. Auto-start at login
 
-`server.cmd` starts the prod server safely (skips if port 3000 is taken,
-binds 127.0.0.1). Run it hidden at login: `Win+R` → `shell:startup` → create
-`Mission Control Server.vbs`:
+**Easiest — run the installer:** double-click **`install-service.cmd`** in the
+repo. It writes a hidden-launcher `Mission Control Server.vbs` into *this
+user's* Startup folder (pointing at this clone's `server.cmd`) and starts the
+server immediately. Re-run any time to repair it. This is the fix if the server
+"doesn't auto-start" or "dies when I close the PowerShell window" — that happens
+when the server was only ever started by hand in a terminal (closing the window
+kills it); the VBS runs it hidden and detached so neither happens.
+
+<details><summary>What it does by hand</summary>
+
+`server.cmd` starts the prod server safely (skips if port 3000 is taken, binds
+127.0.0.1). To run it hidden at login manually: `Win+R` → `shell:startup` →
+create `Mission Control Server.vbs`:
 
 ```vb
 Set sh = CreateObject("WScript.Shell")
 sh.Run """C:\Users\<you>\Documents\mission-control\server.cmd""", 0, False
 ```
 
-Test it without rebooting: Ctrl+C the manually-started server, double-click
-the VBS, wait ~15 seconds, reload the dashboard. (Watch that the file didn't
-save as `.vbs.txt`.)
+Test without rebooting: double-click the VBS, wait ~15 seconds, reload the
+dashboard. (Watch that the file didn't save as `.vbs.txt`.)
+</details>
 
 **What auto-starts what** — only the server needs this VBS. Ollama's
 installer already added itself to Startup, OneDrive starts at sign-in by
