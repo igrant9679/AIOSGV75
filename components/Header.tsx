@@ -48,20 +48,20 @@ export default function Header() {
       transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
       className="panel flex items-center justify-between gap-4 overflow-hidden px-5 py-3"
     >
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-4">
         {/* Orbital command emblem: gradient ring + counter-rotating orbit carrying
             satellites (the fleet) around a pulsing core (the deck). */}
-        <div className="relative h-10 w-10">
+        <div className="relative h-14 w-14 md:h-20 md:w-20">
           <div
             className="absolute inset-0 rounded-full"
             style={{
               background:
                 "conic-gradient(from 180deg, var(--ac-cyan), var(--ac-magenta), var(--ac-violet), var(--ac-cyan))",
-              filter: "blur(12px)",
+              filter: "blur(18px)",
               opacity: 0.5,
             }}
           />
-          <svg viewBox="0 0 40 40" className="relative h-10 w-10" aria-hidden>
+          <svg viewBox="0 0 40 40" className="relative h-14 w-14 md:h-20 md:w-20" aria-hidden>
             <defs>
               <linearGradient id="mc-emblem" x1="0" y1="0" x2="1" y2="1">
                 <stop offset="0%" style={{ stopColor: "var(--ac-cyan)" }} />
@@ -109,10 +109,10 @@ export default function Header() {
           </svg>
         </div>
         <div>
-          <h1 className="font-display text-lg font-bold tracking-[0.18em]">
+          <h1 className="font-display text-2xl font-bold tracking-[0.14em] md:text-4xl">
             <span className="logo-title">MISSIONCONTROL</span>
           </h1>
-          <p className="font-mono text-[10px] tracking-[0.28em] text-ink-faint">
+          <p className="mt-1 font-mono text-[11px] tracking-[0.3em] text-ink-faint md:text-[13px]">
             LOCAL AI OPERATIONS DECK
           </p>
         </div>

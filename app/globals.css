@@ -351,21 +351,33 @@ body {
 }
 
 /* ---- light theme surface treatments ---- */
+/* Panels pick up a whisper of the page accent along the top and settle to
+   near-white, so light mode reads as tinted glass instead of flat cards. */
 [data-theme="light"] .panel {
-  background: rgba(255, 255, 255, 0.88);
-  box-shadow: 0 6px 22px rgba(30, 41, 80, 0.09);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--page-accent, var(--ac-cyan)) 7%, #ffffff) 0%,
+    rgba(255, 255, 255, 0.92) 45%,
+    rgba(255, 255, 255, 0.88) 100%
+  );
+  box-shadow:
+    0 8px 26px rgba(30, 41, 80, 0.1),
+    0 0 0 1px rgba(255, 255, 255, 0.65) inset;
 }
 [data-theme="light"] .grid-bg {
   background-image:
-    linear-gradient(rgba(30, 41, 80, 0.05) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(30, 41, 80, 0.05) 1px, transparent 1px);
+    linear-gradient(rgba(30, 41, 80, 0.075) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(30, 41, 80, 0.075) 1px, transparent 1px);
 }
+/* Pastel aurora — noticeably richer than the old wash so the page has depth. */
 [data-theme="light"] .nebula {
   background:
-    radial-gradient(680px 360px at 8% -8%, rgba(34, 211, 238, 0.16), transparent 62%),
-    radial-gradient(760px 420px at 94% -4%, rgba(232, 121, 249, 0.13), transparent 62%),
-    radial-gradient(560px 320px at 48% 118%, rgba(167, 139, 250, 0.12), transparent 62%),
-    radial-gradient(520px 300px at 80% 88%, rgba(251, 191, 36, 0.1), transparent 60%);
+    radial-gradient(720px 400px at 8% -8%, rgba(34, 211, 238, 0.3), transparent 64%),
+    radial-gradient(800px 440px at 94% -4%, rgba(232, 121, 249, 0.24), transparent 64%),
+    radial-gradient(600px 350px at 48% 118%, rgba(167, 139, 250, 0.24), transparent 64%),
+    radial-gradient(560px 320px at 82% 86%, rgba(251, 191, 36, 0.17), transparent 62%),
+    radial-gradient(480px 300px at 16% 92%, rgba(163, 230, 53, 0.15), transparent 62%),
+    radial-gradient(900px 500px at 50% 40%, rgba(99, 102, 241, 0.08), transparent 70%);
 }
 [data-theme="light"] .scanlines::after {
   content: none;
