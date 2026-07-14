@@ -19,6 +19,12 @@ interface Command {
 
 const PAGES: Command[] = [
   { id: "overview", label: "Overview", hint: "fleet & vitals", accent: "cyan", href: "/" },
+  { id: "mastermind", label: "Mastermind", hint: "all agents, one room", accent: "cyan", href: "/mastermind" },
+  { id: "jarvis", label: "JARVIS", hint: "voice command center", accent: "cyan", href: "/jarvis" },
+  { id: "pipeline", label: "Pipeline", hint: "inbox → shipped", accent: "violet", href: "/pipeline" },
+  { id: "builds", label: "Builds", hint: "games & apps shelf", accent: "magenta", href: "/builds" },
+  { id: "watcher", label: "YouTube Watcher", hint: "trend radar", accent: "rose", href: "/watcher" },
+  { id: "hermeslab", label: "Hermes Lab", hint: "goal mode · control room", accent: "amber", href: "/hermes-lab" },
   { id: "missions", label: "Missions", hint: "multi-agent tasks", accent: "cyan", href: "/missions" },
   { id: "tasks", label: "Tasks", hint: "kanban + orchestrator", accent: "amber", href: "/tasks" },
   { id: "schedule", label: "Schedule", hint: "cron calendar", accent: "lime", href: "/schedule" },

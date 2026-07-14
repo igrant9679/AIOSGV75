@@ -256,7 +256,11 @@ Full walkthrough for a new machine: **SETUP-NEW-MACHINE.md** in the repo.`,
 - **Goal Mode** — hand Hermes a long-horizon goal; it runs \`hermes chat --yolo --max-turns N\` autonomously in its own scratch directory. Output tails live, files it writes show up as artifacts, and you get a Telegram ping when it finishes. Set the target, walk away.
 - **Control Room** — embeds Hermes's *own* native dashboard (sessions, models, files, logs, cron, skills, plugins, MCP). Run \`hermes dashboard\` in a terminal and it appears here — the full native interface, finally exposed.
 
-**📡 YouTube Watcher (/watcher)** — keyless trend radar. Add channel IDs (UC…) and boost keywords; it reads each channel's public RSS feed (no API key), scores recent videos by recency · keyword · views, and a cheap agent drafts **5 titles + 3 angles** per signal. Rescans every 4h on the scheduler and logs each sweep to the vault. Click a signal's dossier for copy-ready titles.`,
+**📡 YouTube Watcher (/watcher)** — keyless trend radar. Add channel IDs (UC…) and boost keywords; it reads each channel's public RSS feed (no API key), scores recent videos by recency · keyword · views, and a cheap agent drafts **5 titles + 3 angles** per signal. Rescans every 4h on the scheduler and logs each sweep to the vault. Click a signal's dossier for copy-ready titles.
+
+**📥 Pipeline (/pipeline)** — from inbox to shipped, one human checkpoint. Drop any idea; Claude classifies it (project · action · idea · reference · escalate) with a confidence score and tags. Small items file straight to your vault journal; **projects wait at the Human Gate for your one Approve**, which launches an Orchestration to build the deliverable — then it lands in Shipped & Filed with the result. The board self-advances as builds finish.
+
+**🎙 JARVIS (/jarvis)** — a voice command center for the whole OS. Click Start listening (Chrome/Edge) and speak: say "go to watcher" / "open the pipeline" to navigate, or ask anything ("what should I build next?") and the Auto agent answers out loud. Optional "Jarvis" wake word, selectable voice, and a typed fallback. Built on the browser's Web Speech API — no keys.`,
   },
   {
     id: "orchestrator-attention",
