@@ -212,7 +212,11 @@ The mission prompt can use \`{{event}}\` for what happened. Results ping your **
 
 **What you get per result:** the agent, the date and time, the **machine** it happened on (🖥), your opening line as the title, a snippet with your keywords highlighted, and the word count. Expand any result to read the full exchange, then **Open in Obsidian** to keep working on that topic.
 
-**Organize / filter:** click the **AGENT** chips to see only a given agent's chats, or the **MACHINE** chips to filter by where the conversation happened. Counts next to each chip show how many exchanges match. Leave the search box empty to browse everything newest-first.
+**Organize / filter:** click the **AGENT** chips to see only a given agent's chats, or the **MACHINE** chips to filter by where the conversation happened. Toggle **Exchanges** vs **Sessions** — Sessions groups a day's back-and-forth with one agent into a single card (with the exchange count and time range). Leave the search box empty to browse everything newest-first.
+
+**AI summaries:** hit "AI summary" on any result (or "summarize N" to do a batch) to generate a one-line summary of what that conversation was about — cached so it's only generated once.
+
+**Analytics tab:** switch to **Analytics** for the big picture — totals (exchanges, sessions, words, agents, machines), an activity-over-time chart, chats by agent and by machine, your most-discussed **topics** (click one to search it), and highlights (busiest day, top agent, deepest chat, avg words).
 
 Chats are tagged with their machine automatically going forward; older exchanges from before this feature show as "unknown" machine but are still fully searchable.`,
   },

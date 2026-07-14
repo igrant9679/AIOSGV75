@@ -1,6 +1,7 @@
 import fs from "fs/promises";
 import path from "path";
 import { vaultInfo, vaultAvailable } from "./vault";
+import { runAgentText } from "./runners";
 
 /**
  * Conversation search — parses the vault's daily chat logs
@@ -123,6 +124,17 @@ function facetsOf(items: Exchange[]): ConvoFacets {
   return { agents: tally((e) => e.agent), hosts: tally((e) => e.host || "unknown"), dates: tally((e) => e.date) };
 }
 
+/** Strip markdown chrome (headings, role labels, quotes, separators) for clean snippets/search. */
+function plainText(body: string): string {
+  return body
+    .split(/\r?\n/)
+    .filter((l) => !/^#{1,6}\s/.test(l) && !/^---+$/.test(l) && !/^>\s/.test(l))
+    .map((l) => l.replace(/^\*\*[^*]+:\*\*\s*/, ""))
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function snippet(text: string, terms: string[], len = 220): string {
   const lower = text.toLowerCase();
   let at = -1;
@@ -135,9 +147,75 @@ function snippet(text: string, terms: string[], len = 220): string {
   return (start > 0 ? "…" : "") + text.slice(start, start + len).trim() + (start + len < text.length ? "…" : "");
 }
 
-export interface ConvoResult extends Exchange {
+/** A search result — one exchange, or one session (a day's chats with an agent). */
+export interface SearchItem {
+  id: string;
+  agent: string;
+  date: string;
+  time: string; // first time in a session
+  lastTime: string;
+  host: string;
+  title: string;
+  turns: number;
+  wordCount: number;
+  exchangeCount: number; // 1 for an exchange, N for a session
+  file: string;
+  body: string;
   snippet: string;
   score: number;
+  summary?: string; // cached AI one-liner, if generated
+}
+
+/** Group exchanges into sessions: a day's back-and-forth with one agent on one machine. */
+export function groupSessions(exchanges: Exchange[]): SearchItem[] {
+  const map = new Map<string, Exchange[]>();
+  for (const e of exchanges) {
+    const key = `${e.date}|${e.agent}|${e.host || "unknown"}`;
+    const arr = map.get(key);
+    if (arr) arr.push(e);
+    else map.set(key, [e]);
+  }
+  const out: SearchItem[] = [];
+  for (const [key, list] of map) {
+    list.sort((a, b) => a.time.localeCompare(b.time));
+    const first = list[0];
+    out.push({
+      id: `s:${key}`,
+      agent: first.agent,
+      date: first.date,
+      time: first.time,
+      lastTime: list[list.length - 1].time,
+      host: first.host,
+      title: first.title,
+      turns: list.reduce((n, e) => n + e.turns, 0),
+      wordCount: list.reduce((n, e) => n + e.wordCount, 0),
+      exchangeCount: list.length,
+      file: first.file,
+      body: list.map((e) => e.body).join("\n\n---\n\n"),
+      snippet: "",
+      score: 0,
+    });
+  }
+  return out;
+}
+
+function toItem(e: Exchange): SearchItem {
+  return {
+    id: e.id,
+    agent: e.agent,
+    date: e.date,
+    time: e.time,
+    lastTime: e.time,
+    host: e.host,
+    title: e.title,
+    turns: e.turns,
+    wordCount: e.wordCount,
+    exchangeCount: 1,
+    file: e.file,
+    body: e.body,
+    snippet: "",
+    score: 0,
+  };
 }
 
 export async function searchConversations(opts: {
@@ -145,35 +223,169 @@ export async function searchConversations(opts: {
   agent?: string;
   host?: string;
   date?: string;
+  group?: "exchange" | "session";
   limit?: number;
-}): Promise<{ results: ConvoResult[]; facets: ConvoFacets; total: number }> {
-  let items = await listExchanges();
-  const facets = facetsOf(items); // facets over everything (before text filter) so counts are stable
-  if (opts.agent) items = items.filter((e) => e.agent === opts.agent);
-  if (opts.host) items = items.filter((e) => (e.host || "unknown") === opts.host);
-  if (opts.date) items = items.filter((e) => e.date === opts.date);
+}): Promise<{ results: SearchItem[]; facets: ConvoFacets; total: number; group: string }> {
+  const exchanges = await listExchanges();
+  const facets = facetsOf(exchanges); // facets over everything so counts are stable
+  let ex = exchanges;
+  if (opts.agent) ex = ex.filter((e) => e.agent === opts.agent);
+  if (opts.host) ex = ex.filter((e) => (e.host || "unknown") === opts.host);
+  if (opts.date) ex = ex.filter((e) => e.date === opts.date);
+
+  const group = opts.group === "session" ? "session" : "exchange";
+  let items = group === "session" ? groupSessions(ex) : ex.map(toItem);
 
   const q = (opts.q ?? "").trim().toLowerCase();
   const terms = q.split(/\s+/).filter(Boolean);
-  let scored: ConvoResult[];
   if (terms.length === 0) {
-    scored = items.map((e) => ({ ...e, snippet: snippet(e.assistantText || e.userText, []), score: 0 }));
+    items = items
+      .map((it) => ({ ...it, snippet: snippet(plainText(it.body), []) }))
+      .sort((a, b) => (b.date + b.lastTime).localeCompare(a.date + a.lastTime));
   } else {
-    scored = [];
-    for (const e of items) {
-      const hay = (e.title + "\n" + e.userText + "\n" + e.assistantText).toLowerCase();
+    const scored: SearchItem[] = [];
+    for (const it of items) {
+      const plain = plainText(it.body);
+      const hay = plain.toLowerCase();
       let score = 0;
       for (const t of terms) {
-        let idx = hay.indexOf(t), hits = 0;
-        while (idx >= 0) { hits++; idx = hay.indexOf(t, idx + t.length); }
-        if (hits > 0) score += hits + (e.title.toLowerCase().includes(t) ? 5 : 0);
+        let idx = hay.indexOf(t);
+        let hits = 0;
+        while (idx >= 0) {
+          hits++;
+          idx = hay.indexOf(t, idx + t.length);
+        }
+        if (hits > 0) score += hits + (it.title.toLowerCase().includes(t) ? 5 : 0);
       }
-      if (score > 0) scored.push({ ...e, snippet: snippet(e.assistantText || e.userText, terms), score });
+      if (score > 0) scored.push({ ...it, snippet: snippet(plain, terms), score });
     }
-    scored.sort((a, b) => b.score - a.score || (b.date + b.time).localeCompare(a.date + a.time));
+    scored.sort((a, b) => b.score - a.score || (b.date + b.lastTime).localeCompare(a.date + a.lastTime));
+    items = scored;
   }
-  const total = scored.length;
-  return { results: scored.slice(0, opts.limit ?? 150), facets, total };
+
+  const total = items.length;
+  const results = items.slice(0, opts.limit ?? 150);
+  const summaries = await readSummaries();
+  for (const it of results) if (summaries[it.id]) it.summary = summaries[it.id];
+  return { results, facets, total, group };
+}
+
+// ─── AI one-line summaries (cached in data/convo-summaries.json) ───
+const SUMMARY_FILE = path.join(process.cwd(), "data", "convo-summaries.json");
+
+async function readSummaries(): Promise<Record<string, string>> {
+  try {
+    return JSON.parse(await fs.readFile(SUMMARY_FILE, "utf8")) as Record<string, string>;
+  } catch {
+    return {};
+  }
+}
+async function writeSummaries(m: Record<string, string>): Promise<void> {
+  await fs.mkdir(path.dirname(SUMMARY_FILE), { recursive: true });
+  await fs.writeFile(SUMMARY_FILE, JSON.stringify(m, null, 2), "utf8");
+}
+
+function summaryPrompt(it: SearchItem): string {
+  const transcript = it.body.replace(/\r?\n{3,}/g, "\n\n").slice(0, 2200);
+  return [
+    `Summarize what this AI chat was about in ONE short line (max 14 words). Focus on the topic and any conclusion. No preamble, no quotes, just the line.`,
+    ``,
+    transcript,
+  ].join("\n");
+}
+
+/** Generate + cache one-line summaries for the given result ids (bounded). */
+export async function summarizeIds(ids: string[], group: "exchange" | "session", agent = "auto"): Promise<Record<string, string>> {
+  const exchanges = await listExchanges();
+  const items = group === "session" ? groupSessions(exchanges) : exchanges.map(toItem);
+  const byId = new Map(items.map((it) => [it.id, it]));
+  const cache = await readSummaries();
+  const todo = ids.filter((id) => !cache[id] && byId.has(id)).slice(0, 10);
+
+  await Promise.all(
+    todo.map(async (id) => {
+      const it = byId.get(id)!;
+      try {
+        const r = await runAgentText(agent, summaryPrompt(it), { injectMemory: false });
+        const line = (r.text || "").split(/\r?\n/).map((l) => l.trim()).find(Boolean) || "";
+        if (line && !r.error) cache[id] = line.replace(/^["'\-•*\s]+/, "").slice(0, 160);
+      } catch {
+        /* skip on error */
+      }
+    }),
+  );
+  await writeSummaries(cache);
+  return cache;
+}
+
+// ─── analytics over all conversations ───
+const STOPWORDS = new Set(
+  "the a an and or but to of in on for with is are was were be been being it this that these those i you he she we they me my your our their its it's im i'm can could would should do does did done have has had will just what how why when where who which as at by from up out so if not no yes ok okay please thanks thank hi hello hey get got make made give one two also into about your you're can't don't let lets need want like use using".split(
+    /\s+/,
+  ),
+);
+
+export interface ConvoAnalytics {
+  totals: { exchanges: number; sessions: number; words: number; agents: number; machines: number; days: number; firstDate: string; lastDate: string };
+  byAgent: { key: string; count: number; words: number }[];
+  byMachine: { key: string; count: number }[];
+  byDay: { date: string; count: number }[];
+  topKeywords: { term: string; count: number }[];
+  records: { avgWords: number; busiestDay: string; busiestDayCount: number; topAgent: string; deepestTurns: number };
+}
+
+export async function conversationAnalytics(): Promise<ConvoAnalytics> {
+  const exchanges = await listExchanges();
+  const sessions = groupSessions(exchanges);
+  const words = exchanges.reduce((n, e) => n + e.wordCount, 0);
+  const dates = [...new Set(exchanges.map((e) => e.date))].sort();
+
+  const facets = facetsOf(exchanges);
+  const byAgentWords = new Map<string, number>();
+  for (const e of exchanges) byAgentWords.set(e.agent, (byAgentWords.get(e.agent) ?? 0) + e.wordCount);
+  const byAgent = facets.agents.map((a) => ({ key: a.key, count: a.count, words: byAgentWords.get(a.key) ?? 0 }));
+
+  const byDayMap = new Map<string, number>();
+  for (const e of exchanges) byDayMap.set(e.date, (byDayMap.get(e.date) ?? 0) + 1);
+  const byDay = [...byDayMap.entries()].map(([date, count]) => ({ date, count })).sort((a, b) => a.date.localeCompare(b.date));
+
+  // keyword frequency over the user's questions (most topic-indicative)
+  const kw = new Map<string, number>();
+  for (const e of exchanges) {
+    const seen = new Set<string>();
+    for (const w of (e.title + " " + e.userText).toLowerCase().match(/[a-z][a-z'-]{2,}/g) ?? []) {
+      if (STOPWORDS.has(w) || w.length < 3) continue;
+      if (seen.has(w)) continue; // count each word once per exchange (document frequency)
+      seen.add(w);
+      kw.set(w, (kw.get(w) ?? 0) + 1);
+    }
+  }
+  const topKeywords = [...kw.entries()].filter(([, c]) => c > 1).map(([term, count]) => ({ term, count })).sort((a, b) => b.count - a.count).slice(0, 32);
+
+  const busiest = byDay.reduce((m, d) => (d.count > m.count ? d : m), { date: "—", count: 0 });
+  return {
+    totals: {
+      exchanges: exchanges.length,
+      sessions: sessions.length,
+      words,
+      agents: facets.agents.length,
+      machines: facets.hosts.length,
+      days: dates.length,
+      firstDate: dates[0] ?? "",
+      lastDate: dates[dates.length - 1] ?? "",
+    },
+    byAgent,
+    byMachine: facets.hosts,
+    byDay,
+    topKeywords,
+    records: {
+      avgWords: exchanges.length ? Math.round(words / exchanges.length) : 0,
+      busiestDay: busiest.date,
+      busiestDayCount: busiest.count,
+      topAgent: byAgent[0]?.key ?? "—",
+      deepestTurns: exchanges.reduce((m, e) => Math.max(m, e.turns), 0),
+    },
+  };
 }
 
 export async function conversationsAvailable(): Promise<boolean> {
