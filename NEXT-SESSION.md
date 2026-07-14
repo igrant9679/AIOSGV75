@@ -107,7 +107,7 @@ install-service.cmd "D:\code\my-mission-control"
 ## Open roadmap / next candidates
 
 1. **Studio + Content activation** — enter real keys: Studio API keys (OpenAI = image+voice; Gemini/ElevenLabs/Replicate) **and** a WordPress connection (Settings → Publishing) to light up publishing. Only no-key/bad-key paths are proven so far; a real Claude draft (100/100 SEO) already confirmed the content half works.
-2. **LLM-history import ACTIVATION**: importer is BUILT (v25, `/import`). Idris just needs to download the ChatGPT/Claude export ZIPs, drop them in `Documents\llm-exports`, Scan, then Distill. Pipeline proven against synthetic data + a real Claude distill.
+2. **LLM-history import ACTIVATION** — importer is BUILT + upgraded (v25, **v36 tags/wikilinks**). Idris HAS the ChatGPT + Claude export ZIPs as of 2026-07-14; next step is dropping them in `Documents\llm-exports` (**desktop only** — raw exports + processed flags are per-machine, distilled notes sync), Scan, then Distill (writer dropdown = any fleet agent; Claude best quality, Llama free/local). Suggested: 20–30 conversations w/ Claude first, read the note, then scale. v36 verified E2E on synthetic data: tags + `[[wikilinks]]` + `Imported History Index` hub all correct.
 3. **Phone access** (Tailscale + PWA) — the older deferred roadmap item
 4. Optional: Gemini chat agent (free key at aistudio.google.com; embeddings already local); Hermes on the laptop
 5. Content pipeline niceties (deferred): upload the hero image to WP media + embed it in the post; more publish targets (Ghost, Webflow); bulk keyword → article runs

@@ -371,9 +371,14 @@ Each item has download and delete. Costs are estimated into the usage ledger, so
 
 **3. Scan** (free, local) — parses everything into a preview: how many conversations per source, total messages, and the date range. Nothing leaves your machine.
 
-**4. Distill** (uses an agent, bounded) — the chosen writer condenses your conversations into topic-grouped Markdown notes — durable facts, decisions, and preferences — saved to the vault under \`Agentic OS/History/\`. From there they're searchable and feed every agent's retrieval. It runs the richest conversations first in batches; set a **max per run** so cost stays bounded, and it's **resumable** — re-run to continue where it left off. "Reset processed" re-opens everything for a fresh pass.
+**4. Distill** (uses an agent, bounded) — the chosen **writer** (any agent in your fleet: Claude for best quality, Llama/Ollama for free-and-local, DeepSeek for cheap) condenses your conversations into topic-grouped Markdown notes — durable facts, decisions, and preferences — saved to the vault under \`Agentic OS/History/\`. It runs the richest conversations first in batches; set a **max per run** so cost stays bounded, and it's **resumable** — re-run to continue where it left off. "Reset processed" re-opens everything for a fresh pass.
 
-The raw exports and scan index stay on this machine; only the distilled notes go to the synced vault.`,
+**How the notes join your brain:**
+- **Tags** — each note carries \`tags: [...]\` in its frontmatter (3–8 kebab-case topics the writer chose), so Obsidian's tag pane and searches find them.
+- **Wikilinks** — the writer is shown your existing vault note names and links topics into them with \`[[Note Name]]\` where they genuinely relate (it's instructed never to invent a link to a note that doesn't exist).
+- **An index hub** — every run also writes \`Imported History Index <date>\`, listing each note wikilinked with its topics and tags. That single hub is what pulls the whole import into the knowledge graph as a cluster rather than a pile of orphans — open \`/graph\` after a run and you'll see it.
+
+**Which machine?** Any — but only **one**. The raw exports and the "already processed" index are **per-machine** (they never sync), while the distilled notes go to the **shared vault**. So import on one machine (the desktop is the natural choice) and all your machines get the resulting brain. Running it on two machines would distill the same conversations twice.`,
   },
   {
     id: "content-pipeline",

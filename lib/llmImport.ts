@@ -256,30 +256,146 @@ function condense(c: ImportedConversation): string {
   return `TITLE: ${c.title} [${c.source}]\n${out}`;
 }
 
-function distillPrompt(batch: ImportedConversation[]): string {
+/**
+ * Existing vault note names, so the writer can [[wikilink]] a distilled topic
+ * into the knowledge graph instead of orphaning it.
+ *
+ * Excluded, because linking to them is noise rather than signal: dated notes
+ * (chat logs, journal entries), prior history notes, and the Agents/ hub pages
+ * — a topic like "prefers local LLMs" would otherwise link to [[Claude]],
+ * [[Llama]], and every other agent page, which tells a future reader nothing.
+ */
+async function existingNoteNames(limit = 160): Promise<string[]> {
+  const { base } = vaultInfo();
+  if (!base) return [];
+  try {
+    const { collectVaultFiles } = await import("./vaultSearch");
+    const files = await collectVaultFiles(base);
+    return files
+      .filter((f) => !/(^|[\\/])Agents[\\/]/i.test(f) && !/(^|[\\/])Chats[\\/]/i.test(f))
+      .map((f) => path.basename(f, ".md"))
+      .filter((n) => !/^\d{4}-\d{2}-\d{2}/.test(n) && !n.startsWith("Imported History"))
+      .slice(0, limit);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Parse the writer's `TAGS:` trailer; fall back to nothing rather than guessing.
+ * Split on COMMAS only — splitting on whitespace would shred a multi-word tag
+ * ("Bad Tag" → "bad" + "tag") into junk. Multi-word tags are slugified instead.
+ */
+function splitTags(raw: string): { digest: string; tags: string[] } {
+  const m = raw.match(/^\s*TAGS:\s*(.+)$/im);
+  if (!m) return { digest: raw.trim(), tags: [] };
+  const tags = [
+    ...new Set(
+      m[1]
+        .split(",")
+        .map((t) =>
+          t
+            .trim()
+            .replace(/^#/, "")
+            .toLowerCase()
+            .replace(/[^a-z0-9/\s-]/g, "")
+            .trim()
+            .replace(/\s+/g, "-"),
+        )
+        .filter((t) => /^[a-z0-9][a-z0-9/-]{1,30}$/.test(t)),
+    ),
+  ].slice(0, 8);
+  return { digest: raw.replace(m[0], "").trim(), tags };
+}
+
+function distillPrompt(batch: ImportedConversation[], knownNotes: string[]): string {
   const blocks = batch.map((c, i) => `--- CONVERSATION ${i + 1} ---\n${condense(c)}`).join("\n\n");
+  const linkable = knownNotes.length
+    ? [
+        ``,
+        `EXISTING NOTES in the owner's vault (link to these with [[Note Name]] when a topic genuinely relates to one — exact names only, never invent a note name):`,
+        knownNotes.map((n) => `[[${n}]]`).join(" · "),
+      ].join("\n")
+    : "";
   return [
     `You are distilling a person's exported AI chat history into durable knowledge notes for their "second brain". Below are ${batch.length} past conversations, condensed.`,
     ``,
     blocks,
+    linkable,
     ``,
     `Write a concise Markdown digest of what is WORTH REMEMBERING from these conversations:`,
     `- Group related threads under "## " topic headings (invent clear topic names).`,
     `- Under each, 2–5 tight bullets: decisions reached, conclusions, preferences revealed, useful facts, or unfinished threads worth resuming.`,
     `- Ignore small talk, greetings, and one-off trivia. Be specific and factual — no filler, no "the user asked about…" narration.`,
+    `- Where a topic relates to an EXISTING NOTE listed above, reference it inline as [[Note Name]] (exact name). Do not invent [[links]] to notes that don't exist.`,
     `- Finish with a "## Durable facts about the owner" section: bullets of stable preferences/context a future assistant should know.`,
     ``,
-    `Output ONLY the Markdown digest.`,
+    `After the digest, output one final line, exactly:`,
+    `TAGS: tag1, tag2, tag3`,
+    `— 3–8 lowercase kebab-case topic tags covering the themes above (e.g. "ai-agents, seo, home-automation"). No "#", no spaces inside a tag.`,
+    ``,
+    `Output ONLY the Markdown digest followed by that TAGS line.`,
   ].join("\n");
 }
 
-async function writeHistoryNote(batch: ImportedConversation[], digest: string, tag: string): Promise<void> {
+async function writeHistoryNote(
+  batch: ImportedConversation[],
+  raw: string,
+  tag: string,
+): Promise<{ tags: string[]; topics: string[] }> {
   const dir = historyDir();
   await fs.mkdir(dir, { recursive: true });
+  const { digest, tags } = splitTags(raw);
+  const topics = [...digest.matchAll(/^##\s+(.+)$/gm)]
+    .map((m) => m[1].trim())
+    .filter((t) => !/^durable facts/i.test(t) && !/^sources/i.test(t));
+
   const titles = batch.map((c) => `- ${c.title} _(${c.source})_`).join("\n");
-  const fm = ["---", "type: imported-history", `conversations: ${batch.length}`, `date: ${todayStamp()}`, "---", ""].join("\n");
-  const body = `${digest.trim()}\n\n## Sources (${batch.length} conversations)\n${titles}\n`;
+  const fm = [
+    "---",
+    "type: imported-history",
+    `conversations: ${batch.length}`,
+    `date: ${todayStamp()}`,
+    ...(tags.length ? [`tags: [${tags.join(", ")}]`] : []),
+    "---",
+    "",
+  ].join("\n");
+  const body = `${digest}\n\n## Sources (${batch.length} conversations)\n${titles}\n`;
   await fs.writeFile(path.join(dir, `Imported History ${tag}.md`), fm + body, "utf8");
+  return { tags, topics };
+}
+
+/**
+ * A hub note listing every distilled note by topic + tag, wikilinked. This is
+ * what pulls the imported history into the knowledge graph as a cluster rather
+ * than a pile of orphans.
+ */
+async function writeHistoryIndex(
+  entries: { note: string; topics: string[]; tags: string[]; conversations: number }[],
+  runStamp: string,
+): Promise<void> {
+  if (!entries.length) return;
+  const dir = historyDir();
+  const allTags = [...new Set(entries.flatMap((e) => e.tags))].sort();
+  const lines = [
+    "---",
+    "type: imported-history-index",
+    `date: ${todayStamp()}`,
+    ...(allTags.length ? [`tags: [${allTags.join(", ")}]`] : []),
+    "---",
+    "",
+    `# Imported History — ${runStamp}`,
+    "",
+    `Distilled from ${entries.reduce((s, e) => s + e.conversations, 0)} exported conversations across ${entries.length} note(s).`,
+    "",
+    ...entries.flatMap((e) => [
+      `## [[${e.note}]]`,
+      e.tags.length ? `Tags: ${e.tags.map((t) => `#${t}`).join(" ")}` : "",
+      ...e.topics.map((t) => `- ${t}`),
+      "",
+    ]),
+  ];
+  await fs.writeFile(path.join(dir, `Imported History Index ${runStamp}.md`), lines.filter((l) => l !== undefined).join("\n"), "utf8");
 }
 
 function chunk<T>(arr: T[], n: number): T[][] {
@@ -313,12 +429,22 @@ export async function startDistill(writer = "claude", max = 40): Promise<ImportS
   void (async () => {
     const batches = chunk(todo, BATCH_SIZE);
     const runStamp = `${todayStamp()} ${Date.now().toString(36).slice(-5)}`;
+    // Snapshot the vault's note names once — the writer links topics into them.
+    const knownNotes = await existingNoteNames();
+    const written: { note: string; topics: string[]; tags: string[]; conversations: number }[] = [];
     let done = 0;
     for (let bi = 0; bi < batches.length; bi++) {
       try {
-        const r = await runAgentText(writer, distillPrompt(batches[bi]), { injectMemory: false });
+        const r = await runAgentText(writer, distillPrompt(batches[bi], knownNotes), { injectMemory: false });
         if (r.error) throw new Error(r.error);
-        await writeHistoryNote(batches[bi], r.text, `${runStamp}-${bi + 1}`);
+        const noteTag = `${runStamp}-${bi + 1}`;
+        const meta = await writeHistoryNote(batches[bi], r.text, noteTag);
+        written.push({
+          note: `Imported History ${noteTag}`,
+          topics: meta.topics,
+          tags: meta.tags,
+          conversations: batches[bi].length,
+        });
         const s = await readState();
         for (const c of batches[bi]) {
           const m = s.conversations.find((x) => x.id === c.id);
@@ -328,14 +454,25 @@ export async function startDistill(writer = "claude", max = 40): Promise<ImportS
         s.job = { status: "running", processed: done, total: todo.length, startedAt: s.job.startedAt, heartbeat: Date.now() };
         await writeState(s);
       } catch (e) {
+        // Salvage: index whatever landed before the failure, so completed work is linked.
+        await writeHistoryIndex(written, runStamp).catch(() => {});
         const s = await readState();
         s.job = { ...s.job, status: "error", error: (e as Error).message, heartbeat: Date.now() };
         await writeState(s);
         return;
       }
     }
+    await writeHistoryIndex(written, runStamp).catch(() => {});
+    const allTags = [...new Set(written.flatMap((w) => w.tags))];
     const s = await readState();
-    s.job = { status: "done", processed: done, total: todo.length, startedAt: s.job.startedAt, heartbeat: Date.now(), note: `Distilled ${done} conversations into Agentic OS/History/.` };
+    s.job = {
+      status: "done",
+      processed: done,
+      total: todo.length,
+      startedAt: s.job.startedAt,
+      heartbeat: Date.now(),
+      note: `Distilled ${done} conversations into ${written.length} note(s) in Agentic OS/History/${allTags.length ? ` · tags: ${allTags.slice(0, 8).join(", ")}` : ""}.`,
+    };
     await writeState(s);
   })();
 

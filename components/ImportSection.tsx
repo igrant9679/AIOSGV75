@@ -179,8 +179,12 @@ export default function ImportSection() {
             <div className="flex flex-col gap-3 p-5">
               <p className="text-xs leading-5 text-ink-faint">
                 The chosen writer condenses your conversations into topic-grouped Markdown notes (durable facts, decisions,
-                preferences) in the vault, where they become searchable and feed every agent&apos;s memory. Runs the richest
-                conversations first, in batches — set a cap so cost stays bounded. Resumable: re-run to continue.
+                preferences) in the vault, where they become searchable and feed every agent&apos;s memory. Each note gets{" "}
+                <span className="text-neon-cyan">tags</span> in its frontmatter and{" "}
+                <span className="text-neon-cyan">[[wikilinks]]</span> into your existing notes, plus an{" "}
+                <span className="font-mono">Imported History Index</span> hub — so it joins the knowledge graph instead of
+                sitting in it as an orphan. Runs the richest conversations first, in batches — set a cap so cost stays
+                bounded. Resumable: re-run to continue.
               </p>
               <div className="flex flex-wrap items-end gap-3">
                 <div className="min-w-[10rem]">
