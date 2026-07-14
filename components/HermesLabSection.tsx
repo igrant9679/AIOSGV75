@@ -282,7 +282,7 @@ export default function HermesLabSection() {
               <iframe
                 src={DASHBOARD_URL}
                 title="Hermes native dashboard"
-                className="h-[640px] w-full rounded-xl border border-line bg-white"
+                className="h-[calc(100dvh-14rem)] min-h-[600px] w-full rounded-xl border border-line bg-white"
               />
             )}
           </div>
