@@ -25,15 +25,32 @@ export const GUIDE_SECTIONS: GuideSection[] = [
 
 **Theme** — the sun/moon button in the header toggles light/dark. Your choice is remembered per browser.
 
-**Reading the deck** — every page opens with an identity strip (page name + purpose, underlined by a scanning hairline in that page's color); the sky behind the panels re-tints to the same color, panel titles carry a matching tick, and in light mode each panel's glass is tinted toward it. Stat tiles glow from the corner in their metric's color; empty panels show a small radar sweep ("scanning") instead of blank space — that means the feature works and simply has no data yet.
-
-**Deck interactions** — press \`?\` anywhere for the keyboard-shortcut overlay (\`Ctrl+K\` is the command palette). The footer's left side is a live ticker of the latest event — click it to jump to the page it came from. On **Tasks**, drag cards between kanban lanes (the ◀ ▶ buttons still work). On **Missions**, each card shows a stage rail (one segment per agent + a violet synthesis cap) and running missions breathe amber; an agent's avatar pulses while it's replying. Finishing a task, landing a mission, shipping a pipeline item, or crowning an Arena winner fires a small confetti burst (disabled if your OS asks for reduced motion). **Analytics** projects month-end spend from your last-7-day pace (chip on the Activity panel, dashed pace line on Spend/day).
-
-**Page widgets** — **Pipeline** opens with a Flow funnel (counts per stage, capture → shipped; the Human Gate column breathes amber while items wait on you). **Journal** has a 12-week writing heatmap (click a day to open it) and tracks your writing streak. **Content** shows each article's SEO score as a filled ring. **Auto** keeps a "Recent Routes" panel — which model each task went to and why. **JARVIS** has an arc-reactor orb that spins up while listening (lime) or speaking (magenta), a voice equalizer driven by your **real mic level** while listening (simulated during speech playback or if mic access is denied), and tappable example commands.
-
-**Agent theme takeover** — on agent chat pages (Auto, Claude, OpenClaw, Hermes, and any agent you've added) the whole sky recolors to that agent's accent, not just a tint: the multicolor nebula crossfades out and a monochrome nebula in the agent's color takes over. Navigate between two agents and watch the atmosphere shift.
+**Finding your way** — press **Ctrl/⌘+K** for the command palette (jump to any page or agent) and **?** for the keyboard-shortcut overlay. The next section, *The Deck*, explains the visual language — what the colors, rings, and animations mean.
 
 **After code changes** — the background server serves a production build; run \`npm run build\` then restart (stop.cmd → desktop shortcut) to pick up changes.`,
+  },
+  {
+    id: "the-deck",
+    title: "The Deck — Interface & Shortcuts",
+    keywords: "interface ui visual colors accent hero strip nebula sky tint takeover empty state radar shortcuts overlay question mark ticker footer confetti celebration drag drop widgets heatmap funnel equalizer ring gauge",
+    body: `The deck has a consistent visual language — once you can read it, every page explains itself.
+
+**Colors mean location.** Every page owns an accent color. The page opens with an **identity strip** (page name + purpose, underlined by a scanning hairline in that color), the sky behind the panels tints toward it, panel titles carry a matching tick, and in light mode each panel's glass is tinted the same way. On **agent chat pages** (Auto, Claude, OpenClaw, Hermes, and any agent you've added) this goes further — a full **theme takeover**: the multicolor nebula crossfades out and a monochrome sky in that agent's color takes over. Navigate between two agents and watch the atmosphere shift.
+
+**Shapes mean status.**
+- **Stat tiles** glow from the corner in their metric's color; numbers animate to their values.
+- **Ring gauges** fill with a fraction — fleet integrity on Overview, next-run countdowns on Schedule, SEO scores on Content. Lime is healthy, amber is degraded, rose needs attention.
+- **Stage rails** (thin segment bars on Mission cards) show one segment per agent — lime done, amber running, rose failed — capped by a violet synthesis segment.
+- A card that **breathes amber** is live right now (a running mission, or Pipeline's Human Gate holding items for you). An agent's **avatar pulses** while it's composing a reply.
+- **Empty panels show a small radar sweep** ("scanning") instead of blank space — that means the feature works and simply has no data yet.
+
+**Interactions.**
+- **?** — keyboard-shortcut overlay · **Ctrl/⌘+K** — command palette · **Esc** closes either.
+- The footer's left side is a **live ticker** of the latest event — click it to jump to the page it came from.
+- On **Tasks**, drag cards between kanban lanes (the ◀ ▶ buttons still work); the target lane lights up as you hover.
+- Finishing a task, landing a mission, shipping a pipeline item, or crowning an Arena winner fires a small **confetti burst** — automatically disabled if your OS requests reduced motion.
+
+**Signature widgets** (each described in its feature's section): Pipeline's **Flow funnel**, Journal's **12-week writing heatmap + streak**, Analytics' **month-end spend projection**, Auto's **Recent Routes**, Arena's **VS strip + podium**, and JARVIS's **arc-reactor + live mic equalizer**.`,
   },
   {
     id: "agents",
@@ -140,7 +157,9 @@ Tool activity streams into the chat as dim cards (call → result), then the mod
 - **Standard** → the best proven performer by Arena win-rate
 - **Hard** (code, analysis, writing) → the reigning Arena champion
 
-It also reads the usage ledger for **health** — models failing more than half their recent runs are skipped — and **fails over to Claude** automatically if the chosen model errors. Every answer shows a routing line: who answered and why. Auto works in chat, missions, and schedules. It gets smarter as you crown Arena winners and accumulate usage data.`,
+It also reads the usage ledger for **health** — models failing more than half their recent runs are skipped — and **fails over to Claude** automatically if the chosen model errors. Every answer shows a routing line: who answered and why. Auto works in chat, missions, and schedules. It gets smarter as you crown Arena winners and accumulate usage data.
+
+The Auto page keeps a **Recent Routes** panel — the last few routing decisions with the chosen model and the router's stated reason, so you can see the routing brain at work (and catch it picking expensive models for cheap questions).`,
   },
   {
     id: "chat-features",
@@ -152,6 +171,7 @@ It also reads the usage ledger for **health** — models failing more than half 
 - **🔊 Voice out** — hover any agent reply for a read-aloud button, or flip the speaker toggle (top of the thread) to speak every new reply automatically. Markdown is flattened; code blocks are skipped.
 - **Rendered markdown** — headings, tables, task lists, syntax-styled code. \`[[wikilinks]]\` are clickable and open the note **directly in Obsidian**.
 - **Enter** sends · **Shift+Enter** newline · trash icon clears the chat (and Claude's session).
+- The agent's **avatar pulses** while it's composing, and the whole page's sky wears that agent's color (see *The Deck*).
 
 Long API-LLM chats **self-compact**: past ~16 turns, older messages fold into a rolling summary (you'll see a "context compacted" divider) so conversations never outgrow the model's context.`,
   },
@@ -181,7 +201,9 @@ Try: *"add a goal to review the migration plan"* — the agent files it for real
 - **Pipeline** — agents run in your selection order, each improving the last output. Best for writing/code.
 - **Single** — one agent.
 
-Missions run **server-side** — close the tab, they keep flying. Each agent gets relevant shared memory injected. Results show per-agent timing and outputs (with \`auto → whoever\` routing labels), and every finished mission is archived to \`Agentic OS/Missions/\` in your vault with wikilinked attribution.`,
+Missions run **server-side** — close the tab, they keep flying. Each agent gets relevant shared memory injected. Results show per-agent timing and outputs (with \`auto → whoever\` routing labels), and every finished mission is archived to \`Agentic OS/Missions/\` in your vault with wikilinked attribution.
+
+**Reading the Mission Log** — every card carries a **stage rail**: one thin segment per agent (lime done · amber running · rose failed) plus a violet cap for the synthesis/verdict step, so you can see exactly where a mission is without expanding it. Running missions **breathe amber**, working agents' avatars pulse, and a mission landing fires a confetti burst.`,
   },
   {
     id: "schedules",
@@ -283,13 +305,13 @@ Full walkthrough for a new machine: **SETUP-NEW-MACHINE.md** in the repo.`,
     keywords: "tasks kanban board pending in progress done operator schedule calendar cron timeline next run library content docs documents viewer download obsidian ops pulse queue integrity disk uptime",
     body: `Three operations pages (inspired by command-center dashboards) round out the workspace:
 
-**🛠 Tasks (/tasks)** — a personal kanban board: **Pending → In Progress → Done**. Add tasks with Enter, move them with ◀ ▶, delete on hover. The stat row shows board totals, scheduled-job count, and the **next cron countdown**. Stored in the vault as \`Agentic OS/Tasks.md\`, so it **syncs across machines** like shared memory and goals — and it's a normal Obsidian note: add a \`- [ ] task\` line under a lane heading by hand and the app adopts it; check a box in Obsidian and it lands in Done.
+**🛠 Tasks (/tasks)** — a personal kanban board: **Pending → In Progress → Done**, each lane color-coded (amber / cyan / lime). Add tasks with Enter, **drag cards between lanes** (or use ◀ ▶), delete on hover; dropping into Done fires confetti. The stat row shows board totals, scheduled-job count, and the **next cron countdown**. Stored in the vault as \`Agentic OS/Tasks.md\`, so it **syncs across machines** like shared memory and goals — and it's a normal Obsidian note: add a \`- [ ] task\` line under a lane heading by hand and the app adopts it; check a box in Obsidian and it lands in Done.
 
-**📅 Schedule (/schedule)** — the cron calendar: every schedule grouped by frequency (hourly / daily / weekly) with time, delivery target, and next-run countdown; watchers listed alongside; a **7-day timeline** showing exactly what fires on which day. Run-now and on/off toggles work right from the cards. Creating/editing schedules still happens in the Missions launcher.
+**📅 Schedule (/schedule)** — the cron calendar: every schedule grouped by frequency (hourly / daily / weekly) with time, delivery target, and a **countdown ring** filling toward its next run; watchers listed alongside; a **7-day timeline** showing exactly what fires on which day, with today's row highlighted and a glowing marker tracking the time of day. Run-now and on/off toggles work right from the cards. Creating/editing schedules still happens in the Missions launcher.
 
 **📚 Library (/library)** — every markdown document the OS has written into the vault (mission archives, weekly syntheses, chat logs, journal, the Guide), filterable by folder, rendered in a full viewer with **open-in-Obsidian** and **download**. This is the "content folder" pattern: agents save long-form output to files instead of bloating chat context — and the Library is where you read it.
 
-**Overview upgrades** — Host Vitals now reports **disk usage** and **data-store size** alongside CPU/RAM/uptime (your VPS/Local Computer at a glance), plus the **Ops Pulse** tile (mission queue, runs today, errors today, fleet integrity N-of-M) and **Fleet Activity** — a 7-day per-agent run chart with success rates from the usage ledger.`,
+**Overview upgrades** — Host Vitals reports **disk usage** and **data-store size** alongside CPU/RAM/uptime (your VPS/Local Computer at a glance). **Ops Pulse** shows the mission queue (live pulse dots while work runs), today's runs with a 2-hour sparkline, today's errors, and fleet integrity as a **ring gauge** (lime/amber/rose by how many responders are up). **Needs Attention** shows a pulse-ring "ALL SYSTEMS NOMINAL" check when nothing is blocked on you. **Fleet Activity** charts 7 days of per-agent runs with success rates from the usage ledger.`,
   },
   {
     id: "studio-suite",
@@ -309,9 +331,9 @@ Full walkthrough for a new machine: **SETUP-NEW-MACHINE.md** in the repo.`,
 
 **📡 YouTube Watcher (/watcher)** — keyless trend radar. Add channel IDs (UC…) and boost keywords; it reads each channel's public RSS feed (no API key), scores recent videos by recency · keyword · views, and a cheap agent drafts **5 titles + 3 angles** per signal. Rescans every 4h on the scheduler and logs each sweep to the vault. Click a signal's dossier for copy-ready titles.
 
-**📥 Pipeline (/pipeline)** — from inbox to shipped, one human checkpoint. Drop any idea; Claude classifies it (project · action · idea · reference · escalate) with a confidence score and tags. Small items file straight to your vault journal; **projects wait at the Human Gate for your one Approve**, which launches an Orchestration to build the deliverable — then it lands in Shipped & Filed with the result. The board self-advances as builds finish.
+**📥 Pipeline (/pipeline)** — from inbox to shipped, one human checkpoint. Drop any idea; Claude classifies it (project · action · idea · reference · escalate) with a confidence score and tags. Small items file straight to your vault journal; **projects wait at the Human Gate for your one Approve**, which launches an Orchestration to build the deliverable — then it lands in Shipped & Filed with the result (plus confetti). The board self-advances as builds finish. The **Flow funnel** up top shows counts per stage at a glance, and the Human Gate column breathes amber while anything waits on you.
 
-**🎙 JARVIS (/jarvis)** — a voice command center for the whole OS. Click Start listening (Chrome/Edge) and speak: say "go to watcher" / "open the pipeline" to navigate, or ask anything ("what should I build next?") and the Auto agent answers out loud. Optional "Jarvis" wake word, selectable voice, and a typed fallback. Built on the browser's Web Speech API — no keys.`,
+**🎙 JARVIS (/jarvis)** — a voice command center for the whole OS. Click Start listening (Chrome/Edge) and speak: say "go to watcher" / "open the pipeline" to navigate, or ask anything ("what should I build next?") and the Auto agent answers out loud. The **arc-reactor rings** spin up while it's active — lime for listening, magenta for speaking — and the **equalizer bars follow your real mic level** while you talk (they simulate during speech playback, or if mic access is denied). Optional "Jarvis" wake word, selectable voice, tappable example commands, and a typed fallback. Built on the browser's Web Speech + Web Audio APIs — no keys.`,
   },
   {
     id: "studio",
@@ -432,7 +454,7 @@ Obsidian's own graph view works too (filter \`path:"Agentic OS"\`), and any agen
     keywords: "goals checkbox tasks journal daily workspace switch default work progress dial",
     body: `**Goals** — checkbox tasks with a progress dial, synced two-way with \`Goals.md\` (check things off in Obsidian or here; your extra notes in the file are preserved). Agents can add goals via verb or tool.
 
-**Journal** — one file per day, autosaving as you type, with a day switcher, word counts, and voice dictation. Agents append timestamped, attributed entries.
+**Journal** — one file per day, autosaving as you type, with a day switcher, word counts, and voice dictation. Agents append timestamped, attributed entries. The **Writing Rhythm** panel is a 12-week heatmap of your writing (click any filled day to open that entry), and Entry Stats tracks your **streak** — consecutive days written, and a not-yet-written *today* doesn't break it.
 
 **Workspaces** — create them in Settings (e.g. Work, CommunityForce); the dropdown on Goals/Journal switches context. Each workspace keeps its own \`Goals.md\` + \`Journal/\` under \`Agentic OS/Workspaces/<name>/\`. Agent goal/journal verbs target your **active** workspace.`,
   },
@@ -442,7 +464,7 @@ Obsidian's own graph view works too (filter \`path:"Agentic OS"\`), and any agen
     keywords: "arena battle crown leaderboard win rate analytics cost spend tokens latency ledger evals test cases judge scores report card",
     body: `The measurement suite:
 
-**⚔ Arena** — same prompt to 2–4 models side by side; crown the winner. The leaderboard's win-rates feed the Auto router's choices.
+**⚔ Arena** — same prompt to 2–4 models side by side; crown the winner. A **VS strip** shows the fighters (avatars pulse while they think), the leaderboard opens with a gold/silver/bronze **podium** for the top three, and crowning a winner fires confetti. The leaderboard's win-rates feed the Auto router's choices.
 
 Field lessons from real battles (2026-07):
 - **Crown easy battles too.** Hard battles teach the router who the champion is (Claude); *easy* battles — summaries, rewrites, short explainers — are where cheap models earn wins, and that's the evidence the "simple" tier needs to route cheaply with confidence. Leave Claude out of easy battles so the budget fighters compete on winnable ground.
@@ -450,7 +472,7 @@ Field lessons from real battles (2026-07):
 - **Reruns aren't independent.** Finished battles archive to the vault, so a rerun of a similar prompt lets fighters *retrieve earlier answers via RAG* — a small model can echo a rival's archived answer nearly verbatim. Judge with that in mind.
 - **A no-show isn't a loss.** If a fighter errors, exclude it from the recorded vote rather than counting a phantom defeat.
 
-**📊 Analytics** — every run (chats, missions, schedules) is recorded with cost, tokens, latency, and outcome. 30-day spend, runs/day, and per-agent breakdowns. Claude reports real dollars; API models report tokens.
+**📊 Analytics** — every run (chats, missions, schedules) is recorded with cost, tokens, latency, and outcome. 30-day spend, runs/day, and per-agent breakdowns, with 14-day trend sparklines in the headline tiles. The Activity panel projects **month-end spend** (month-to-date plus your last-7-day pace; the dashed line on Spend/day marks that pace). Claude reports real dollars; API models report tokens.
 
 **✓ Evals** — a saved test suite (reasoning trap, instruction-following, concision — add your own cases with scoring criteria). Run it against any agents; a Claude judge scores 0–10 per case. The history panel turns model quality into a trend line. Costs roughly one Claude run per answer judged.`,
   },
