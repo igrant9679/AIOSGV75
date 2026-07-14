@@ -241,6 +241,24 @@ Full walkthrough for a new machine: **SETUP-NEW-MACHINE.md** in the repo.`,
 **Overview upgrades** — Host Vitals now reports **disk usage** and **data-store size** alongside CPU/RAM/uptime (your VPS/Local Computer at a glance), plus the **Ops Pulse** tile (mission queue, runs today, errors today, fleet integrity N-of-M) and **Fleet Activity** — a 7-day per-agent run chart with success rates from the usage ledger.`,
   },
   {
+    id: "studio-suite",
+    title: "Mastermind, Builds, Goal Mode & Watcher",
+    keywords: "mastermind group chat room agents mention builds games apps shelf play goal mode hermes autonomous long horizon walk away youtube watcher trends signals titles angles command palette ctrl k",
+    body: `The studio suite — capability surfaces adapted from larger agent OSes, all on your local stack:
+
+**🕹 Command palette** — press **Ctrl/⌘+K** anywhere to jump to any page or agent by name. Fuzzy match, arrow keys, Enter.
+
+**🗣 Mastermind (/mastermind)** — one room, every agent, each a *different real model*. They reply **in turn** (not in parallel), so each sees the earlier replies and genuinely riffs or pushes back — name an agent with **@claude** to ask just them. Vault-aware, history saved. Best for "what should I build next?" or stress-testing a decision from many model-perspectives at once.
+
+**🛠 Builds (/builds)** — commission a single-file HTML **game or app**; Claude writes it (no libraries, no external calls), it saves to your vault under \`Agentic OS/Builds/\`, and you **play it in-place** in a sandboxed frame or pop it out to a tab. The shelf syncs across machines like everything else.
+
+**🎯 Hermes Lab (/hermes-lab)** — two tools for the Hermes agent:
+- **Goal Mode** — hand Hermes a long-horizon goal; it runs \`hermes chat --yolo --max-turns N\` autonomously in its own scratch directory. Output tails live, files it writes show up as artifacts, and you get a Telegram ping when it finishes. Set the target, walk away.
+- **Control Room** — embeds Hermes's *own* native dashboard (sessions, models, files, logs, cron, skills, plugins, MCP). Run \`hermes dashboard\` in a terminal and it appears here — the full native interface, finally exposed.
+
+**📡 YouTube Watcher (/watcher)** — keyless trend radar. Add channel IDs (UC…) and boost keywords; it reads each channel's public RSS feed (no API key), scores recent videos by recency · keyword · views, and a cheap agent drafts **5 titles + 3 angles** per signal. Rescans every 4h on the scheduler and logs each sweep to the vault. Click a signal's dossier for copy-ready titles.`,
+  },
+  {
     id: "orchestrator-attention",
     title: "Orchestrator & Needs Attention",
     keywords: "orchestrator chief of staff delegate goal decompose dispatch review rework assemble subtasks auto route cheap tokens conserve needs attention stalled blocked waiting pending nudge reminder",

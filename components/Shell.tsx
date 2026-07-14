@@ -5,6 +5,7 @@ import { MissionProvider } from "./store";
 import Header from "./Header";
 import Sidebar from "./Sidebar";
 import ApprovalsBar from "./ApprovalsBar";
+import CommandPalette from "./CommandPalette";
 
 export default function Shell({ children }: { children: ReactNode }) {
   return (
@@ -14,6 +15,7 @@ export default function Shell({ children }: { children: ReactNode }) {
         <div aria-hidden className="nebula pointer-events-none fixed inset-0" />
         <div aria-hidden className="grid-bg pointer-events-none fixed inset-0" />
 
+        <CommandPalette />
         <div className="relative mx-auto flex min-h-dvh w-full max-w-[1600px] flex-col gap-4 p-4 lg:p-5">
           <Header />
           <ApprovalsBar />
