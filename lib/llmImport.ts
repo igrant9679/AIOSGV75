@@ -148,7 +148,10 @@ function parseClaude(arr: Record<string, unknown>[]): ImportedConversation[] {
 function parseRaw(raw: string): ImportedConversation[] {
   let data: unknown;
   try {
-    data = JSON.parse(raw);
+    // Strip a UTF-8 BOM — a hand-saved conversations.json (e.g. PowerShell's
+    // default utf8 encoding) carries one and JSON.parse rejects it, which used
+    // to silently scan as 0 conversations.
+    data = JSON.parse(raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw);
   } catch {
     return [];
   }
@@ -404,7 +407,12 @@ function chunk<T>(arr: T[], n: number): T[][] {
   return out;
 }
 
-/** Kick off a bounded, resumable distillation of up to `max` un-processed conversations. */
+/**
+ * Kick off a bounded, resumable distillation of up to `max` un-processed
+ * conversations. `max <= 0` means EVERYTHING — no cap; the run just walks
+ * every remaining conversation richest-first. Cost scales with the writer:
+ * one call per batch of 12, so a 600-conversation archive is ~50 writer runs.
+ */
 export async function startDistill(writer = "claude", max = 40): Promise<ImportState> {
   const state = await scan(); // refresh index first
   if (state.job.status === "running" && Date.now() - state.job.heartbeat < JOB_STALE_MS) {
@@ -412,10 +420,10 @@ export async function startDistill(writer = "claude", max = 40): Promise<ImportS
   }
   const all = await parseAllConversations();
   const processed = new Set(state.conversations.filter((c) => c.processed).map((c) => c.id));
-  const todo = all
+  const remaining = all
     .filter((c) => !processed.has(c.id))
-    .sort((a, b) => b.messages.length - a.messages.length)
-    .slice(0, Math.max(1, Math.min(max, 500)));
+    .sort((a, b) => b.messages.length - a.messages.length);
+  const todo = max > 0 ? remaining.slice(0, Math.min(max, 500)) : remaining;
 
   if (!todo.length) {
     state.job = { ...EMPTY_JOB, status: "done", note: "Nothing new to distill — all scanned conversations are already processed." };

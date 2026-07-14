@@ -36,7 +36,10 @@ export async function POST(request: Request) {
   try {
     if (body.action === "scan") return Response.json(summarize(await scan(), await importAvailable()));
     if (body.action === "distill") {
-      const state = await startDistill(body.writer || "claude", Math.max(1, Math.min(Number(body.max) || 40, 500)));
+      // max 0 = distill EVERYTHING; otherwise clamp to 1..500 per run.
+      const raw = Number(body.max);
+      const max = Number.isFinite(raw) && raw <= 0 ? 0 : Math.max(1, Math.min(raw || 40, 500));
+      const state = await startDistill(body.writer || "claude", max);
       return Response.json(summarize(state, await importAvailable()));
     }
     if (body.action === "reset") return Response.json(summarize(await resetProcessed(), await importAvailable()));

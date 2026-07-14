@@ -371,7 +371,7 @@ Each item has download and delete. Costs are estimated into the usage ledger, so
 
 **3. Scan** (free, local) — parses everything into a preview: how many conversations per source, total messages, and the date range. Nothing leaves your machine.
 
-**4. Distill** (uses an agent, bounded) — the chosen **writer** (any agent in your fleet: Claude for best quality, Llama/Ollama for free-and-local, DeepSeek for cheap) condenses your conversations into topic-grouped Markdown notes — durable facts, decisions, and preferences — saved to the vault under \`Agentic OS/History/\`. It runs the richest conversations first in batches; set a **max per run** so cost stays bounded, and it's **resumable** — re-run to continue where it left off. "Reset processed" re-opens everything for a fresh pass.
+**4. Distill** (uses an agent, bounded) — the chosen **writer** (any agent in your fleet: Claude for best quality, Llama/Ollama for free-and-local, DeepSeek for cheap) condenses your conversations into topic-grouped Markdown notes — durable facts, decisions, and preferences — saved to the vault under \`Agentic OS/History/\`. It runs the richest conversations first in batches of 12 (one writer call per batch); set a **max per run** so cost stays bounded, or tick **EVERYTHING** to walk the whole archive in one go — the UI shows roughly how many writer calls that means before you commit. Either way it's **resumable** — re-run to continue where it left off. "Reset processed" re-opens everything for a fresh pass.
 
 **How the notes join your brain:**
 - **Tags** — each note carries \`tags: [...]\` in its frontmatter (3–8 kebab-case topics the writer chose), so Obsidian's tag pane and searches find them.

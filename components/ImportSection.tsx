@@ -51,6 +51,7 @@ export default function ImportSection() {
   const [sum, setSum] = useState<Summary | null>(null);
   const [writer, setWriter] = useState("claude");
   const [max, setMax] = useState(40);
+  const [everything, setEverything] = useState(false);
   const [busy, setBusy] = useState<"scan" | "distill" | "reset" | null>(null);
   const [err, setErr] = useState("");
 
@@ -87,7 +88,7 @@ export default function ImportSection() {
       const res = await fetch("/api/import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action, writer, max }),
+        body: JSON.stringify({ action, writer, max: everything ? 0 : max }),
       });
       const j = (await res.json()) as Summary & { error?: string };
       if (!res.ok || j.error) setErr(j.error ?? `${action} failed`);
@@ -197,15 +198,34 @@ export default function ImportSection() {
                 </div>
                 <div className="w-32">
                   <label className={labelCls} htmlFor="im-max">MAX THIS RUN</label>
-                  <input id="im-max" type="number" min={1} max={500} value={max} onChange={(e) => setMax(Number(e.target.value))} className={inputCls} />
+                  <input
+                    id="im-max"
+                    type="number"
+                    min={1}
+                    max={500}
+                    value={max}
+                    onChange={(e) => setMax(Number(e.target.value))}
+                    disabled={everything}
+                    className={`${inputCls} disabled:opacity-40`}
+                  />
                 </div>
+                <label className="flex h-10 cursor-pointer items-center gap-1.5 rounded-lg border border-line px-3 font-mono text-[10px] text-ink-dim">
+                  <input
+                    type="checkbox"
+                    checked={everything}
+                    onChange={(e) => setEverything(e.target.checked)}
+                    className="cursor-pointer accent-current"
+                  />
+                  EVERYTHING ({fmtNum(unprocessed)})
+                </label>
                 <motion.button
                   whileTap={{ scale: 0.96 }}
                   onClick={() => call("distill")}
                   disabled={busy !== null || running || unprocessed === 0}
                   className="flex h-10 cursor-pointer items-center gap-2 rounded-lg bg-gradient-to-br from-violet-700 to-neon-violet px-5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40"
                 >
-                  <IconRocket width={15} height={15} /> {running ? "Distilling…" : `Distill ${Math.min(max, unprocessed)}`}
+                  <IconRocket width={15} height={15} />{" "}
+                  {running ? "Distilling…" : `Distill ${everything ? fmtNum(unprocessed) : fmtNum(Math.min(max, unprocessed))}`}
                 </motion.button>
                 {sum.processed > 0 && (
                   <button
@@ -217,6 +237,13 @@ export default function ImportSection() {
                   </button>
                 )}
               </div>
+              {everything && unprocessed > 0 && (
+                <p className="font-mono text-[10px] leading-4 text-neon-amber">
+                  ≈ {fmtNum(Math.ceil(unprocessed / 12))} writer call(s) ({fmtNum(unprocessed)} conversations, batches of
+                  12). Free with a local writer like Llama; with Claude this is real spend. Resumable either way — you can
+                  stop the server and re-run to continue.
+                </p>
+              )}
 
               {/* progress / result */}
               {running && (
