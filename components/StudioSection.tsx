@@ -42,6 +42,15 @@ const IMAGE_SIZES = [
   { v: "1024x1536", label: "Portrait" },
 ];
 const IMAGE_QUALITY = ["low", "medium", "high"];
+const GEMINI_ASPECTS = [
+  { v: "1:1", label: "Square" },
+  { v: "16:9", label: "Widescreen" },
+  { v: "9:16", label: "Vertical" },
+  { v: "4:3", label: "Landscape" },
+  { v: "3:4", label: "Portrait" },
+  { v: "3:2", label: "Photo" },
+  { v: "2:3", label: "Tall" },
+];
 const OPENAI_VOICES = ["alloy", "echo", "fable", "onyx", "nova", "shimmer", "coral", "sage"];
 
 const inputCls =
@@ -67,6 +76,7 @@ export default function StudioSection() {
   const [provider, setProvider] = useState("");
   const [size, setSize] = useState("1024x1024");
   const [quality, setQuality] = useState("medium");
+  const [aspect, setAspect] = useState("1:1");
   const [voice, setVoice] = useState("alloy");
   const [videoModel, setVideoModel] = useState("minimax/video-01");
 
@@ -127,7 +137,7 @@ export default function StudioSection() {
     setBusy(true);
     try {
       const payload: Record<string, unknown> = { kind: tab, provider };
-      if (tab === "image") Object.assign(payload, { prompt: text, size, quality });
+      if (tab === "image") Object.assign(payload, { prompt: text, size, quality, aspect });
       else if (tab === "voice") Object.assign(payload, { text, voice });
       else Object.assign(payload, { prompt: text, model: videoModel });
 
@@ -276,9 +286,14 @@ export default function StudioSection() {
                   </>
                 )}
                 {tab === "image" && provider === "google" && (
-                  <p className="flex-1 self-center text-[11px] leading-4 text-ink-faint">
-                    Gemini composes the image straight from your prompt — describe the framing, aspect, and style you want in the text.
-                  </p>
+                  <div className="min-w-[9rem]">
+                    <label className={labelCls} htmlFor="std-aspect">ASPECT RATIO</label>
+                    <select id="std-aspect" value={aspect} onChange={(e) => setAspect(e.target.value)} className={`${inputCls} cursor-pointer`}>
+                      {GEMINI_ASPECTS.map((a) => (
+                        <option key={a.v} value={a.v}>{a.label} · {a.v}</option>
+                      ))}
+                    </select>
+                  </div>
                 )}
 
                 {tab === "voice" && provider === "openai" && (

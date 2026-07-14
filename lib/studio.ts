@@ -131,6 +131,7 @@ export async function generateImage(opts: {
   model?: string;
   size?: string;
   quality?: string;
+  aspect?: string;
 }): Promise<StudioItem> {
   const provider = opts.provider || "openai";
   const model = opts.model || defaultImageModel(provider);
@@ -140,7 +141,8 @@ export async function generateImage(opts: {
   try {
     const key = await getServiceKey(provider);
     if (!key) throw new Error(`No ${provider} key — add one in Settings → API Keys.`);
-    const bytes = provider === "google" ? await geminiImage(key, model, opts.prompt) : await openaiImage(key, model, opts, item);
+    const bytes = provider === "google" ? await geminiImage(key, model, opts.prompt, opts.aspect) : await openaiImage(key, model, opts, item);
+    if (provider === "google") item.meta.size = opts.aspect || "1:1";
     await writeMedia(item, bytes);
     item.status = "done";
   } catch (e) {
@@ -176,12 +178,14 @@ async function openaiImage(
 }
 
 // Gemini: generateContent returns the image inline as base64 in a content part.
-async function geminiImage(key: string, model: string, prompt: string): Promise<Buffer> {
-  const body: Record<string, unknown> = { contents: [{ parts: [{ text: prompt }] }] };
+async function geminiImage(key: string, model: string, prompt: string, aspect?: string): Promise<Buffer> {
+  const generationConfig: Record<string, unknown> = {};
+  // gemini-2.5-flash-image takes aspect ratio via imageConfig (e.g. "16:9").
+  if (aspect) generationConfig.imageConfig = { aspectRatio: aspect };
   // The older preview image model must be told to emit an image modality.
-  if (/preview-image-generation/i.test(model)) {
-    body.generationConfig = { responseModalities: ["TEXT", "IMAGE"] };
-  }
+  if (/preview-image-generation/i.test(model)) generationConfig.responseModalities = ["TEXT", "IMAGE"];
+  const body: Record<string, unknown> = { contents: [{ parts: [{ text: prompt }] }] };
+  if (Object.keys(generationConfig).length) body.generationConfig = generationConfig;
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
     {

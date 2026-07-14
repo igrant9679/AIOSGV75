@@ -284,6 +284,22 @@ Full walkthrough for a new machine: **SETUP-NEW-MACHINE.md** in the repo.`,
 Each item has download and delete. Costs are estimated into the usage ledger, so Studio spend shows up in **Analytics**. One OpenAI key covers both image and voice.`,
   },
   {
+    id: "content-pipeline",
+    title: "SEO Content Pipeline & Publishing",
+    keywords: "content seo blog article writing publish wordpress draft keyword meta description slug rank hero image export markdown html",
+    body: `**Content** turns a keyword into a ready-to-publish blog article. Give it a target keyword, pick a writer (Claude, Auto, or any agent), and it drafts an SEO-optimized piece: title, meta description, slug, secondary keywords, a structured Markdown body, and a hero-image prompt. Articles save to the vault under \`Agentic OS/Content/\` (with YAML frontmatter) so they sync everywhere.
+
+**SEO score** — every draft is graded against a local 9-point checklist (no API): keyword in title/meta/intro, title & meta length, H2 count, word count, clean keyworded slug, secondary keywords. The score (0–100) shows on each card; expand an article to see which checks passed.
+
+**Hero image** — one click generates a hero via the Studio image engine (needs an OpenAI or Gemini key). It's stored with the article and shown in the detail view.
+
+**Getting it out**
+- **Export** — download the Markdown, or copy clean HTML to paste anywhere.
+- **Publish to WordPress** — connect a site in **Settings → Publishing** (site URL + username + an **Application Password** from WordPress → Users → Profile). Then "Push to WordPress" creates the post **as a draft** (you review and hit publish inside WP). Credentials live in \`data/publish.json\` (git-ignored) or \`WP_SITE\`/\`WP_USERNAME\`/\`WP_APP_PASSWORD\` env vars.
+
+Without a WordPress connection the pipeline still works end-to-end — you just export instead of pushing.`,
+  },
+  {
     id: "orchestrator-attention",
     title: "Orchestrator & Needs Attention",
     keywords: "orchestrator chief of staff delegate goal decompose dispatch review rework assemble subtasks auto route cheap tokens conserve needs attention stalled blocked waiting pending nudge reminder",
@@ -426,10 +442,11 @@ End a work session by telling any agent: "Remember: <the three facts worth keepi
 | \`GEMINI_API_KEY\` | Studio image via Google Gemini (fallback) |
 | \`ELEVENLABS_API_KEY\` | Studio premium voices (fallback) |
 | \`REPLICATE_API_TOKEN\` | Studio video (fallback) |
+| \`WP_SITE\` / \`WP_USERNAME\` / \`WP_APP_PASSWORD\` | WordPress publishing target for the Content pipeline (fallback for Settings → Publishing) |
 | \`VAULT_DIR\` | Obsidian vault path override |
 | \`ANTHROPIC_API_KEY\` | alternative Claude auth (instead of CLI login) |
 
-**Data files** (\`data/\`, git-ignored): registry.json (LLMs + keys) · **services.json (creative API keys)** · missions.json · schedules.json · watchers.json · approvals.json · usage.json · evals.json · arena.json · mcp.json · embeddings-cache.json.`,
+**Data files** (\`data/\`, git-ignored): registry.json (LLMs + keys) · **services.json (creative API keys)** · **publish.json (WordPress connection)** · missions.json · schedules.json · watchers.json · approvals.json · usage.json · evals.json · arena.json · mcp.json · embeddings-cache.json.`,
   },
   {
     id: "troubleshooting",

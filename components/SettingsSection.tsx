@@ -7,6 +7,7 @@ import { ACCENTS, type Accent } from "@/lib/accents";
 import { PROVIDER_PRESETS } from "@/lib/providers";
 import Panel from "./ui/Panel";
 import ServiceKeysPanel from "./ServiceKeysPanel";
+import PublishingPanel from "./PublishingPanel";
 import Avatar from "./Avatar";
 import StatusOrb from "./ui/StatusOrb";
 import { IconCheck, IconPencil, IconPlus, IconTrash } from "./icons";
@@ -419,6 +420,8 @@ export default function SettingsSection() {
       </Panel>
 
       <ServiceKeysPanel />
+
+      <PublishingPanel />
 
       <Panel title="Command Agents" delay={0.05}>
         <div className="grid gap-5 p-5 lg:grid-cols-2">

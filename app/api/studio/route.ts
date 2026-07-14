@@ -24,6 +24,7 @@ export async function POST(request: Request) {
     text?: string;
     size?: string;
     quality?: string;
+    aspect?: string;
     voice?: string;
   };
   const kind = body.kind;
@@ -32,7 +33,7 @@ export async function POST(request: Request) {
     if (kind === "image") {
       const prompt = (body.prompt ?? "").trim();
       if (!prompt) return Response.json({ error: "prompt is required" }, { status: 400 });
-      const item = await generateImage({ prompt, provider: body.provider, model: body.model, size: body.size, quality: body.quality });
+      const item = await generateImage({ prompt, provider: body.provider, model: body.model, size: body.size, quality: body.quality, aspect: body.aspect });
       return Response.json({ ok: item.status !== "error", item, error: item.error });
     }
     if (kind === "voice") {
