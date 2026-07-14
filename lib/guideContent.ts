@@ -482,6 +482,24 @@ Field lessons from real battles (2026-07):
 **✓ Evals** — a saved test suite (reasoning trap, instruction-following, concision — add your own cases with scoring criteria). Run it against any agents; a Claude judge scores 0–10 per case. The history panel turns model quality into a trend line. Costs roughly one Claude run per answer judged.`,
   },
   {
+    id: "reports",
+    title: "Reports (Exportable Intelligence)",
+    keywords: "reports export markdown html pdf print vault executive brief fleet performance cost spend reliability uptime model mix conversation insights topics brain health memory import writing missions arena evals productivity pipeline content seo",
+    body: `**Reports (/reports)** turns everything the OS records into 18 one-click reports, grouped four ways:
+
+- **Operations** — Executive Brief (the whole OS on one page) · Fleet Performance · Cost & Spend (with the month-end projection) · Reliability & Uptime · Model Mix (premium vs. local split) · Automations (schedules & watchers health)
+- **The Brain** — Conversation Insights · Topic Landscape (what you actually talk about) · Brain Health (vault notes, links, orphans, hubs) · Memory & Facts · Import Coverage (how much of your history is distilled) · Writing Rhythm
+- **Quality** — Mission Operations · Arena Standings · Eval Report Card
+- **Output** — Productivity (tasks/goals/orchestrations) · Pipeline Flow · Content & SEO
+
+Every report is built fresh from the live data stores when you open it (↻ re-runs it), and every one **exports three ways**:
+- **↓ Markdown** — a clean .md file with KPI table, text-bar charts, and data tables.
+- **↓ HTML** — a self-contained printable page; open it and print → PDF for sharing.
+- **⊕ Save to vault** — lands in \`Agentic OS/Reports/\` as a dated note, so it syncs to every machine, shows up in the Library, and your agents can cite it via RAG.
+
+A good habit: save the **Executive Brief** to the vault weekly (or wire a schedule to remind you) — it becomes a dated operational log of the whole system.`,
+  },
+  {
     id: "playbook",
     title: "Playbook — Worked Examples",
     keywords: "playbook recipes examples use cases how to workflow routine cookbook weekly status second opinion debate decision watcher summarizer train auto offline free brain memory routine ideas",

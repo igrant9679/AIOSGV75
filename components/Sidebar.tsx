@@ -44,6 +44,7 @@ const WORKSPACE_NAV: NavItem[] = [
   { href: "/graph", label: "Graph", sub: "Knowledge map", accent: "magenta", icon: IconGraph },
   { href: "/arena", label: "Arena", sub: "Model battles", accent: "rose", icon: IconSwords },
   { href: "/analytics", label: "Analytics", sub: "Cost & usage", accent: "amber", icon: IconPulse },
+  { href: "/reports", label: "Reports", sub: "Exportable intelligence", accent: "lime", icon: IconArticle },
   { href: "/evals", label: "Evals", sub: "Model report cards", accent: "violet", icon: IconCheck },
   { href: "/goals", label: "Goals", sub: "Checkbox targets", accent: "lime", icon: IconTarget },
   { href: "/journal", label: "Journal", sub: "One file per day", accent: "rose", icon: IconBook },
@@ -78,7 +79,7 @@ export default function Sidebar() {
     if (href === "/auto") return busy.auto ? "amber" : "lime";
     if (href === "/hermes-lab") { const h = agents.find((a) => a.id === "hermes"); return h?.available ? "lime" : "rose"; }
     if (href === "/watcher") return "lime";
-    if (href === "/" || href === "/settings" || href === "/missions" || href === "/arena" || href === "/analytics" || href === "/evals" || href === "/guide" || href === "/tasks" || href === "/schedule" || href === "/mastermind" || href === "/jarvis" || href === "/pipeline") return "lime";
+    if (href === "/" || href === "/settings" || href === "/missions" || href === "/arena" || href === "/analytics" || href === "/reports" || href === "/evals" || href === "/guide" || href === "/tasks" || href === "/schedule" || href === "/mastermind" || href === "/jarvis" || href === "/pipeline") return "lime";
     if (href === "/goals" || href === "/journal" || href === "/memory" || href === "/library" || href === "/graph" || href === "/builds" || href === "/studio" || href === "/content" || href === "/import" || href === "/conversations") return vaultOk ? "lime" : "rose";
     const id = href.replace("/agent/", "").replace("/", "");
     if (busy[id]) return "amber";

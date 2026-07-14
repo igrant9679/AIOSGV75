@@ -36,6 +36,7 @@ const PAGES: Command[] = [
   { id: "graph", label: "Graph", hint: "knowledge graph", accent: "magenta", href: "/graph" },
   { id: "arena", label: "Arena", hint: "model battles", accent: "rose", href: "/arena" },
   { id: "analytics", label: "Analytics", hint: "cost & usage", accent: "amber", href: "/analytics" },
+  { id: "reports", label: "Reports", hint: "exportable intelligence", accent: "lime", href: "/reports" },
   { id: "evals", label: "Evals", hint: "model report cards", accent: "violet", href: "/evals" },
   { id: "goals", label: "Goals", hint: "checkbox targets", accent: "lime", href: "/goals" },
   { id: "journal", label: "Journal", hint: "one file per day", accent: "rose", href: "/journal" },
