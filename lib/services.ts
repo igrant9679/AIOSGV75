@@ -37,6 +37,15 @@ export const SERVICE_CATALOG: ServiceCatalogEntry[] = [
     keyPrefix: "sk-…",
   },
   {
+    id: "google",
+    label: "Google Gemini",
+    blurb: "Image generation with Gemini 2.5 Flash Image (“Nano Banana”) — fast and low-cost.",
+    categories: ["image"],
+    envVar: "GEMINI_API_KEY",
+    keyHint: "aistudio.google.com/apikey",
+    keyPrefix: "AIza…",
+  },
+  {
     id: "elevenlabs",
     label: "ElevenLabs",
     blurb: "Premium, lifelike voices — the best-in-class text-to-speech option.",

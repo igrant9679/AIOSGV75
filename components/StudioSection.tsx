@@ -255,7 +255,7 @@ export default function StudioSection() {
                   </select>
                 </div>
 
-                {tab === "image" && (
+                {tab === "image" && provider === "openai" && (
                   <>
                     <div className="min-w-[8rem]">
                       <label className={labelCls} htmlFor="std-size">SIZE</label>
@@ -274,6 +274,11 @@ export default function StudioSection() {
                       </select>
                     </div>
                   </>
+                )}
+                {tab === "image" && provider === "google" && (
+                  <p className="flex-1 self-center text-[11px] leading-4 text-ink-faint">
+                    Gemini composes the image straight from your prompt — describe the framing, aspect, and style you want in the text.
+                  </p>
                 )}
 
                 {tab === "voice" && provider === "openai" && (

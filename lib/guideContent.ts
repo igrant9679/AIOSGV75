@@ -272,12 +272,12 @@ Full walkthrough for a new machine: **SETUP-NEW-MACHINE.md** in the repo.`,
 
 | Medium | Providers | Get a key | Env fallback |
 | --- | --- | --- | --- |
-| **Image** | OpenAI (gpt-image-1, DALL·E 3) | platform.openai.com/api-keys | \`OPENAI_API_KEY\` |
+| **Image** | OpenAI (gpt-image-1, DALL·E 3) · Google Gemini (2.5 Flash Image, “Nano Banana”) | platform.openai.com/api-keys · aistudio.google.com/apikey | \`OPENAI_API_KEY\` · \`GEMINI_API_KEY\` |
 | **Voice** | OpenAI TTS · ElevenLabs | platform.openai.com · elevenlabs.io | \`OPENAI_API_KEY\` · \`ELEVENLABS_API_KEY\` |
 | **Video** | Replicate (any text-to-video model) | replicate.com/account/api-tokens | \`REPLICATE_API_TOKEN\` |
 
 **Using it**
-- **Image** — type a prompt, pick size (square/landscape/portrait) and quality, Generate. Result appears in the gallery in ~10–30s.
+- **Image** — type a prompt, pick a provider. OpenAI adds size (square/landscape/portrait) + quality controls; Gemini composes straight from the prompt (describe the framing you want). Result appears in the gallery in ~10–30s.
 - **Voice** — type the text to speak, pick an OpenAI voice (alloy, nova, …) or paste an ElevenLabs voice id, Generate → an audio player.
 - **Video** — prompts render on Replicate's servers and take minutes; the card shows **generating** and fills in when done (billed per second). Set the model, e.g. \`minimax/video-01\`.
 
@@ -423,6 +423,7 @@ End a work session by telling any agent: "Remember: <the three facts worth keepi
 | \`TELEGRAM_TARGET\` | Telegram recipient id (defaults to your account) |
 | \`EMBED_BASE_URL/API_KEY/MODEL\` | activates semantic retrieval |
 | \`OPENAI_API_KEY\` | Studio image + voice (fallback for the Settings field) |
+| \`GEMINI_API_KEY\` | Studio image via Google Gemini (fallback) |
 | \`ELEVENLABS_API_KEY\` | Studio premium voices (fallback) |
 | \`REPLICATE_API_TOKEN\` | Studio video (fallback) |
 | \`VAULT_DIR\` | Obsidian vault path override |

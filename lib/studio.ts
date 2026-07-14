@@ -120,7 +120,11 @@ async function finish(item: StudioItem, start: number, ok: boolean): Promise<Stu
   return item;
 }
 
-// ─── Image (OpenAI Images: gpt-image-1 returns b64; dall-e-3 via response_format) ───
+// ─── Image (OpenAI Images or Google Gemini — different APIs, one entry point) ───
+function defaultImageModel(provider: string): string {
+  return provider === "google" ? "gemini-2.5-flash-image" : "gpt-image-1";
+}
+
 export async function generateImage(opts: {
   prompt: string;
   provider?: string;
@@ -129,36 +133,73 @@ export async function generateImage(opts: {
   quality?: string;
 }): Promise<StudioItem> {
   const provider = opts.provider || "openai";
-  const model = opts.model || "gpt-image-1";
+  const model = opts.model || defaultImageModel(provider);
   const item = newItem("image", opts.prompt, provider, model);
   const start = Date.now();
   live.set(item.id, item);
   try {
     const key = await getServiceKey(provider);
     if (!key) throw new Error(`No ${provider} key — add one in Settings → API Keys.`);
-    const body: Record<string, unknown> = { model, prompt: opts.prompt, size: opts.size || "1024x1024", n: 1 };
-    // gpt-image-1 always returns b64 and rejects response_format; DALL·E needs it asked for.
-    if (model.startsWith("dall-e")) body.response_format = "b64_json";
-    else body.quality = opts.quality || "medium";
-    item.meta.size = String(body.size);
-    if (body.quality) item.meta.quality = String(body.quality);
-
-    const res = await fetch("https://api.openai.com/v1/images/generations", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) throw new Error(await providerError(res, provider));
-    const j = (await res.json()) as { data?: { b64_json?: string }[] };
-    const b64 = j.data?.[0]?.b64_json;
-    if (!b64) throw new Error("provider returned no image data");
-    await writeMedia(item, Buffer.from(b64, "base64"));
+    const bytes = provider === "google" ? await geminiImage(key, model, opts.prompt) : await openaiImage(key, model, opts, item);
+    await writeMedia(item, bytes);
     item.status = "done";
   } catch (e) {
     item.status = "error";
     item.error = (e as Error).message;
   }
   return finish(item, start, item.status === "done");
+}
+
+// OpenAI: gpt-image-1 returns b64 + takes `quality`; DALL·E needs response_format asked for.
+async function openaiImage(
+  key: string,
+  model: string,
+  opts: { prompt: string; size?: string; quality?: string },
+  item: StudioItem,
+): Promise<Buffer> {
+  const body: Record<string, unknown> = { model, prompt: opts.prompt, size: opts.size || "1024x1024", n: 1 };
+  if (model.startsWith("dall-e")) body.response_format = "b64_json";
+  else body.quality = opts.quality || "medium";
+  item.meta.size = String(body.size);
+  if (body.quality) item.meta.quality = String(body.quality);
+
+  const res = await fetch("https://api.openai.com/v1/images/generations", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(await providerError(res, "openai"));
+  const j = (await res.json()) as { data?: { b64_json?: string }[] };
+  const b64 = j.data?.[0]?.b64_json;
+  if (!b64) throw new Error("provider returned no image data");
+  return Buffer.from(b64, "base64");
+}
+
+// Gemini: generateContent returns the image inline as base64 in a content part.
+async function geminiImage(key: string, model: string, prompt: string): Promise<Buffer> {
+  const body: Record<string, unknown> = { contents: [{ parts: [{ text: prompt }] }] };
+  // The older preview image model must be told to emit an image modality.
+  if (/preview-image-generation/i.test(model)) {
+    body.generationConfig = { responseModalities: ["TEXT", "IMAGE"] };
+  }
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-goog-api-key": key },
+      body: JSON.stringify(body),
+    },
+  );
+  if (!res.ok) throw new Error(await providerError(res, "google"));
+  const j = (await res.json()) as {
+    candidates?: { content?: { parts?: { inlineData?: { data?: string }; inline_data?: { data?: string } }[] } }[];
+    promptFeedback?: { blockReason?: string };
+  };
+  if (j.promptFeedback?.blockReason) throw new Error(`Gemini blocked the prompt: ${j.promptFeedback.blockReason}`);
+  const parts = j.candidates?.[0]?.content?.parts ?? [];
+  const b64 = parts.map((p) => p.inlineData?.data ?? p.inline_data?.data).find(Boolean);
+  if (!b64) throw new Error("Gemini returned no image — it may have replied with text only; try a more explicit image prompt");
+  return Buffer.from(b64, "base64");
 }
 
 // ─── Voice (OpenAI /audio/speech or ElevenLabs — both return mp3 bytes) ───
