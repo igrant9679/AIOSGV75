@@ -1,5 +1,6 @@
 import fs from "fs/promises";
 import path from "path";
+import os from "os";
 import { agentDisplayName, agentWikilink } from "./chatMarkdown";
 
 /**
@@ -124,7 +125,11 @@ export async function appendChatLog(agentId: string, markdown: string): Promise<
   } catch {
     header = `# Chat Log — ${todayStamp()}\n\n#agentic-os/chat · [[Agentic OS/Home|Agentic OS]]\n`;
   }
-  await fs.appendFile(file, `${header}\n${markdown.trimEnd()}\n`, "utf8");
+  // Tag the exchange heading with the machine it happened on, so the
+  // Conversations search can organize by location across the shared vault.
+  const host = os.hostname();
+  const tagged = markdown.replace(/^(###\s.+)$/m, (m) => (m.includes("🖥") ? m : `${m} · 🖥 ${host}`));
+  await fs.appendFile(file, `${header}\n${tagged.trimEnd()}\n`, "utf8");
   return file;
 }
 

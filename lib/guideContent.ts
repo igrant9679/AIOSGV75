@@ -205,6 +205,43 @@ Schedules fire whenever the PC is on (30-second background tick).`,
 The mission prompt can use \`{{event}}\` for what happened. Results ping your **Telegram**. The first check silently baselines (no firing on pre-existing files), and a cooldown (default 10 min) prevents spam. Watchers run on the same 30-second tick as schedules.`,
   },
   {
+    id: "conversations",
+    title: "Searching Conversations",
+    keywords: "search conversations chats history find topic keyword which agent when machine summary output open obsidian across agents locations",
+    body: `**Conversations** (sidebar) searches everything you've discussed with every agent, by topic or keyword. It reads the daily chat logs in your vault (\`Agentic OS/Chats/\`), so it spans every agent and — because the vault is synced — every machine.
+
+**What you get per result:** the agent, the date and time, the **machine** it happened on (🖥), your opening line as the title, a snippet with your keywords highlighted, and the word count. Expand any result to read the full exchange, then **Open in Obsidian** to keep working on that topic.
+
+**Organize / filter:** click the **AGENT** chips to see only a given agent's chats, or the **MACHINE** chips to filter by where the conversation happened. Counts next to each chip show how many exchanges match. Leave the search box empty to browse everything newest-first.
+
+Chats are tagged with their machine automatically going forward; older exchanges from before this feature show as "unknown" machine but are still fully searchable.`,
+  },
+  {
+    id: "companions",
+    title: "Installing Companions (Hermes & OpenClaw)",
+    keywords: "install hermes openclaw talos telegram gateway companion agent setup npm venv approvals bot dashboard control room checklist full stack",
+    body: `To run the full stack on a machine — Hermes (goal mode + Control Room) and OpenClaw/Talos (Telegram gateway + approvals) — install these two companions. They're optional: without them Claude, your API LLMs, and Ollama still work everywhere. Install them on **each** machine you want to run them (the group role doesn't install anything).
+
+**OpenClaw (Talos) — Telegram gateway + approvals**
+1. Install: \`npm install -g openclaw\` (Node is already set up by the installer).
+2. Run OpenClaw's own onboarding to configure its model/keys and main agent. Optionally name it Talos in \`~/.openclaw/workspace/IDENTITY.md\`.
+3. Pair your Telegram bot with the gateway (bot token + your owner id).
+4. In Mission Control's \`.env.local\`, uncomment: \`OPENCLAW_CMD=openclaw agent --agent main --message {input}\`
+5. Teach it the approval protocol — add the "Mission Control" section to \`~/.openclaw/workspace/TOOLS.md\` (curl PATCH to \`127.0.0.1:3000/api/approvals\`) so you can approve missions from Telegram.
+6. Start the gateway (\`openclaw gateway start\`, or its scheduled task). **Only ONE machine may run the Telegram gateway at a time** — two polling the same bot steal each other's updates.
+7. Rebuild + restart Mission Control → the OpenClaw orb turns green.
+
+**Hermes (Nous Research agent) — goal mode + Control Room**
+1. Install the Nous Hermes Agent per Nous Research's instructions (git-based install). It lands at \`%LOCALAPPDATA%\\hermes\\hermes-agent\\\` with a Python venv; its binary is \`…\\venv\\Scripts\\hermes.exe\`.
+2. In \`.env.local\`, set both (write the **full path** in each — this file does no variable expansion; adjust the username):
+   \`HERMES_BIN=C:\\Users\\<you>\\AppData\\Local\\hermes\\hermes-agent\\venv\\Scripts\\hermes.exe\`
+   \`HERMES_CMD=C:\\Users\\<you>\\AppData\\Local\\hermes\\hermes-agent\\venv\\Scripts\\hermes.exe -z {input}\`
+3. Confirm it runs: \`hermes --version\`.
+4. Rebuild + restart Mission Control. Hermes turns green; Hermes Lab works and the Control Room dashboard **auto-starts** (the service supervisor launches \`hermes dashboard --skip-build --no-open\` on boot; there's also a Start button).
+
+After either install, run \`npm run build\` and restart so the new \`.env.local\` is picked up.`,
+  },
+  {
     id: "multi-machine",
     title: "Multi-Machine & Sync",
     keywords: "sync onedrive obsidian sync multi machine second laptop network internet lan chats sessions shared brain vault_dir git pull update railway cloud hosting tailscale primary workstation conflict one engine",

@@ -32,6 +32,7 @@ const PAGES: Command[] = [
   { id: "tasks", label: "Tasks", hint: "kanban + orchestrator", accent: "amber", href: "/tasks" },
   { id: "schedule", label: "Schedule", hint: "cron calendar", accent: "lime", href: "/schedule" },
   { id: "library", label: "Library", hint: "vault documents", accent: "violet", href: "/library" },
+  { id: "conversations", label: "Conversations", hint: "search every chat", accent: "cyan", href: "/conversations" },
   { id: "graph", label: "Graph", hint: "knowledge graph", accent: "magenta", href: "/graph" },
   { id: "arena", label: "Arena", hint: "model battles", accent: "rose", href: "/arena" },
   { id: "analytics", label: "Analytics", hint: "cost & usage", accent: "amber", href: "/analytics" },
