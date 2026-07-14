@@ -7,7 +7,7 @@ import { ACCENTS, type Accent } from "@/lib/accents";
 import { useMission } from "./store";
 import StatusOrb from "./ui/StatusOrb";
 import Avatar, { type AvatarKind } from "./Avatar";
-import { IconGrid, IconTarget, IconBook, IconBrain, IconGear, IconPlus, IconRocket, IconSwords, IconPulse, IconCheck, IconHelp, IconWrench, IconSpark, IconGraph, IconWing, IconTerminal, IconMic, IconStudio, IconArticle } from "./icons";
+import { IconGrid, IconTarget, IconBook, IconBrain, IconGear, IconPlus, IconRocket, IconSwords, IconPulse, IconCheck, IconHelp, IconWrench, IconSpark, IconGraph, IconWing, IconTerminal, IconMic, IconStudio, IconArticle, IconImport } from "./icons";
 
 interface NavItem {
   href: string;
@@ -35,6 +35,7 @@ const WORKSPACE_NAV: NavItem[] = [
   { href: "/builds", label: "Builds", sub: "Games & apps shelf", accent: "magenta", icon: IconTerminal },
   { href: "/studio", label: "Studio", sub: "Image · Voice · Video", accent: "magenta", icon: IconStudio },
   { href: "/content", label: "Content", sub: "SEO drafts → publish", accent: "violet", icon: IconArticle },
+  { href: "/import", label: "Import", sub: "Fold in AI chat history", accent: "cyan", icon: IconImport },
   { href: "/missions", label: "Missions", sub: "Multi-agent tasks", accent: "cyan", icon: IconRocket },
   { href: "/tasks", label: "Tasks", sub: "Operator board", accent: "amber", icon: IconWrench },
   { href: "/schedule", label: "Schedule", sub: "Cron calendar", accent: "lime", icon: IconSpark },
@@ -77,7 +78,7 @@ export default function Sidebar() {
     if (href === "/hermes-lab") { const h = agents.find((a) => a.id === "hermes"); return h?.available ? "lime" : "rose"; }
     if (href === "/watcher") return "lime";
     if (href === "/" || href === "/settings" || href === "/missions" || href === "/arena" || href === "/analytics" || href === "/evals" || href === "/guide" || href === "/tasks" || href === "/schedule" || href === "/mastermind" || href === "/jarvis" || href === "/pipeline") return "lime";
-    if (href === "/goals" || href === "/journal" || href === "/memory" || href === "/library" || href === "/graph" || href === "/builds" || href === "/studio" || href === "/content") return vaultOk ? "lime" : "rose";
+    if (href === "/goals" || href === "/journal" || href === "/memory" || href === "/library" || href === "/graph" || href === "/builds" || href === "/studio" || href === "/content" || href === "/import") return vaultOk ? "lime" : "rose";
     const id = href.replace("/agent/", "").replace("/", "");
     if (busy[id]) return "amber";
     const llm = registry.llms.find((l) => l.id === id);

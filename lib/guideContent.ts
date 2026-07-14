@@ -284,6 +284,25 @@ Full walkthrough for a new machine: **SETUP-NEW-MACHINE.md** in the repo.`,
 Each item has download and delete. Costs are estimated into the usage ledger, so Studio spend shows up in **Analytics**. One OpenAI key covers both image and voice.`,
   },
   {
+    id: "history-import",
+    title: "Importing AI Chat History",
+    keywords: "import history chatgpt claude export conversations.json distill second brain memory ingest past chats zip llm-exports",
+    body: `**Import** folds your past ChatGPT and Claude conversations into Mission Control's brain, so your agents start "knowing what you've already worked through" instead of cold.
+
+**1. Export your data** (each provider's official download):
+- **ChatGPT** → Settings → Data Controls → Export data → you get an emailed ZIP with \`conversations.json\`.
+- **Claude** → Settings → Privacy → Export data → a ZIP with your conversations.
+- Both take minutes to a few hours to arrive.
+
+**2. Drop it in the exports folder** — default \`Documents\\llm-exports\` (override with \`LLM_EXPORTS_DIR\`). You can drop the whole ZIP (it auto-extracts on Windows) or the extracted \`conversations.json\`. Both providers' files are detected automatically.
+
+**3. Scan** (free, local) — parses everything into a preview: how many conversations per source, total messages, and the date range. Nothing leaves your machine.
+
+**4. Distill** (uses an agent, bounded) — the chosen writer condenses your conversations into topic-grouped Markdown notes — durable facts, decisions, and preferences — saved to the vault under \`Agentic OS/History/\`. From there they're searchable and feed every agent's retrieval. It runs the richest conversations first in batches; set a **max per run** so cost stays bounded, and it's **resumable** — re-run to continue where it left off. "Reset processed" re-opens everything for a fresh pass.
+
+The raw exports and scan index stay on this machine; only the distilled notes go to the synced vault.`,
+  },
+  {
     id: "content-pipeline",
     title: "SEO Content Pipeline & Publishing",
     keywords: "content seo blog article writing publish wordpress draft keyword meta description slug rank hero image export markdown html",
@@ -443,10 +462,11 @@ End a work session by telling any agent: "Remember: <the three facts worth keepi
 | \`ELEVENLABS_API_KEY\` | Studio premium voices (fallback) |
 | \`REPLICATE_API_TOKEN\` | Studio video (fallback) |
 | \`WP_SITE\` / \`WP_USERNAME\` / \`WP_APP_PASSWORD\` | WordPress publishing target for the Content pipeline (fallback for Settings → Publishing) |
+| \`LLM_EXPORTS_DIR\` | folder scanned by History Import (default \`Documents\\llm-exports\`) |
 | \`VAULT_DIR\` | Obsidian vault path override |
 | \`ANTHROPIC_API_KEY\` | alternative Claude auth (instead of CLI login) |
 
-**Data files** (\`data/\`, git-ignored): registry.json (LLMs + keys) · **services.json (creative API keys)** · **publish.json (WordPress connection)** · missions.json · schedules.json · watchers.json · approvals.json · usage.json · evals.json · arena.json · mcp.json · embeddings-cache.json.`,
+**Data files** (\`data/\`, git-ignored): registry.json (LLMs + keys) · **services.json (creative API keys)** · **publish.json (WordPress connection)** · **llm-import.json (history scan index)** · missions.json · schedules.json · watchers.json · approvals.json · usage.json · evals.json · arena.json · mcp.json · embeddings-cache.json.`,
   },
   {
     id: "troubleshooting",

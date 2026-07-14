@@ -25,6 +25,7 @@ const PAGES: Command[] = [
   { id: "builds", label: "Builds", hint: "games & apps shelf", accent: "magenta", href: "/builds" },
   { id: "studio", label: "Studio", hint: "image · voice · video", accent: "magenta", href: "/studio" },
   { id: "content", label: "Content", hint: "seo drafts → publish", accent: "violet", href: "/content" },
+  { id: "import", label: "Import", hint: "fold in AI chat history", accent: "cyan", href: "/import" },
   { id: "watcher", label: "YouTube Watcher", hint: "trend radar", accent: "rose", href: "/watcher" },
   { id: "hermeslab", label: "Hermes Lab", hint: "goal mode · control room", accent: "amber", href: "/hermes-lab" },
   { id: "missions", label: "Missions", hint: "multi-agent tasks", accent: "cyan", href: "/missions" },

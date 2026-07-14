@@ -27,6 +27,14 @@ export const IconSpark = (p: SVGProps<SVGSVGElement>) => (
   </svg>
 );
 
+export const IconImport = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}>
+    <path d="M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4" />
+    <path d="M12 3v12" />
+    <path d="M8 11l4 4 4-4" />
+  </svg>
+);
+
 export const IconArticle = (p: SVGProps<SVGSVGElement>) => (
   <svg {...base(p)}>
     <path d="M6 3h9l5 5v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z" />
