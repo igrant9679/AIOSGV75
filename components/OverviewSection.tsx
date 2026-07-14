@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { ACCENTS } from "@/lib/accents";
 import Panel from "./ui/Panel";
-import RadarSweep from "./ui/RadarSweep";
+import DeepSpaceScan from "./DeepSpaceScan";
 import StatusOrb from "./ui/StatusOrb";
 import NumberTicker from "./ui/NumberTicker";
 import Avatar, { type AvatarKind } from "./Avatar";
@@ -220,15 +220,6 @@ export default function OverviewSection() {
           </div>
         </Panel>
 
-        <Panel title="Deep Space Scan" delay={0.1}>
-          <div className="p-4">
-            <RadarSweep size={230} />
-            <p className="mt-2 text-center font-mono text-[10px] tracking-[0.2em] text-ink-faint">
-              PASSIVE SWEEP · LOCALHOST SECTOR
-            </p>
-          </div>
-        </Panel>
-
         <Panel title="Claude Mission Totals" delay={0.16}>
           <div className="grid grid-cols-2 gap-4 p-4">
             <div>
@@ -258,6 +249,8 @@ export default function OverviewSection() {
           </div>
         </Panel>
       </div>
+
+      <DeepSpaceScan />
     </div>
   );
 }
