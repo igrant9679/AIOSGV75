@@ -21,7 +21,9 @@ export default function DaemonsPanel() {
   const { addEvent } = useMission();
   const [services, setServices] = useState<DaemonInfo[]>([]);
   const [starting, setStarting] = useState<string | null>(null);
+  const [building, setBuilding] = useState<string | null>(null);
   const [err, setErr] = useState("");
+  const [note, setNote] = useState("");
 
   const load = useCallback(async () => {
     try {
@@ -39,6 +41,7 @@ export default function DaemonsPanel() {
 
   const start = async (d: DaemonInfo) => {
     setErr("");
+    setNote("");
     setStarting(d.id);
     try {
       const res = await fetch("/api/daemons", {
@@ -46,9 +49,17 @@ export default function DaemonsPanel() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: d.id }),
       });
-      const j = (await res.json()) as { ok?: boolean; already?: boolean; error?: string };
-      if (!res.ok || j.error) setErr(j.error ?? "could not start service");
-      else addEvent("SERVICES", `${d.label} ${j.already ? "already running" : "started"}`, "lime");
+      const j = (await res.json()) as { ok?: boolean; already?: boolean; building?: boolean; error?: string };
+      if (j.building) {
+        // Not a failure: the slow self-healing path is running. Poll it out.
+        setBuilding(d.id);
+        setNote(j.error ?? `${d.label} is building — this can take a few minutes.`);
+        addEvent("SERVICES", `${d.label} is building its UI (one-time)`, "amber");
+      } else if (!res.ok || j.error) {
+        setErr(j.error ?? "could not start service");
+      } else {
+        addEvent("SERVICES", `${d.label} ${j.already ? "already running" : "started"}`, "lime");
+      }
       await load();
     } catch (e) {
       setErr((e as Error).message);
@@ -56,6 +67,21 @@ export default function DaemonsPanel() {
       setStarting(null);
     }
   };
+
+  // While a daemon is building, poll faster and clear the notice once it lands.
+  useEffect(() => {
+    if (!building) return;
+    const t = setInterval(async () => {
+      await load();
+      const svc = services.find((s) => s.id === building);
+      if (svc?.running) {
+        setBuilding(null);
+        setNote("");
+        addEvent("SERVICES", `${svc.label} is up on port ${svc.port}`, "lime");
+      }
+    }, 8_000);
+    return () => clearInterval(t);
+  }, [building, load, services, addEvent]);
 
   const orbFor = (d: DaemonInfo) => (d.running ? "lime" : d.installed ? "amber" : "rose");
 
@@ -70,13 +96,24 @@ export default function DaemonsPanel() {
             {err}
           </div>
         )}
+        {note && (
+          <div className="rounded-lg border border-neon-amber/30 bg-neon-amber/10 px-3 py-2 font-mono text-[11px] text-neon-amber" aria-live="polite">
+            {note}
+          </div>
+        )}
         {services.map((d) => (
           <div key={d.id} className="flex items-center gap-3 rounded-xl border border-line bg-white/[0.02] px-3 py-2.5">
-            <StatusOrb accent={orbFor(d)} pulsing={starting === d.id} size={8} />
+            <StatusOrb accent={orbFor(d)} pulsing={starting === d.id || building === d.id} size={8} />
             <div className="min-w-0 flex-1">
               <p className="text-sm font-semibold text-ink">{d.label}</p>
               <p className="truncate font-mono text-[10px] text-ink-faint">
-                {d.running ? `running · port ${d.port}` : d.installed ? `stopped · ${d.manual}` : "not installed on this machine"}
+                {d.running
+                  ? `running · port ${d.port}`
+                  : building === d.id
+                    ? "building its web UI — a few minutes, one time only"
+                    : d.installed
+                      ? `stopped · ${d.manual}`
+                      : "not installed on this machine"}
               </p>
             </div>
             {d.running ? (

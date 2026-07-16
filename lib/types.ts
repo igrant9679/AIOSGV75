@@ -74,4 +74,6 @@ export interface AgentInfo {
   commandTemplate: string;
   available: boolean;
   version: string | null;
+  /** Diagnostic for an offline agent (e.g. the configured path names another user). */
+  hint?: string;
 }

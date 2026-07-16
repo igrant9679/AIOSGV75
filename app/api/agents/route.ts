@@ -1,9 +1,28 @@
 import { execFile } from "child_process";
+import fs from "fs";
+import os from "os";
 import { AGENT_DEFS } from "@/lib/agents-config";
 import { readRegistry } from "@/lib/registry";
 import type { AgentInfo } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
+
+/**
+ * Why is this agent offline? The commonest cause by far is an absolute path in
+ * .env.local copied from another machine — `C:\Users\alice\...` on a PC where
+ * you're `bob`. "Binary not found" is technically true but sends people
+ * reinstalling something that's already there, so name the real problem.
+ */
+function offlineHint(binary: string): string | undefined {
+  const looksLikePath = binary.includes("\\") || binary.includes("/");
+  if (!looksLikePath || fs.existsSync(binary)) return undefined;
+  const me = os.userInfo().username;
+  const named = binary.match(/[\\/]Users[\\/]([^\\/]+)/i)?.[1];
+  if (named && me && named.toLowerCase() !== me.toLowerCase()) {
+    return `This path is for user "${named}", but you're signed in as "${me}" — .env.local was likely copied from another machine. Fix the path (and restart) rather than reinstalling.`;
+  }
+  return `The configured path doesn't exist on this machine. Check HERMES_BIN / the agent's binary in .env.local.`;
+}
 
 interface ProbeResult {
   available: boolean;
@@ -67,6 +86,7 @@ export async function GET() {
         commandTemplate: def.commandTemplate,
         available,
         version,
+        hint: available ? undefined : offlineHint(def.binary),
       };
     }),
   );

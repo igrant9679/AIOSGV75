@@ -135,6 +135,7 @@ export default function AgentSection({ agentId }: { agentId: string }) {
                     <p className="font-semibold text-neon-rose">
                       Binary &lsquo;{agent.binary}&rsquo; was not found on this machine.
                     </p>
+                    {agent.hint && <p className="mt-1.5 font-semibold text-neon-amber">{agent.hint}</p>}
                     <p className="mt-1">
                       Install it, or point the bridge at your own command via{" "}
                       <span className="text-neon-amber">{agent.id.toUpperCase()}_BIN</span> /{" "}
