@@ -481,7 +481,12 @@ Field lessons from real battles (2026-07):
 - **Reruns aren't independent.** Finished battles archive to the vault, so a rerun of a similar prompt lets fighters *retrieve earlier answers via RAG* — a small model can echo a rival's archived answer nearly verbatim. Judge with that in mind.
 - **A no-show isn't a loss.** If a fighter errors, exclude it from the recorded vote rather than counting a phantom defeat.
 
-**📊 Analytics** — every run (chats, missions, schedules) is recorded with cost, tokens, latency, and outcome. 30-day spend, runs/day, and per-agent breakdowns, with 14-day trend sparklines in the headline tiles. The Activity panel projects **month-end spend** (month-to-date plus your last-7-day pace; the dashed line on Spend/day marks that pace). Claude reports real dollars; API models report tokens.
+**📊 Analytics** — every run (chats, missions, schedules) is recorded with cost, tokens, latency, and outcome. 30-day figures, runs/day, and per-agent breakdowns, with 14-day trend sparklines.
+
+**Read the money numbers carefully — they're two different things:**
+- **API spend** = agents billed per token against an API key (e.g. DeepSeek, or OpenClaw when it's pointed at a Gemini key). These are **real charges**, and only these feed the month-end projection.
+- **Subscription** = agents running on a plan login (Claude via \`/login\`, Codex via ChatGPT, Hermes via Nous Portal). The Claude CLI still reports a cost figure, but it's an **estimate at API list prices, not a bill** — the real constraint is your plan's usage allowance, so heavy runs hit **rate limits** rather than an invoice. Analytics shows these separately with a violet "not billed" banner, and each agent row is tagged **BILLED / SUBSCRIPTION / FREE**.
+- **Free** = local models (Ollama). No cost, no limit but your CPU.
 
 **✓ Evals** — a saved test suite (reasoning trap, instruction-following, concision — add your own cases with scoring criteria). Run it against any agents; a Claude judge scores 0–10 per case. The history panel turns model quality into a trend line. Costs roughly one Claude run per answer judged.`,
   },

@@ -14,6 +14,8 @@ import { listItems as listPipelineItems } from "./pipeline";
 import { listContent } from "./content";
 import { listOrchestrations } from "./orchestrator";
 import { readState as readImportState } from "./llmImport";
+import { readRegistry } from "./registry";
+import { billingFor, isBilled, BILLING_LABEL } from "./billing";
 import { readMemory, readGoals, readJournal, todayStamp, vaultInfo, vaultAvailable } from "./vault";
 
 /**
@@ -214,32 +216,57 @@ const buildFleetPerformance: Builder = async (def) => {
 const buildCostSpend: Builder = async (def) => {
   const r = skeleton(def);
   const entries = await readUsage(30).catch(() => [] as UsageEntry[]);
-  const spend = entries.reduce((n, e) => n + (e.costUsd ?? 0), 0);
+  const registry = await readRegistry().catch(() => ({ llms: [] as { id: string; baseUrl: string }[] }));
+  const llms = registry.llms.map((l) => ({ id: l.id, baseUrl: l.baseUrl }));
+  const modeOf = (agent: string) => billingFor(agent, llms);
+
+  // Only API-key agents are real charges. A subscription agent (e.g. Claude via
+  // OAuth) still reports a cost figure, but it's an estimate at list prices —
+  // reporting it as spend would invent a bill that doesn't exist.
+  const billed = entries.filter((e) => isBilled(modeOf(e.agent)));
+  const subbed = entries.filter((e) => modeOf(e.agent) === "subscription");
+  const spend = billed.reduce((n, e) => n + (e.costUsd ?? 0), 0);
+  const subEstimate = subbed.reduce((n, e) => n + (e.costUsd ?? 0), 0);
+
   const now = new Date();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
-  const mtd = entries.filter((e) => e.ts >= monthStart).reduce((n, e) => n + (e.costUsd ?? 0), 0);
-  const avg7 = entries.filter((e) => e.ts > Date.now() - 7 * DAY).reduce((n, e) => n + (e.costUsd ?? 0), 0) / 7;
+  const mtd = billed.filter((e) => e.ts >= monthStart).reduce((n, e) => n + (e.costUsd ?? 0), 0);
+  const avg7 = billed.filter((e) => e.ts > Date.now() - 7 * DAY).reduce((n, e) => n + (e.costUsd ?? 0), 0) / 7;
   const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
   const projected = mtd + avg7 * Math.max(0, daysInMonth - now.getDate());
-  const paid = entries.filter((e) => (e.costUsd ?? 0) > 0);
-  const okPaid = paid.filter((e) => e.ok);
+  const okBilled = billed.filter((e) => e.ok);
   const agents = usageByAgent(entries).filter((a) => a.cost > 0);
+
   r.kpis = [
-    { label: "Spend · 30d", value: usd(spend), accent: "amber" },
+    { label: "API spend · 30d", value: usd(spend), accent: "amber", hint: "real charges" },
     { label: "Month to date", value: usd(mtd), accent: "amber" },
     { label: "Month-end ≈", value: usd(projected), accent: "rose", hint: "MTD + last-7-day pace" },
-    { label: "Cost / successful run", value: okPaid.length ? usd(spend / okPaid.length) : "—", accent: "lime" },
+    { label: "Cost / billed run", value: okBilled.length ? usd(spend / okBilled.length) : "—", accent: "lime" },
+    { label: "Subscription runs", value: num(subbed.length), accent: "violet", hint: `~${usd(subEstimate)} est · not billed` },
+    { label: "Free / local runs", value: num(entries.filter((e) => modeOf(e.agent) === "local").length), accent: "lime" },
   ];
-  r.charts = [{ title: "Spend per day (14d)", unit: "$", bars: dailySeries(entries, 14, (e) => e.costUsd ?? 0) }];
+  r.charts = [{ title: "API spend per day (14d)", unit: "$", bars: dailySeries(billed, 14, (e) => e.costUsd ?? 0) }];
   r.tables = [
     {
-      title: "Spend by agent",
-      columns: ["Agent", "Spend", "Share", "Runs", "$ / run"],
-      rows: agents.map((a) => [a.agent, usd(a.cost), pct(a.cost, spend), a.runs, usd(a.cost / a.runs)]),
+      title: "Cost by agent",
+      columns: ["Agent", "Billing", "Cost", "Runs", "Per run"],
+      rows: agents.map((a) => {
+        const m = modeOf(a.agent);
+        return [
+          a.agent,
+          BILLING_LABEL[m],
+          m === "subscription" ? `~${usd(a.cost)} est` : usd(a.cost),
+          a.runs,
+          usd(a.cost / a.runs),
+        ];
+      }),
     },
   ];
-  const free = entries.length - paid.length;
-  r.notes.push(`${pct(free, entries.length)} of runs cost $0 (local models & keyless endpoints).`);
+  r.notes.push(
+    `**Only "API key" rows are money charged.** Subscription agents report a cost figure too, but it's an estimate at API list prices — the real constraint there is your plan's usage allowance, not a bill.`,
+  );
+  const free = entries.filter((e) => modeOf(e.agent) === "local").length;
+  if (free) r.notes.push(`${pct(free, entries.length)} of runs cost nothing at all (local models).`);
   return r;
 };
 
@@ -703,12 +730,15 @@ const buildExecutiveBrief: Builder = async (def) => {
     listPipelineItems().catch(() => []),
     listContent().catch(() => []),
   ]);
-  const spend7 = entries.reduce((n, e) => n + (e.costUsd ?? 0), 0);
+  const registry = await readRegistry().catch(() => ({ llms: [] as { id: string; baseUrl: string }[] }));
+  const llms = registry.llms.map((l) => ({ id: l.id, baseUrl: l.baseUrl }));
+  // Billed agents only — see the Cost & Spend report.
+  const spend7 = entries.filter((e) => isBilled(billingFor(e.agent, llms))).reduce((n, e) => n + (e.costUsd ?? 0), 0);
   const fails = entries.filter((e) => !e.ok).length;
   const missions7 = missions.filter((m) => Date.now() - m.createdAt < 7 * DAY);
   r.kpis = [
     { label: "Runs · 7d", value: num(entries.length), accent: "cyan" },
-    { label: "Spend · 7d", value: usd(spend7), accent: "amber" },
+    { label: "API spend · 7d", value: usd(spend7), accent: "amber", hint: "excl. subscription" },
     { label: "Error rate", value: pct(fails, entries.length), accent: fails ? "rose" : "lime" },
     { label: "Missions · 7d", value: num(missions7.length), accent: "violet" },
     { label: "Live automations", value: num(schedules.filter((s) => s.enabled).length), accent: "lime" },

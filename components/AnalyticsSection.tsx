@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { ACCENTS, type Accent } from "@/lib/accents";
 import type { UsageEntry } from "@/lib/usage";
 import Panel from "./ui/Panel";
@@ -92,6 +92,7 @@ export default function AnalyticsSection() {
   const { registry, agents, system } = useMission();
   const [entries, setEntries] = useState<UsageEntry[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [billing, setBilling] = useState<Record<string, string>>({});
 
   useEffect(() => {
     fetch("/api/usage?days=30")
@@ -99,7 +100,14 @@ export default function AnalyticsSection() {
       .then((d: { entries: UsageEntry[] }) => setEntries(d.entries ?? []))
       .catch(() => {})
       .finally(() => setLoaded(true));
+    fetch("/api/billing")
+      .then((r) => (r.ok ? r.json() : { modes: {} }))
+      .then((d: { modes: Record<string, string> }) => setBilling(d.modes ?? {}))
+      .catch(() => {});
   }, []);
+
+  /** Only API-key agents represent money actually charged. */
+  const isBilledAgent = useCallback((id: string) => billing[id] === "api", [billing]);
 
   const accentFor = (id: string): Accent => {
     if (id === "claude") return "violet";
@@ -109,6 +117,19 @@ export default function AnalyticsSection() {
   };
   const kindFor = (id: string): AvatarKind | undefined =>
     id === "claude" || id === "openclaw" || id === "hermes" ? (id as AvatarKind) : undefined;
+
+  // Split the ledger: money actually charged (API keys) vs what subscription
+  // runs would have cost at list prices. Conflating them overstates spend.
+  const split = useMemo(() => {
+    const billed = entries.filter((e) => isBilledAgent(e.agent));
+    const subbed = entries.filter((e) => billing[e.agent] === "subscription");
+    return {
+      billedSpend: billed.reduce((s, e) => s + (e.costUsd ?? 0), 0),
+      subEstimate: subbed.reduce((s, e) => s + (e.costUsd ?? 0), 0),
+      subRuns: subbed.length,
+      billedRuns: billed.length,
+    };
+  }, [entries, billing, isBilledAgent]);
 
   const stats = useMemo(() => {
     const spend = entries.reduce((s, e) => s + (e.costUsd ?? 0), 0);
@@ -140,16 +161,18 @@ export default function AnalyticsSection() {
     }
 
     // Month-end projection: month-to-date actuals + last-7-day daily pace for
-    // the remaining days.
+    // the remaining days. BILLED agents only — projecting a subscription's
+    // notional cost as though it were a bill is exactly the lie this avoids.
+    const billedEntries = entries.filter((e) => isBilledAgent(e.agent));
     const nowD = new Date();
     const monthStart = new Date(nowD.getFullYear(), nowD.getMonth(), 1).getTime();
-    const mtdSpend = entries.filter((e) => e.ts >= monthStart).reduce((s, e) => s + (e.costUsd ?? 0), 0);
-    const avg7 = entries.filter((e) => e.ts > Date.now() - 7 * DAY).reduce((s, e) => s + (e.costUsd ?? 0), 0) / 7;
+    const mtdSpend = billedEntries.filter((e) => e.ts >= monthStart).reduce((s, e) => s + (e.costUsd ?? 0), 0);
+    const avg7 = billedEntries.filter((e) => e.ts > Date.now() - 7 * DAY).reduce((s, e) => s + (e.costUsd ?? 0), 0) / 7;
     const daysInMonth = new Date(nowD.getFullYear(), nowD.getMonth() + 1, 0).getDate();
     const projMonthEnd = mtdSpend + avg7 * Math.max(0, daysInMonth - nowD.getDate());
 
     return { spend, spendToday, tokensOut, avgMs, runs: entries.length, agentRows, days, avg7, projMonthEnd };
-  }, [entries]);
+  }, [entries, isBilledAgent]);
 
   const maxAgentRuns = Math.max(...stats.agentRows.map((r) => r.runs), 1);
 
@@ -160,7 +183,7 @@ export default function AnalyticsSection() {
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
           {(
             [
-              { label: "Spend · 30d", value: <NumberTicker value={stats.spend} decimals={2} prefix="$" />, accent: "amber", trend: stats.days.map((d) => d.spend) },
+              { label: "API spend · 30d", value: <NumberTicker value={split.billedSpend} decimals={2} prefix="$" />, accent: "amber", trend: stats.days.map((d) => d.spend) },
               { label: "Runs · 30d", value: <NumberTicker value={stats.runs} />, accent: "cyan", trend: stats.days.map((d) => d.runs) },
               { label: "Tokens Out", value: <NumberTicker value={stats.tokensOut} />, accent: "magenta", trend: null },
               { label: "Avg Latency", value: <NumberTicker value={stats.avgMs / 1000} decimals={1} suffix="s" />, accent: "lime", trend: null },
@@ -189,14 +212,31 @@ export default function AnalyticsSection() {
           ))}
         </div>
 
+        {split.subRuns > 0 && (
+          <div
+            className="rounded-xl border px-4 py-2.5 text-[11.5px] leading-5"
+            style={{ borderColor: ACCENTS.violet.border, background: ACCENTS.violet.soft }}
+          >
+            <span className="font-mono text-[10px] tracking-[0.14em]" style={{ color: ACCENTS.violet.base }}>
+              SUBSCRIPTION USAGE — NOT BILLED
+            </span>
+            <p className="pt-1 text-ink-dim">
+              {split.subRuns.toLocaleString()} of these runs went to agents on a <span className="text-ink">subscription</span>{" "}
+              (your Claude plan). Their notional cost — <span className="font-mono">${split.subEstimate.toFixed(2)}</span> — is an
+              estimate at API list prices, <span className="text-ink">not money charged</span>. The real limit there is your
+              plan&apos;s usage allowance. Only <span className="text-ink">API spend</span> above reflects actual charges.
+            </p>
+          </div>
+        )}
+
         <Panel
           title="Activity — Last 14 Days"
           right={
-            stats.projMonthEnd > 0 ? (
+            stats.projMonthEnd > 0 && split.billedSpend > 0 ? (
               <span
                 className="rounded-full px-2 py-0.5 font-mono text-[10px] font-bold"
                 style={{ background: ACCENTS.amber.soft, color: ACCENTS.amber.base }}
-                title="Month-to-date spend plus the last-7-day daily pace for the remaining days"
+                title="Month-to-date API spend plus the last-7-day daily pace for the remaining days. Subscription runs are excluded."
               >
                 MONTH-END ≈ ${stats.projMonthEnd.toFixed(2)}
               </span>
@@ -234,10 +274,33 @@ export default function AnalyticsSection() {
                   <Avatar kind={kindFor(r.agent)} name={r.agent} accent={accentFor(r.agent)} size={28} />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-baseline justify-between gap-2">
-                      <p className="truncate text-sm font-semibold text-ink">{r.agent}</p>
+                      <p className="flex min-w-0 items-baseline gap-2 truncate text-sm font-semibold text-ink">
+                        {r.agent}
+                        {billing[r.agent] && billing[r.agent] !== "unknown" && (
+                          <span
+                            className="shrink-0 rounded px-1.5 py-px font-mono text-[8.5px] tracking-[0.1em]"
+                            style={
+                              billing[r.agent] === "api"
+                                ? { background: ACCENTS.amber.soft, color: ACCENTS.amber.base }
+                                : billing[r.agent] === "local"
+                                  ? { background: ACCENTS.lime.soft, color: ACCENTS.lime.base }
+                                  : { background: ACCENTS.violet.soft, color: ACCENTS.violet.base }
+                            }
+                            title={
+                              billing[r.agent] === "api"
+                                ? "Billed per token against an API key — real charges."
+                                : billing[r.agent] === "local"
+                                  ? "Runs on this machine. Free."
+                                  : "Runs against a subscription — the cost shown is an estimate at list prices, not a charge."
+                            }
+                          >
+                            {billing[r.agent] === "api" ? "BILLED" : billing[r.agent] === "local" ? "FREE" : "SUBSCRIPTION"}
+                          </span>
+                        )}
+                      </p>
                       <p className="shrink-0 font-mono text-[10px] text-ink-dim">
                         {r.runs} runs · {(r.avgMs / 1000).toFixed(1)}s avg
-                        {r.spend > 0 ? ` · $${r.spend.toFixed(2)}` : ""}
+                        {r.spend > 0 ? (billing[r.agent] === "subscription" ? ` · ~$${r.spend.toFixed(2)} est` : ` · $${r.spend.toFixed(2)}`) : ""}
                         {r.tokens > 0 ? ` · ${r.tokens.toLocaleString()} tok` : ""}
                         {r.fails > 0 ? ` · ${r.fails} failed` : ""}
                       </p>

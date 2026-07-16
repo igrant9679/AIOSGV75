@@ -72,6 +72,24 @@ const BATCH_SIZE = 12;
 const CONDENSE_CHARS = 1600;
 const JOB_STALE_MS = 5 * 60_000;
 
+/**
+ * Distilling a whole archive is ~200 writer calls. On a subscription that will
+ * hit the plan's usage window long before it finishes, and a timeout is normal
+ * for a slow local model — neither should throw away a multi-hour run. Batches
+ * retry with backoff; only a persistent failure stops the job.
+ */
+const BATCH_RETRIES = 4;
+const RETRY_BACKOFF_MS = [60_000, 5 * 60_000, 15 * 60_000, 30 * 60_000];
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** Transient = worth waiting out (rate limit, quota window, timeout, socket blip). */
+function isTransient(msg: string): boolean {
+  return /rate.?limit|429|quota|usage limit|too many requests|overloaded|529|503|timeout|timed out|aborted|ECONNRESET|ETIMEDOUT|socket hang up/i.test(
+    msg,
+  );
+}
+
 export function exportsDir(): string {
   return process.env.LLM_EXPORTS_DIR || path.join(os.homedir(), "Documents", "llm-exports");
 }
@@ -698,30 +716,75 @@ export async function startDistill(writer = "claude", max = 40): Promise<ImportS
     const written: { note: string; topics: string[]; tags: string[]; conversations: number }[] = [];
     let done = 0;
     for (let bi = 0; bi < batches.length; bi++) {
-      try {
-        const r = await runAgentText(writer, distillPrompt(batches[bi], knownNotes), { injectMemory: false });
-        if (r.error) throw new Error(r.error);
-        const noteTag = `${runStamp}-${bi + 1}`;
-        const meta = await writeHistoryNote(batches[bi], r.text, noteTag);
-        written.push({
-          note: `Imported History ${noteTag}`,
-          topics: meta.topics,
-          tags: meta.tags,
-          conversations: batches[bi].length,
-        });
-        const s = await readState();
-        for (const c of batches[bi]) {
-          const m = s.conversations.find((x) => x.id === c.id);
-          if (m) m.processed = true;
+      let lastErr = "";
+      let ok = false;
+      for (let attempt = 0; attempt <= BATCH_RETRIES && !ok; attempt++) {
+        if (attempt > 0) {
+          // Wait out a rate-limit window / transient failure, heartbeating so
+          // the job isn't mistaken for dead while it sleeps.
+          const wait = RETRY_BACKOFF_MS[Math.min(attempt - 1, RETRY_BACKOFF_MS.length - 1)];
+          const until = Date.now() + wait;
+          const s0 = await readState();
+          s0.job = {
+            ...s0.job,
+            status: "running",
+            heartbeat: Date.now(),
+            note: `Paused ${Math.round(wait / 60_000)}m — writer unavailable (${lastErr.slice(0, 80)}). Retry ${attempt}/${BATCH_RETRIES}…`,
+          };
+          await writeState(s0);
+          while (Date.now() < until) {
+            await sleep(Math.min(30_000, until - Date.now()));
+            const s1 = await readState();
+            s1.job = { ...s1.job, heartbeat: Date.now() };
+            await writeState(s1);
+          }
         }
-        done += batches[bi].length;
-        s.job = { status: "running", processed: done, total: picked.length, startedAt: s.job.startedAt, heartbeat: Date.now() };
-        await writeState(s);
-      } catch (e) {
-        // Salvage: index whatever landed before the failure, so completed work is linked.
+        try {
+          const r = await runAgentText(writer, distillPrompt(batches[bi], knownNotes), { injectMemory: false });
+          if (r.error) throw new Error(r.error);
+          const noteTag = `${runStamp}-${bi + 1}`;
+          const meta = await writeHistoryNote(batches[bi], r.text, noteTag);
+          written.push({
+            note: `Imported History ${noteTag}`,
+            topics: meta.topics,
+            tags: meta.tags,
+            conversations: batches[bi].length,
+          });
+          const s = await readState();
+          for (const c of batches[bi]) {
+            const m = s.conversations.find((x) => x.id === c.id);
+            if (m) m.processed = true;
+          }
+          done += batches[bi].length;
+          s.job = {
+            status: "running",
+            processed: done,
+            total: picked.length,
+            startedAt: s.job.startedAt,
+            heartbeat: Date.now(),
+            note: undefined,
+          };
+          await writeState(s);
+          ok = true;
+        } catch (e) {
+          lastErr = (e as Error).message;
+          // A non-transient failure (bad writer id, vault gone) won't fix
+          // itself — don't burn 50 minutes of backoff discovering that.
+          if (!isTransient(lastErr)) break;
+        }
+      }
+      if (!ok) {
+        // Salvage: index whatever landed, so completed work is linked and the
+        // run is resumable — processed flags for finished batches are saved.
         await writeHistoryIndex(written, runStamp).catch(() => {});
         const s = await readState();
-        s.job = { ...s.job, status: "error", error: (e as Error).message, heartbeat: Date.now() };
+        s.job = {
+          ...s.job,
+          status: "error",
+          processed: done,
+          error: `${lastErr} — stopped after ${done}/${picked.length}. Progress is saved: re-run Distill to continue.`,
+          heartbeat: Date.now(),
+        };
         await writeState(s);
         return;
       }
