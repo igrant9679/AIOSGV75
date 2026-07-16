@@ -29,6 +29,7 @@ interface Summary {
   vaultOk: boolean;
   sources: Record<string, number>;
   duplicates: number;
+  warnings: string[];
   total: number;
   processed: number;
   messages: number;
@@ -187,6 +188,21 @@ export default function ImportSection() {
                   </span>
                 )}
               </div>
+              {sum.warnings?.length > 0 && (
+                <div
+                  role="alert"
+                  className="col-span-2 rounded-lg border border-neon-rose/30 bg-neon-rose/10 px-3 py-2 sm:col-span-4"
+                >
+                  <p className="font-mono text-[10px] tracking-[0.14em] text-neon-rose">
+                    {sum.warnings.length} EXPORT FILE{sum.warnings.length === 1 ? "" : "S"} COULD NOT BE READ
+                  </p>
+                  {sum.warnings.map((w) => (
+                    <p key={w} className="pt-1 font-mono text-[10.5px] leading-4 text-ink-dim">
+                      {w}
+                    </p>
+                  ))}
+                </div>
+              )}
             </div>
           </Panel>
 

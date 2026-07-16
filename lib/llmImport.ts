@@ -1,4 +1,5 @@
 import fs from "fs/promises";
+import { createReadStream } from "fs";
 import path from "path";
 import os from "os";
 import crypto from "crypto";
@@ -60,6 +61,8 @@ export interface ImportState {
   sources: Record<string, number>;
   /** Duplicate copies discarded by the last scan (id + content dedup). */
   duplicates?: number;
+  /** Files the last scan could not read — surfaced so failures aren't silent. */
+  warnings?: string[];
   conversations: ConvoMeta[];
   job: ImportJob;
 }
@@ -171,6 +174,117 @@ function parseRaw(raw: string): ImportedConversation[] {
   return [];
 }
 
+/**
+ * Yield each top-level JSON object from a file as text, without ever holding
+ * the whole file as a string.
+ *
+ * This exists because real Claude exports blow past V8's hard limit: a
+ * conversations.json over ~512MB makes `fs.readFile(f, "utf8")` throw
+ * ("Cannot create a string longer than 0x1fffffe8 characters"), so the file
+ * could never be imported at all. We walk the stream tracking brace depth
+ * (string-aware, escape-aware) and emit one conversation object at a time.
+ *
+ * Assumes a top-level ARRAY of objects — which is what both ChatGPT and Claude
+ * emit. `rootIsArray()` gates that; anything else takes the whole-file path.
+ */
+async function* iterateTopLevelObjects(file: string): AsyncGenerator<string> {
+  const stream = createReadStream(file, { encoding: "utf8", highWaterMark: 1 << 22 });
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  let parts: string[] = [];
+  let startIdx = -1;
+
+  for await (const chunk of stream as AsyncIterable<string>) {
+    startIdx = depth > 0 ? 0 : -1;
+    for (let i = 0; i < chunk.length; i++) {
+      const ch = chunk[i];
+      if (inString) {
+        if (escaped) escaped = false;
+        else if (ch === "\\") escaped = true;
+        else if (ch === '"') inString = false;
+        continue;
+      }
+      if (ch === '"') {
+        inString = true;
+        continue;
+      }
+      if (ch === "{") {
+        if (depth === 0) startIdx = i;
+        depth++;
+      } else if (ch === "}") {
+        depth--;
+        if (depth === 0 && startIdx >= 0) {
+          parts.push(chunk.slice(startIdx, i + 1));
+          yield parts.join("");
+          parts = [];
+          startIdx = -1;
+        }
+      }
+    }
+    if (depth > 0 && startIdx >= 0) parts.push(chunk.slice(startIdx));
+  }
+}
+
+/** Peek the first non-whitespace byte to see if the root is a JSON array. */
+async function rootIsArray(file: string): Promise<boolean> {
+  const fh = await fs.open(file, "r").catch(() => null);
+  if (!fh) return false;
+  try {
+    const { buffer, bytesRead } = await fh.read(Buffer.alloc(64), 0, 64, 0);
+    const head = buffer.subarray(0, bytesRead).toString("utf8").replace(/^﻿/, "").trimStart();
+    return head.startsWith("[");
+  } finally {
+    await fh.close();
+  }
+}
+
+/** Parse one already-decoded conversation record with the right format parser. */
+function parseOne(obj: Record<string, unknown>): ImportedConversation | null {
+  if ("mapping" in obj) return parseChatGpt([obj])[0] ?? null;
+  if ("chat_messages" in obj || "messages" in obj) return parseClaude([obj])[0] ?? null;
+  return null;
+}
+
+/**
+ * Walk every conversation in one export file, streaming when possible so file
+ * size is irrelevant. Returns the number of records seen.
+ */
+async function forEachConversationInFile(
+  file: string,
+  onConvo: (c: ImportedConversation) => void,
+): Promise<{ seen: number; error?: string }> {
+  let seen = 0;
+  if (await rootIsArray(file)) {
+    try {
+      for await (const objText of iterateTopLevelObjects(file)) {
+        let obj: Record<string, unknown>;
+        try {
+          obj = JSON.parse(objText) as Record<string, unknown>;
+        } catch {
+          continue; // one malformed record shouldn't sink the file
+        }
+        const c = parseOne(obj);
+        seen++;
+        if (c && c.messages.length) onConvo(c);
+      }
+      return { seen };
+    } catch (e) {
+      return { seen, error: `${path.basename(file)}: ${(e as Error).message}` };
+    }
+  }
+  // Non-array root (a wrapper object) — small in practice, read it whole.
+  try {
+    const raw = await fs.readFile(file, "utf8");
+    const list = parseRaw(raw);
+    seen = list.length;
+    for (const c of list) if (c.messages.length) onConvo(c);
+    return { seen };
+  } catch (e) {
+    return { seen, error: `${path.basename(file)}: ${(e as Error).message}` };
+  }
+}
+
 async function walkJson(dir: string, acc: string[] = []): Promise<string[]> {
   const entries = await fs.readdir(dir, { withFileTypes: true }).catch(() => []);
   for (const e of entries) {
@@ -224,81 +338,126 @@ export function fingerprint(c: ImportedConversation): string | null {
   return crypto.createHash("sha1").update(opener.slice(0, 800)).digest("hex").slice(0, 16);
 }
 
-/** True if `short` is an opening-prefix of `long` — i.e. the same chat, continued. */
-function isPrefixOf(short: ImportedConversation, long: ImportedConversation): boolean {
-  if (short.messages.length > long.messages.length) return false;
-  const k = Math.min(short.messages.length, 3);
-  for (let i = 0; i < k; i++) {
-    if (norm(short.messages[i].text).slice(0, 200) !== norm(long.messages[i].text).slice(0, 200)) return false;
-  }
-  return true;
+/**
+ * A scan-time record: metadata plus `head`, a short signature of the opening
+ * messages used for the continuation check. Deliberately NOT the full
+ * conversation — a real archive is hundreds of MB and holding every message in
+ * memory would exhaust the heap. `head` is dropped before the index is saved.
+ */
+interface ScanRec extends ConvoMeta {
+  head: string;
+}
+
+function headOf(c: ImportedConversation): string {
+  return c.messages
+    .slice(0, 3)
+    .map((m) => norm(m.text).slice(0, 200))
+    .join("|");
+}
+
+function metaOf(c: ImportedConversation): ScanRec {
+  return {
+    id: c.id,
+    source: c.source,
+    title: c.title,
+    createdAt: c.createdAt,
+    messageCount: c.messages.length,
+    wordCount: wordCount(c),
+    processed: false,
+    fp: fingerprint(c),
+    head: headOf(c),
+  };
 }
 
 /** Richest wins: most messages, then most words. */
-function richer(a: ImportedConversation, b: ImportedConversation): ImportedConversation {
-  if (a.messages.length !== b.messages.length) return a.messages.length > b.messages.length ? a : b;
-  return wordCount(a) >= wordCount(b) ? a : b;
+function richerRec(a: ScanRec, b: ScanRec): ScanRec {
+  if (a.messageCount !== b.messageCount) return a.messageCount > b.messageCount ? a : b;
+  return a.wordCount >= b.wordCount ? a : b;
 }
 
 export interface DedupResult {
-  conversations: ImportedConversation[];
+  records: ScanRec[];
   duplicates: number; // copies discarded
+  warnings: string[];
 }
 
 /**
- * Parse every export file and deduplicate in two passes:
+ * Stream every export file and deduplicate in two passes:
  *   1. by id — the same conversation present in two overlapping exports
  *   2. by content fingerprint — the same conversation re-exported under a new
- *      id, verified as a true continuation (opening messages match) so two
- *      different chats that merely share an opener are never merged.
+ *      id, verified as a true continuation (the `head` signature of one is a
+ *      prefix of the other) so two different chats that merely share an opener
+ *      are never merged.
  * In both passes the RICHEST copy survives, so re-exporting after months of
  * extra messages upgrades the record instead of keeping the stale one.
+ *
+ * Returns metadata only — see ScanRec.
  */
-export async function parseAllConversationsDeduped(): Promise<DedupResult> {
+export async function scanRecords(): Promise<DedupResult> {
   const dir = exportsDir();
   await extractZips(dir);
   const files = await walkJson(dir);
 
   let seen = 0;
-  const byId = new Map<string, ImportedConversation>();
+  const warnings: string[] = [];
+  const byId = new Map<string, ScanRec>();
   for (const f of files) {
-    const raw = await fs.readFile(f, "utf8").catch(() => "");
-    if (!raw) continue;
-    for (const c of parseRaw(raw)) {
-      if (!c.messages.length) continue;
-      seen++;
-      const prev = byId.get(c.id);
-      byId.set(c.id, prev ? richer(prev, c) : c);
-    }
+    const r = await forEachConversationInFile(f, (c) => {
+      const rec = metaOf(c);
+      const prev = byId.get(rec.id);
+      byId.set(rec.id, prev ? richerRec(prev, rec) : rec);
+    });
+    seen += r.seen;
+    if (r.error) warnings.push(r.error);
   }
 
   // pass 2 — content fingerprint
-  const byFp = new Map<string, ImportedConversation>();
-  const kept: ImportedConversation[] = [];
-  for (const c of byId.values()) {
-    const fp = fingerprint(c);
-    if (!fp) {
-      kept.push(c); // too short to fingerprint safely — keep it
+  const byFp = new Map<string, ScanRec>();
+  const kept: ScanRec[] = [];
+  for (const rec of byId.values()) {
+    if (!rec.fp) {
+      kept.push(rec); // too short to fingerprint safely — keep it
       continue;
     }
-    const prev = byFp.get(fp);
+    const prev = byFp.get(rec.fp);
     if (!prev) {
-      byFp.set(fp, c);
+      byFp.set(rec.fp, rec);
       continue;
     }
     // Same opener. Only merge if one genuinely continues the other.
-    const [s, l] = prev.messages.length <= c.messages.length ? [prev, c] : [c, prev];
-    if (isPrefixOf(s, l)) byFp.set(fp, l);
-    else kept.push(c); // same opener, different conversation — keep both
+    const [s, l] = prev.messageCount <= rec.messageCount ? [prev, rec] : [rec, prev];
+    if (l.head.startsWith(s.head)) byFp.set(rec.fp, l);
+    else kept.push(rec); // same opener, different conversation — keep both
   }
 
-  const conversations = [...kept, ...byFp.values()];
-  return { conversations, duplicates: Math.max(0, seen - conversations.length) };
+  const records = [...kept, ...byFp.values()];
+  return { records, duplicates: Math.max(0, seen - records.length), warnings };
 }
 
-/** Parse every export file into full conversations (deduped). */
-export async function parseAllConversations(): Promise<ImportedConversation[]> {
-  return (await parseAllConversationsDeduped()).conversations;
+/**
+ * Load the condensed text for a specific set of conversation ids. The distiller
+ * only ever sends `condense()` output to the writer (~1.6KB per conversation),
+ * so we never need to hold full message bodies — which is what makes importing
+ * a 500MB+ archive possible at all.
+ */
+async function loadDistillDocs(ids: Set<string>): Promise<DistillDoc[]> {
+  const files = await walkJson(exportsDir());
+  const byId = new Map<string, { doc: DistillDoc; messages: number; words: number }>();
+  for (const f of files) {
+    await forEachConversationInFile(f, (c) => {
+      if (!ids.has(c.id)) return;
+      const prev = byId.get(c.id);
+      const words = wordCount(c);
+      // richest copy wins here too
+      if (prev && (prev.messages > c.messages.length || (prev.messages === c.messages.length && prev.words >= words))) return;
+      byId.set(c.id, {
+        doc: { id: c.id, title: c.title, source: c.source, text: condense(c) },
+        messages: c.messages.length,
+        words,
+      });
+    });
+  }
+  return [...byId.values()].map((v) => v.doc);
 }
 
 function wordCount(c: ImportedConversation): number {
@@ -307,7 +466,7 @@ function wordCount(c: ImportedConversation): number {
 
 export async function scan(): Promise<ImportState> {
   await fs.mkdir(exportsDir(), { recursive: true }).catch(() => {});
-  const { conversations: all, duplicates } = await parseAllConversationsDeduped();
+  const { records, duplicates, warnings } = await scanRecords();
   const prev = await readState();
   // "Already distilled" is remembered by id AND by content fingerprint, so a
   // conversation re-exported under a new id is still recognised as done.
@@ -316,25 +475,17 @@ export async function scan(): Promise<ImportState> {
     prev.conversations.filter((c) => c.processed && c.fp).map((c) => c.fp as string),
   );
   const sources: Record<string, number> = {};
-  const conversations: ConvoMeta[] = all.map((c) => {
-    sources[c.source] = (sources[c.source] ?? 0) + 1;
-    const fp = fingerprint(c);
-    return {
-      id: c.id,
-      source: c.source,
-      title: c.title,
-      createdAt: c.createdAt,
-      messageCount: c.messages.length,
-      wordCount: wordCount(c),
-      processed: doneIds.has(c.id) || (fp ? doneFps.has(fp) : false),
-      fp,
-    };
+  const conversations: ConvoMeta[] = records.map((r) => {
+    sources[r.source] = (sources[r.source] ?? 0) + 1;
+    const { head: _head, ...meta } = r; // `head` is scan-only, never persisted
+    return { ...meta, processed: doneIds.has(r.id) || (r.fp ? doneFps.has(r.fp) : false) };
   });
   const state: ImportState = {
     scannedAt: Date.now(),
     exportsDir: exportsDir(),
     sources,
     duplicates,
+    warnings,
     conversations,
     job: prev.job.status === "running" ? prev.job : { ...EMPTY_JOB },
   };
@@ -343,6 +494,15 @@ export async function scan(): Promise<ImportState> {
 }
 
 // ─── distill ───
+
+/** What the writer actually needs: a condensed conversation, not its full text. */
+export interface DistillDoc {
+  id: string;
+  title: string;
+  source: string;
+  text: string;
+}
+
 function condense(c: ImportedConversation): string {
   const lines = c.messages.map((m) => `${m.role === "user" ? "U" : "A"}: ${m.text.replace(/\s+/g, " ").trim()}`);
   let out = lines.join("\n");
@@ -402,8 +562,8 @@ function splitTags(raw: string): { digest: string; tags: string[] } {
   return { digest: raw.replace(m[0], "").trim(), tags };
 }
 
-function distillPrompt(batch: ImportedConversation[], knownNotes: string[]): string {
-  const blocks = batch.map((c, i) => `--- CONVERSATION ${i + 1} ---\n${condense(c)}`).join("\n\n");
+function distillPrompt(batch: DistillDoc[], knownNotes: string[]): string {
+  const blocks = batch.map((d, i) => `--- CONVERSATION ${i + 1} ---\n${d.text}`).join("\n\n");
   const linkable = knownNotes.length
     ? [
         ``,
@@ -433,7 +593,7 @@ function distillPrompt(batch: ImportedConversation[], knownNotes: string[]): str
 }
 
 async function writeHistoryNote(
-  batch: ImportedConversation[],
+  batch: DistillDoc[],
   raw: string,
   tag: string,
 ): Promise<{ tags: string[]; topics: string[] }> {
@@ -509,31 +669,29 @@ export async function startDistill(writer = "claude", max = 40): Promise<ImportS
   if (state.job.status === "running" && Date.now() - state.job.heartbeat < JOB_STALE_MS) {
     return state; // already running
   }
-  const all = await parseAllConversations();
-  // Skip anything already distilled — by id, or by content fingerprint so a
-  // re-exported duplicate under a new id is never distilled twice.
-  const doneIds = new Set(state.conversations.filter((c) => c.processed).map((c) => c.id));
-  const doneFps = new Set(state.conversations.filter((c) => c.processed && c.fp).map((c) => c.fp as string));
-  const remaining = all
-    .filter((c) => {
-      if (doneIds.has(c.id)) return false;
-      const fp = fingerprint(c);
-      return !(fp && doneFps.has(fp));
-    })
-    .sort((a, b) => b.messages.length - a.messages.length);
-  const todo = max > 0 ? remaining.slice(0, Math.min(max, 500)) : remaining;
+  // Selection runs on the freshly-scanned METADATA (already deduped by id and
+  // fingerprint), so nothing large is loaded just to decide what to distill.
+  const remaining = state.conversations
+    .filter((c) => !c.processed)
+    .sort((a, b) => b.messageCount - a.messageCount);
+  const picked = max > 0 ? remaining.slice(0, Math.min(max, 500)) : remaining;
 
-  if (!todo.length) {
+  if (!picked.length) {
     state.job = { ...EMPTY_JOB, status: "done", note: "Nothing new to distill — all scanned conversations are already processed." };
     await writeState(state);
     return state;
   }
 
-  state.job = { status: "running", processed: 0, total: todo.length, startedAt: Date.now(), heartbeat: Date.now() };
+  state.job = { status: "running", processed: 0, total: picked.length, startedAt: Date.now(), heartbeat: Date.now() };
   await writeState(state);
 
   void (async () => {
-    const batches = chunk(todo, BATCH_SIZE);
+    // Load ONLY the condensed text for the picked ids (~1.6KB each) — never the
+    // full archive, which can be hundreds of MB.
+    const docs = await loadDistillDocs(new Set(picked.map((c) => c.id)));
+    const order = new Map(picked.map((c, i) => [c.id, i]));
+    docs.sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
+    const batches = chunk(docs, BATCH_SIZE);
     const runStamp = `${todayStamp()} ${Date.now().toString(36).slice(-5)}`;
     // Snapshot the vault's note names once — the writer links topics into them.
     const knownNotes = await existingNoteNames();
@@ -557,7 +715,7 @@ export async function startDistill(writer = "claude", max = 40): Promise<ImportS
           if (m) m.processed = true;
         }
         done += batches[bi].length;
-        s.job = { status: "running", processed: done, total: todo.length, startedAt: s.job.startedAt, heartbeat: Date.now() };
+        s.job = { status: "running", processed: done, total: picked.length, startedAt: s.job.startedAt, heartbeat: Date.now() };
         await writeState(s);
       } catch (e) {
         // Salvage: index whatever landed before the failure, so completed work is linked.
@@ -574,7 +732,7 @@ export async function startDistill(writer = "claude", max = 40): Promise<ImportS
     s.job = {
       status: "done",
       processed: done,
-      total: todo.length,
+      total: picked.length,
       startedAt: s.job.startedAt,
       heartbeat: Date.now(),
       note: `Distilled ${done} conversations into ${written.length} note(s) in Agentic OS/History/${allTags.length ? ` · tags: ${allTags.slice(0, 8).join(", ")}` : ""}.`,

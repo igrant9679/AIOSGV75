@@ -13,6 +13,7 @@ function summarize(state: ImportState, vaultOk: boolean) {
     vaultOk,
     sources: state.sources,
     duplicates: state.duplicates ?? 0,
+    warnings: state.warnings ?? [],
     total: convos.length,
     processed,
     messages: convos.reduce((n, c) => n + c.messageCount, 0),
