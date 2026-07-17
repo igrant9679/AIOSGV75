@@ -7,14 +7,19 @@
 ## What this is
 
 **Mission Control** — Idris's local AI operating system at `C:\Users\Admin\Documents\mission-control`
-(Next.js 16 + Tailwind v4 + Framer Motion). Built July 9–10, 2026, versions v1 → v18.2.
-Repo: **https://github.com/igrant9679/AIOSGV75** (main, gh CLI authenticated as igrant9679).
+(Next.js 16 + Tailwind v4 + Framer Motion). Built July 9–16, 2026, versions **v1 → v41**.
+Repo: **https://github.com/igrant9679/AIOSGV75** (main, PUBLIC, gh CLI authed as igrant9679).
 
 It orchestrates a fleet of AI agents with an Obsidian vault as its brain:
 chats · missions (MoA/pipeline/debate/arena) · schedules with Telegram delivery · watchers ·
 approval gates (answerable from Telegram) · shared memory + vault-wide link-aware RAG ·
-knowledge graph · smart routing (Auto) · analytics/evals/arena · voice in+out · light/dark ·
+knowledge graph · smart routing (Auto) · analytics/evals/arena · **18 exportable reports** ·
+Creative Studio · SEO content pipeline → WordPress/Ghost/Webflow · **imported ChatGPT+Claude
+history (2,242 conversations distilled)** · voice in+out · light/dark ·
 built-in searchable guide (`/guide`, also exported to the vault for agent RAG).
+
+**Three machines**, all on the same vault (OneDrive): desktop `Admin` (PRIMARY, this one) ·
+laptop `idris` · laptop `sabin`. Clustering is OFF by default = each runs standalone.
 
 ## Running state
 
@@ -25,7 +30,7 @@ built-in searchable guide (`/guide`, also exported to the vault for agent RAG).
   run `npm run build` then restart via the VBS so the boot server serves the new code.
   If dev serves stale CSS/JS after big edits: `rm -rf .next/dev` and restart dev.
 
-## Fleet & config state (as of 2026-07-10 night)
+## Fleet & config state (rows dated; billing audit + machines current as of 2026-07-16)
 
 | Piece | State |
 | --- | --- |
@@ -82,42 +87,58 @@ built-in searchable guide (`/guide`, also exported to the vault for agent RAG).
 - Watch for a stray NBSP (U+00A0) if exact-match editing fails in ChatThread.tsx.
 - One `.env.local` reference table lives in the Guide's "Settings & Environment Reference".
 
-## ✅ RESOLVED — the "emptied .vbs" scare (2026-07-14)
+## ⚠ OPEN — read first (2026-07-16)
 
-**Nothing was actually broken.** On inspection `Mission Control Server.vbs` in the Startup
-folder was intact — 115 bytes, correct two lines, last modified 2026-07-09 (i.e. untouched by
-any push). A recursive search of `Documents` found no other `.vbs` file. Conclusion: a false
-alarm or a look at the wrong file; **no cause to hunt for.**
+1. **Telegram bot token was exposed.** While diagnosing OpenClaw's backend I dumped
+   `~/.openclaw/openclaw.json` to the terminal and the redaction regex missed `botToken` —
+   the live token for **@IdrisGV75_bot** printed into a Claude Code transcript. **Ask Idris
+   whether he rotated it** (@BotFather → `/revoke`, then update `openclaw.json` and restart
+   the gateway). If not done, it's still the top item. Lesson: when dumping any config, redact
+   by *value shape* (long random strings), not by a key allowlist.
+2. **Laptops may need `update.cmd`** — desktop is at v41; `idris` and `sabin` were last updated
+   mid-session (~v37). They need it to index the imported history in Conversations. The History
+   notes themselves already reached them via OneDrive.
+3. **Studio + Content still un-activated** — no real API keys entered (see roadmap #1).
 
-Regenerated it anyway via `install-service.cmd` and confirmed the server came back up on
-127.0.0.1:3000 with no stray duplicate processes. The healthy content is exactly:
+### Recently fixed, worth not re-breaking
+- `install-service.cmd` takes an optional folder (v31.1): **argument** → script's own folder →
+  **interactive prompt**; refuses a folder with no `server.cmd`. (cmd trap: `set "VAR=%VAR:"=%"`
+  unbalances quotes → ". was unexpected at this time"; use `set VAR=%VAR:"=%`, no outer quotes.)
+  Healthy VBS = 2 lines: `Set sh = CreateObject("WScript.Shell")` / `sh.Run """<repo>\server.cmd""", 0, False`
+- The "emptied .vbs" scare (2026-07-14) was a **false alarm** — file was intact all along. Don't re-hunt it.
 
-```
-Set sh = CreateObject("WScript.Shell")
-sh.Run """<repo>\server.cmd""", 0, False
-```
+## ✅ DONE 2026-07-16 — LLM history import (was roadmap #2 for weeks)
 
-**`install-service.cmd` now takes an optional folder** (v31.1) — every machine keeps the repo
-somewhere different, so the resolve order is: **argument** → the folder the script lives in →
-**interactive prompt**. It refuses to write a launcher pointing at a folder with no
-`server.cmd`, and strips pasted quotes / a trailing backslash:
+**2,242 conversations distilled → 187 notes + 2 index hubs in `Agentic OS/History/`.**
+Claude writer, ~2.5h, 0 failures, 255 duplicates auto-removed, 865 distinct tags, range
+2023-07-16 → 2026-07-14. Cost **nothing** (subscription, see billing row). Now searchable in
+Conversations (1,530 records) on **every** machine, clustered in `/graph` (189 nodes, 0 orphans).
+Top themes: communityforce(45) · power-apps(29) · lsi-media(27) · enterprise-architecture(23) ·
+saf-ia(22) · n8n-automation(18) · federal-contracting(16) · qlik-sense(15).
 
-```
-install-service.cmd "D:\code\my-mission-control"
-```
-
-(Beware `set "VAR=%VAR:"=%"` in cmd — that quote-strip idiom unbalances quotes and dies with
-". was unexpected at this time". Use `set VAR=%VAR:"=%` with no outer quotes.)
+Raw exports (675MB, 212 files) + `data/llm-import.json` stay in `Documents\llm-exports` on the
+DESKTOP ONLY — never import on another machine (processed flags are per-machine → duplicates).
 
 ## Open roadmap / next candidates
 
-1. **Studio + Content activation** — enter real keys: Studio API keys (OpenAI = image+voice; Gemini/ElevenLabs/Replicate) **and** a WordPress connection (Settings → Publishing) to light up publishing. Only no-key/bad-key paths are proven so far; a real Claude draft (100/100 SEO) already confirmed the content half works.
-2. **LLM-history import ACTIVATION** — importer is BUILT + upgraded (v25, **v36 tags/wikilinks**). Idris HAS the ChatGPT + Claude export ZIPs as of 2026-07-14; next step is dropping them in `Documents\llm-exports` (**desktop only** — raw exports + processed flags are per-machine, distilled notes sync), Scan, then Distill (writer dropdown = any fleet agent; Claude best quality, Llama free/local). Suggested: 20–30 conversations w/ Claude first, read the note, then scale. v36 verified E2E on synthetic data: tags + `[[wikilinks]]` + `Imported History Index` hub all correct.
-3. **Phone access** (Tailscale + PWA) — the older deferred roadmap item
-4. Optional: Gemini chat agent (free key at aistudio.google.com; embeddings already local); Hermes on the laptop
-5. Content pipeline niceties (deferred): upload the hero image to WP media + embed it in the post; more publish targets (Ghost, Webflow); bulk keyword → article runs
-6. Keep feeding the Arena easy-tier battles so simple routing gets cheaper/smarter
-7. Deferred (user held off 2026-07-14): **named cluster groups** — `group` field in cluster config + `Cluster/<group>/…` namespacing + a Group-name field in the Machine Group panel, for multiple failover groups sharing ONE vault. Not needed today: separate groups = separate vaults (VAULT_DIR), which also separates the brain — that's the current answer to "start a new Group"
+1. **Studio + Content activation** — the last big un-activated feature. Enter real keys: Studio (OpenAI = image+voice; Gemini/ElevenLabs/Replicate) **and** a publish target (Settings → Publishing now has WordPress **+ Ghost + Webflow**, v35). Only no-key/bad-key paths are proven; a real Claude draft (100/100 SEO) confirmed the content half works. **Ghost/Webflow are untested against real sites** — first live push deserves a watch.
+2. **Phone access** (Tailscale + PWA) — long-deferred. Note `/` still overflows below ~624px (SystemVitals gauges); a task chip was filed for it.
+3. **Configure the idle subscriptions** — Idris has GLM 5.2, Sakana AI, Gemini subs that AREN'T wired in. Hermes natively supports GLM via its `zai` provider (`~/.hermes/config.yaml` fallback_model). OpenClaw currently burns a **Gemini API key** — pointing it at the subscription instead would cut real spend to ~$0.
+4. Content niceties: hero image → WP media library + embed; bulk keyword → article runs.
+5. Keep feeding the Arena easy-tier battles so simple routing gets cheaper/smarter.
+6. Deferred (Idris held off 2026-07-14): **named cluster groups** — `group` field in cluster config + `Cluster/<group>/…` namespacing + a Group-name field in the Machine Group panel, for multiple failover groups sharing ONE vault. Not needed today: separate groups = separate vaults (VAULT_DIR), which also separates the brain — that's the current answer to "start a new Group".
+7. Optional: re-distill the richest ~100 conversations at higher quality, or feed `/import`'s ChatGPT half (only Claude exports were present this run — `sources: {claude: 2242}`).
+
+## Session-workflow notes (learned the hard way)
+
+- **Screenshots are broken** in the Claude Code browser pane (times out even on plain JSON;
+  canvas reports width 0 because the pane is hidden). Verify UI via
+  `javascript_tool` + `getComputedStyle`/DOM assertions instead. `mcp__visualize__show_widget`
+  works if you need to *show* Idris something.
+- **Don't rebuild/restart while a long run is in flight** (rule 11) — it dies with the process.
+- Long PowerShell one-liners paste badly over RDP; give Idris 2–3 short lines instead.
+- Idris runs 3 machines with **different usernames** — never hand him a path with someone
+  else's username in it. The agent page now detects this and says so (v38).
 
 ## Suggested first message for the new session
 
