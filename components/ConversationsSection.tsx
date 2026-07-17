@@ -14,6 +14,7 @@ const VAULT_NAME = "IdrisGV75";
 interface Facet { key: string; count: number }
 interface Result {
   id: string;
+  kind: "chat" | "history";
   agent: string;
   date: string;
   time: string;
@@ -28,6 +29,7 @@ interface Result {
   body: string;
   score: number;
   summary?: string;
+  tags?: string[];
 }
 interface Payload {
   results: Result[];
@@ -270,21 +272,40 @@ export default function ConversationsSection() {
                 return (
                   <div key={r.id} className="rounded-xl border border-line bg-white/[0.02]">
                     <button onClick={() => setOpen(isOpen ? null : r.id)} className="flex w-full cursor-pointer items-start gap-3 p-3 text-left">
-                      <Avatar name={r.agent} accent="cyan" size={30} />
+                      <Avatar name={r.agent} accent={r.kind === "history" ? "violet" : "cyan"} size={30} />
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-semibold text-ink">{highlight(r.title, q)}</p>
+                        <p className="flex min-w-0 items-center gap-2">
+                          <span className="truncate text-sm font-semibold text-ink">{highlight(r.title, q)}</span>
+                          {r.kind === "history" && (
+                            <span
+                              className="shrink-0 rounded bg-neon-violet/15 px-1.5 py-px font-mono text-[8.5px] tracking-[0.1em] text-neon-violet"
+                              title="A topic distilled from your imported ChatGPT/Claude history — not a live Mission Control chat."
+                            >
+                              IMPORTED
+                            </span>
+                          )}
+                        </p>
                         {r.summary ? (
                           <p className="mt-0.5 line-clamp-1 text-[11px] italic leading-4 text-neon-violet">✦ {r.summary}</p>
                         ) : null}
                         <p className="mt-0.5 line-clamp-2 text-[11px] leading-4 text-ink-dim">{highlight(r.snippet, q)}</p>
                         <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 font-mono text-[9px] text-ink-faint">
-                          <span className="font-semibold text-neon-cyan">{r.agent}</span>
-                          <span>{r.date}{group === "session" && r.exchangeCount > 1 ? ` · ${r.time}–${r.lastTime}` : ` · ${r.time}`}</span>
-                          <span className="text-ink-dim">{relTime(r.date, r.lastTime)}</span>
-                          <span className={r.host ? "text-ink-dim" : ""}>🖥 {r.host || "unknown"}</span>
+                          <span className={`font-semibold ${r.kind === "history" ? "text-neon-violet" : "text-neon-cyan"}`}>{r.agent}</span>
+                          {r.kind === "history" ? (
+                            <span>distilled {r.date}</span>
+                          ) : (
+                            <>
+                              <span>{r.date}{group === "session" && r.exchangeCount > 1 ? ` · ${r.time}–${r.lastTime}` : ` · ${r.time}`}</span>
+                              <span className="text-ink-dim">{relTime(r.date, r.lastTime)}</span>
+                              <span className={r.host ? "text-ink-dim" : ""}>🖥 {r.host || "unknown"}</span>
+                            </>
+                          )}
                           {group === "session" && <span className="text-neon-cyan/80">{r.exchangeCount} exchange{r.exchangeCount === 1 ? "" : "s"}</span>}
-                          {r.turns > 1 && <span>{r.turns} turns</span>}
+                          {r.kind === "chat" && r.turns > 1 && <span>{r.turns} turns</span>}
                           <span>{r.wordCount} words</span>
+                          {r.tags?.slice(0, 4).map((t) => (
+                            <span key={t} className="rounded bg-white/[0.06] px-1 py-px text-ink-dim">#{t}</span>
+                          ))}
                         </p>
                       </div>
                     </button>

@@ -12,6 +12,7 @@ import { runAgentText } from "./runners";
  */
 export interface Exchange {
   id: string;
+  kind: "chat" | "history"; // a live Mission Control exchange, or a distilled imported topic
   agent: string; // display name parsed from the heading wikilink
   date: string; // YYYY-MM-DD (from the filename)
   time: string; // HH:MM:SS
@@ -23,6 +24,7 @@ export interface Exchange {
   wordCount: number;
   file: string; // vault-relative path (for obsidian:// deep links)
   body: string; // full exchange markdown
+  tags?: string[]; // history topics carry their note's frontmatter tags
 }
 
 export interface ConvoFacets {
@@ -33,6 +35,10 @@ export interface ConvoFacets {
 
 function chatsDir(): string {
   return path.join(vaultInfo().base, "Chats");
+}
+
+function historyDir(): string {
+  return path.join(vaultInfo().base, "History");
 }
 
 const HEADING_RE = /^###\s+(\d{1,2}:\d{2}:\d{2})\s+·\s+(.+)$/;
@@ -86,7 +92,7 @@ async function parseFile(file: string): Promise<Exchange[]> {
       const { title, userText, assistantText } = extractRoles(body);
       const wordCount = (userText + " " + assistantText).split(/\s+/).filter(Boolean).length;
       const turns = (body.match(/^\*\*You:\*\*/gm) || []).length || 1;
-      out.push({ id: `${date}#${idx}`, agent, date, time, host, title, userText, assistantText, turns, wordCount, file: rel, body });
+      out.push({ id: `${date}#${idx}`, kind: "chat", agent, date, time, host, title, userText, assistantText, turns, wordCount, file: rel, body });
     }
     cur = null;
   };
@@ -103,10 +109,92 @@ async function parseFile(file: string): Promise<Exchange[]> {
   return out;
 }
 
+/**
+ * Distilled imported history (Agentic OS/History/) is searchable here too, but
+ * it isn't shaped like a chat: one note covers 12 conversations, grouped under
+ * "## " topic headings. We index one record PER TOPIC — searching "salesforce"
+ * should surface that topic and its bullets, not a 12-conversation wall.
+ * Index hubs are skipped (they're link lists, not content).
+ */
+async function parseHistoryFile(file: string): Promise<Exchange[]> {
+  const abs = path.join(historyDir(), file);
+  const raw = await fs.readFile(abs, "utf8").catch(() => "");
+  if (!raw) return [];
+
+  const fm = raw.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+  const date = fm?.[1].match(/^date:\s*(\d{4}-\d{2}-\d{2})/m)?.[1] ?? file.match(/(\d{4}-\d{2}-\d{2})/)?.[1] ?? "";
+  const tags = (fm?.[1].match(/^tags:\s*\[(.+)\]/m)?.[1] ?? "")
+    .split(",")
+    .map((t) => t.trim())
+    .filter(Boolean);
+
+  const rel = `Agentic OS/History/${file}`;
+  const body = fm ? raw.slice(fm[0].length) : raw;
+  const out: Exchange[] = [];
+  const lines = body.split(/\r?\n/);
+  let cur: { title: string; body: string[] } | null = null;
+  let n = 0;
+
+  // Every note ends with an identically-titled "Durable facts about the owner"
+  // section, so 187 notes would yield 187 results with the same title. Suffix
+  // it with the note's run stamp to keep them tellable apart in a result list.
+  const stamp = file.replace(/^Imported History\s*/i, "").replace(/\.md$/i, "").trim();
+
+  const flush = () => {
+    if (!cur) return;
+    // "Sources" is a bibliography, not knowledge — skip it.
+    if (/^sources\b/i.test(cur.title)) {
+      cur = null;
+      return;
+    }
+    const text = cur.body.join("\n").trim();
+    if (text) {
+      const bullets = (text.match(/^\s*[-*]\s/gm) || []).length;
+      const title = /^durable facts/i.test(cur.title) ? `${cur.title} · ${stamp}` : cur.title;
+      out.push({
+        id: `h:${file}#${n++}`,
+        kind: "history",
+        agent: "History",
+        date,
+        // synthetic, ordered — history has no clock, but sorting needs a key
+        time: `00:${String(Math.floor(n / 60)).padStart(2, "0")}:${String(n % 60).padStart(2, "0")}`,
+        host: "imported",
+        title: title.slice(0, 140),
+        userText: "",
+        assistantText: text,
+        turns: bullets || 1,
+        wordCount: text.split(/\s+/).filter(Boolean).length,
+        file: rel,
+        body: `## ${cur.title}\n\n${text}`,
+        tags,
+      });
+    }
+    cur = null;
+  };
+
+  for (const line of lines) {
+    const h = line.match(/^##\s+(.+)$/);
+    if (h) {
+      flush();
+      cur = { title: h[1].trim(), body: [] };
+    } else if (cur) {
+      cur.body.push(line);
+    }
+  }
+  flush();
+  return out;
+}
+
 export async function listExchanges(): Promise<Exchange[]> {
   const files = (await fs.readdir(chatsDir()).catch(() => [] as string[])).filter((f) => /^\d{4}-\d{2}-\d{2}\.md$/.test(f)).sort().reverse();
   const all: Exchange[] = [];
   for (const f of files) all.push(...(await parseFile(f)));
+
+  const hist = (await fs.readdir(historyDir()).catch(() => [] as string[])).filter(
+    (f) => f.endsWith(".md") && !f.includes("Index"),
+  );
+  for (const f of hist) all.push(...(await parseHistoryFile(f)));
+
   // newest first
   return all.sort((a, b) => (b.date + b.time).localeCompare(a.date + a.time));
 }
@@ -150,6 +238,7 @@ function snippet(text: string, terms: string[], len = 220): string {
 /** A search result — one exchange, or one session (a day's chats with an agent). */
 export interface SearchItem {
   id: string;
+  kind: "chat" | "history";
   agent: string;
   date: string;
   time: string; // first time in a session
@@ -164,6 +253,7 @@ export interface SearchItem {
   snippet: string;
   score: number;
   summary?: string; // cached AI one-liner, if generated
+  tags?: string[];
 }
 
 /** Group exchanges into sessions: a day's back-and-forth with one agent on one machine. */
@@ -181,6 +271,7 @@ export function groupSessions(exchanges: Exchange[]): SearchItem[] {
     const first = list[0];
     out.push({
       id: `s:${key}`,
+      kind: first.kind,
       agent: first.agent,
       date: first.date,
       time: first.time,
@@ -202,6 +293,8 @@ export function groupSessions(exchanges: Exchange[]): SearchItem[] {
 function toItem(e: Exchange): SearchItem {
   return {
     id: e.id,
+    kind: e.kind,
+    tags: e.tags,
     agent: e.agent,
     date: e.date,
     time: e.time,
@@ -335,7 +428,10 @@ export interface ConvoAnalytics {
 }
 
 export async function conversationAnalytics(): Promise<ConvoAnalytics> {
-  const exchanges = await listExchanges();
+  // Live chats only. Imported history is thousands of topics all stamped with
+  // their distill date — including it would bury the real activity trend under
+  // one enormous spike and make "busiest day" meaningless.
+  const exchanges = (await listExchanges()).filter((e) => e.kind === "chat");
   const sessions = groupSessions(exchanges);
   const words = exchanges.reduce((n, e) => n + e.wordCount, 0);
   const dates = [...new Set(exchanges.map((e) => e.date))].sort();
