@@ -23,6 +23,11 @@ const COST_RANK: Record<string, number> = {
   openrouter: 6,
   custom: 6,
   grok: 8,
+  // Priciest thing in this fleet: $5/M in, $30/M out — above Claude Opus 4.8's $25
+  // out and ~10x GLM 5.2. (Not the dearest model that exists — #16 of 257 on Nous,
+  // where gpt-5.5-pro is $180/M out — just the dearest one you'd plug in here.)
+  // Left at the `?? 6` default it reads as mid-priced and Auto picks it to save money.
+  sakana: 10,
 };
 const CLAUDE_COST_RANK = 9;
 

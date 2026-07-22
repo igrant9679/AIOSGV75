@@ -51,6 +51,13 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     keyHint: "aistudio.google.com",
   },
   {
+    id: "sakana",
+    name: "Sakana Fugu",
+    baseUrl: "https://api.sakana.ai/v1",
+    exampleModel: "fugu-ultra",
+    keyHint: "console.sakana.ai",
+  },
+  {
     id: "custom",
     name: "Custom (any OpenAI-compatible API)",
     baseUrl: "",

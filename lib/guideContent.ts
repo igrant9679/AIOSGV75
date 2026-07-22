@@ -98,13 +98,14 @@ The gateway runs as a Windows Scheduled Task (starts on boot). If the bot goes s
   {
     id: "api-llms",
     title: "Adding LLMs (Kimi, Grok, Gemini…)",
-    keywords: "add llm api key provider preset openrouter deepseek kimi moonshot glm grok gemini custom settings insufficient balance 402 401",
-    body: `Settings → **LLM Connections** → pick a provider preset (OpenRouter, DeepSeek, Kimi, GLM, Grok, Gemini, or Custom for any OpenAI-compatible endpoint), paste your API key, choose an accent color. The agent appears in the sidebar instantly.
+    keywords: "add llm api key provider preset openrouter deepseek kimi moonshot glm grok gemini sakana fugu ultra cyber custom settings insufficient balance 402 401",
+    body: `Settings → **LLM Connections** → pick a provider preset (OpenRouter, DeepSeek, Kimi, GLM, Grok, Gemini, Sakana Fugu, or Custom for any OpenAI-compatible endpoint), paste your API key, choose an accent color. The agent appears in the sidebar instantly.
 
 - Keys are stored **server-side only** in \`data/registry.json\` (git-ignored, never sent to the browser).
 - **To edit an agent**: click the pencil icon on its row in Settings → LLM Connections — every field is editable in place (name, provider, base URL, model, API key, system prompt, accent). Leave the key blank to keep the current one; tick **remove key** when switching to a keyless localhost endpoint. Switching accounts = paste the new key (and base URL if the provider changed).
 - Error cheat-sheet: **401** = bad key · **402** = valid key, no credit (DeepSeek is prepaid — top up at platform.deepseek.com) · **429** = rate limit.
 - **Gemini** has a free tier: aistudio.google.com, no card required.
+- **Sakana Fugu** — key from console.sakana.ai, models \`fugu\` · \`fugu-ultra\` · \`fugu-cyber\`. Fugu is an *orchestrator*: one request fans out to several frontier models, verifies, and synthesises one answer. Sakana says it does **not** stack fees for that — "you pay a single rate based on the top tier model involved". Even so, at $5/M in and $30/M out Fugu Ultra is the **priciest agent in this fleet** (above Claude Opus 4.8's $25 out, ~10× GLM 5.2), so Auto is told as much (cost rank 10, above Claude) and won't reach for it to save money. A console.sakana.ai **subscription is not confirmed to cover API-key usage** — their pricing page lists "Pay as you go" and "Subscription" as separate things, so check the console before assuming your plan makes this flat-rate.
 - **Ollama (local models)**: install from ollama.com, \`ollama pull llama3.2\`, then add a Custom LLM with Base URL \`http://localhost:11434/v1\`, model = the model you pulled, and **no API key** (localhost endpoints don't need one). Free, private, offline.
 - **OpenAI / Codex models**: Custom preset with Base URL \`https://api.openai.com/v1\` + your OpenAI key. The Codex **CLI** plugs in as a Command Agent instead (template \`codex exec --skip-git-repo-check {input}\`).
 
