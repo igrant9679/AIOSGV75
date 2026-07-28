@@ -16,6 +16,10 @@ export interface RouteDecision {
 
 /** Relative cost rank per provider (lower = cheaper), used until real data accumulates. */
 const COST_RANK: Record<string, number> = {
+  // Flat-rate subscription: a fixed quota that refreshes weekly, so an extra call
+  // costs nothing at the margin. Cheapest thing to reach for — it's already paid.
+  // (Distinct from `kimi` below, which is the pay-per-token Moonshot API.)
+  "kimi-coding": 1,
   gemini: 1,
   deepseek: 2,
   glm: 3,

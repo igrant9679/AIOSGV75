@@ -30,6 +30,13 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     keyHint: "platform.moonshot.ai",
   },
   {
+    id: "kimi-coding",
+    name: "Kimi for Coding (subscription)",
+    baseUrl: "https://api.kimi.com/coding/v1",
+    exampleModel: "kimi-for-coding",
+    keyHint: "the Kimi Code console — NOT platform.moonshot.ai",
+  },
+  {
     id: "glm",
     name: "GLM (Z.ai)",
     baseUrl: "https://api.z.ai/api/paas/v4",
