@@ -34,8 +34,13 @@ if errorlevel 1 (
 
 echo.
 echo [4/4] Restarting server...
-rem Free port 3000 so the boot server can serve the freshly built code
-for /f "tokens=5" %%p in ('netstat -ano ^| findstr ":3000 " ^| findstr LISTENING') do taskkill /f /pid %%p >nul 2>&1
+rem Free port 3000 so the boot server can serve the freshly built code.
+rem This used to parse `netstat | findstr ":3000 "` and taskkill token 5. That
+rem was unsafe: findstr OR-splits on the space, so an IPv6 address merely
+rem CONTAINING the hextet 3000 matched, and token 5 of that line is a STRANGER'S
+rem pid — which then got `taskkill /f`ed. Ask Windows for the port's real owner
+rem instead (same approach stop.cmd uses).
+powershell -NoProfile -Command "Get-NetTCPConnection -LocalPort 3000 -State Listen -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }"
 start "" /min server.cmd
 
 echo.

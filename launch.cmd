@@ -2,8 +2,10 @@
 title Mission Control
 cd /d "%~dp0"
 
-rem If the server is already running, just open the dashboard
-netstat -ano | findstr ":3000 " | findstr "LISTENING" >nul
+rem If the server is already running, just open the dashboard.
+rem /C: is REQUIRED — see the long note in server.cmd. Without it findstr
+rem OR-splits on the space and matches IPv6 addresses containing ":3000".
+netstat -ano | findstr /C:":3000 " | findstr /C:"LISTENING" >nul
 if %errorlevel%==0 (
   echo Mission Control is already running - opening it...
   start "" http://localhost:3000
