@@ -34,6 +34,30 @@ const COST_RANK: Record<string, number> = {
   sakana: 10,
 };
 const CLAUDE_COST_RANK = 9;
+/** Costs nothing per call — ranks below every paid tier, including `gemini: 1`. */
+const FREE_COST_RANK = 0;
+
+/**
+ * Cost rank for a registry LLM. The provider table above is only a *prior*: it
+ * prices the vendor, not the specific model, and two cases make that prior wrong
+ * in the same direction — both were falling through to the `?? 6` mid-tier
+ * default, so Auto skipped genuinely-free agents in favour of paid ones, which
+ * is precisely backwards for a cost heuristic.
+ *
+ *  - localhost endpoints (Ollama/LM Studio) run on this machine. Note `ollama`
+ *    was never a key in the table at all, so local Llama scored 6.
+ *  - a model id ending in `:free` is the provider's own free tier (OpenRouter
+ *    and Nous both use this suffix). Keyed off the MODEL, not the provider, so
+ *    switching that same agent to a paid model correctly re-prices it.
+ *
+ * Free tiers are rate-limited rather than unlimited, but a throttled agent is
+ * already handled downstream by the okRate health filter.
+ */
+function costRankFor(llm: { provider: string; baseUrl: string; model: string }): number {
+  if (isLocalEndpoint(llm.baseUrl)) return FREE_COST_RANK;
+  if (/:free$/i.test((llm.model ?? "").trim())) return FREE_COST_RANK;
+  return COST_RANK[llm.provider] ?? 6;
+}
 
 const HARD_HINTS =
   /\b(code|debug|refactor|implement|analy[sz]e|architect|design|prove|math|calculat|strateg|research|essay|compare|evaluate|optimi[sz]e|plan\b|write (a|an|the))\b/i;
@@ -79,7 +103,7 @@ export async function routeTask(prompt: string): Promise<RouteDecision> {
       .map((l) => ({
         id: l.id,
         name: l.name,
-        costRank: COST_RANK[l.provider] ?? 6,
+        costRank: costRankFor(l),
         winRate: standingFor(l.id) ? standingFor(l.id)!.wins / Math.max(1, standingFor(l.id)!.battles) : null,
         battles: standingFor(l.id)?.battles ?? 0,
         okRate: okRateFor(l.id),
