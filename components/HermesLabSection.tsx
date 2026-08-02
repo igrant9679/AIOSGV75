@@ -9,6 +9,7 @@ import StatusOrb from "./ui/StatusOrb";
 import EmptyState from "./ui/EmptyState";
 import MicButton from "./MicButton";
 import DaemonsPanel from "./DaemonsPanel";
+import HermesModelPanel from "./HermesModelPanel";
 import { IconStop, IconRocket } from "./icons";
 import { useMission } from "./store";
 
@@ -121,6 +122,7 @@ export default function HermesLabSection() {
   return (
     <div className="flex flex-col gap-4">
       <DaemonsPanel />
+      <HermesModelPanel />
       <Panel title="Hermes Lab">
         <div className="flex flex-col gap-3 p-4">
           <div className="flex items-center gap-3">
