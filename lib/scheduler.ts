@@ -6,6 +6,7 @@ import { syncExecuting } from "./pipeline";
 import { ensureScaffold } from "./vault";
 import { readRegistry } from "./registry";
 import { clusterTick } from "./cluster";
+import { maybeRefreshProfile } from "./userProfile";
 
 async function refreshScaffold(): Promise<void> {
   const reg = await readRegistry().catch(() => null);
@@ -35,6 +36,7 @@ export function startScheduler(): void {
     nudgeStaleApprovals().catch(() => {});
     maybeRescan().catch(() => {}); // throttled to every 4h internally
     syncExecuting().catch(() => {}); // advance pipeline items whose builds finished
+    maybeRefreshProfile().catch(() => {}); // throttled to weekly internally
     void refreshScaffold(); // no-op unless the day rolled over
   }, 30_000);
   // catch anything already due shortly after boot

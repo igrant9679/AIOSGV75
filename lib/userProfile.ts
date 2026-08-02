@@ -1,3 +1,5 @@
+import fs from "fs/promises";
+import path from "path";
 import { readUserProfile, writeUserProfile, readGoals, readJournal, todayStamp } from "./vault";
 import { listExchanges } from "./conversations";
 import { readTasks } from "./tasks";
@@ -26,6 +28,56 @@ import { runAgentText } from "./runners";
 
 /** Injected on every agent call — every character here is paid for repeatedly. */
 export const PROFILE_MAX_CHARS = 1200;
+/** A profile that churns daily is noise; a week is enough for real change. */
+const REFRESH_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000;
+/** Throttle + last-outcome state. Per rule 1 this file is the source of truth —
+ *  the scheduler (instrumentation bundle) and the API route are separate module
+ *  instances, so an in-memory timestamp in one is invisible to the other. */
+const STATE_FILE = path.join(process.cwd(), "data", "user-profile.json");
+
+export interface ProfileState {
+  lastRun?: number;
+  lastStatus?: string;
+  lastChars?: number;
+  writer?: string;
+}
+
+export async function readProfileState(): Promise<ProfileState> {
+  try {
+    return JSON.parse(await fs.readFile(STATE_FILE, "utf8")) as ProfileState;
+  } catch {
+    return {};
+  }
+}
+
+async function writeProfileState(s: ProfileState): Promise<void> {
+  await fs.mkdir(path.dirname(STATE_FILE), { recursive: true });
+  await fs.writeFile(STATE_FILE, JSON.stringify(s, null, 2), "utf8");
+}
+
+/** Guards against a slow refresh overlapping the next 30s tick in THIS process.
+ *  (Cross-process is handled by the timestamp in STATE_FILE.) */
+let inFlight = false;
+
+/**
+ * Called from the scheduler tick. Self-throttling to weekly, like maybeRescan().
+ * Master-gated by the caller, so exactly one machine in a group refreshes.
+ */
+export async function maybeRefreshProfile(): Promise<void> {
+  if (inFlight) return;
+  const state = await readProfileState();
+  if (state.lastRun && Date.now() - state.lastRun < REFRESH_INTERVAL_MS) return;
+
+  inFlight = true;
+  try {
+    // refreshUserProfile stamps the state itself (so manual runs count too).
+    await refreshUserProfile(state.writer || "claude");
+  } catch (e) {
+    await writeProfileState({ lastRun: Date.now(), lastStatus: `failed · ${(e as Error).message}`, writer: state.writer });
+  } finally {
+    inFlight = false;
+  }
+}
 /** How much source material the writer sees. Generous; it runs weekly. */
 const SOURCE_BUDGET = 12_000;
 const RECENT_EXCHANGES = 40;
@@ -130,7 +182,9 @@ Use exactly these sections:
 export async function refreshUserProfile(writerAgentId = "claude"): Promise<ProfileRefresh> {
   const { text: sources, counts } = await gatherSources();
   if (!sources.trim()) {
-    return { ok: false, error: "no source material yet — no chats, goals, tasks or journal entries found" };
+    const err = "no source material yet — no chats, goals, tasks or journal entries found";
+    await writeProfileState({ lastRun: Date.now(), lastStatus: `failed · ${err}`, writer: writerAgentId });
+    return { ok: false, error: err };
   }
 
   const existing = await readUserProfile();
@@ -144,7 +198,9 @@ export async function refreshUserProfile(writerAgentId = "claude"): Promise<Prof
 
   const run = await runAgentText(writerAgentId, buildPrompt(existingBody, sources));
   if (run.error || !run.text.trim()) {
-    return { ok: false, error: run.error || "writer returned nothing", sources: counts };
+    const err = run.error || "writer returned nothing";
+    await writeProfileState({ lastRun: Date.now(), lastStatus: `failed · ${err}`, writer: writerAgentId });
+    return { ok: false, error: err, sources: counts };
   }
 
   let body = clean(run.text);
@@ -191,5 +247,11 @@ tags: [agentic-os, user-profile]
 ${body}
 `;
   await writeUserProfile(note);
+  await writeProfileState({
+    lastRun: Date.now(),
+    lastStatus: `updated · ${body.length} chars`,
+    lastChars: body.length,
+    writer: writerAgentId,
+  });
   return { ok: true, chars: body.length, profile: body, sources: counts, compressed, truncated };
 }

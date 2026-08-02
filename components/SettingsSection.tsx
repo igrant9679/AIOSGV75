@@ -10,6 +10,7 @@ import EmptyState from "./ui/EmptyState";
 import ServiceKeysPanel from "./ServiceKeysPanel";
 import PublishingPanel from "./PublishingPanel";
 import ClusterPanel from "./ClusterPanel";
+import UserProfilePanel from "./UserProfilePanel";
 import Avatar from "./Avatar";
 import StatusOrb from "./ui/StatusOrb";
 import { IconCheck, IconPencil, IconPlus, IconTrash } from "./icons";
@@ -431,6 +432,7 @@ export default function SettingsSection() {
         </div>
       </Panel>
 
+      <UserProfilePanel />
       <ServiceKeysPanel />
 
       <PublishingPanel />

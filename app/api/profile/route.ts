@@ -1,13 +1,21 @@
 import { readUserProfile } from "@/lib/vault";
-import { refreshUserProfile, PROFILE_MAX_CHARS } from "@/lib/userProfile";
+import { refreshUserProfile, readProfileState, PROFILE_MAX_CHARS } from "@/lib/userProfile";
 
 export const dynamic = "force-dynamic";
-// A refresh runs a real writer pass over chats + goals + tasks + journal.
-export const maxDuration = 120;
+// A refresh runs a real writer pass over chats + goals + tasks + journal,
+// plus a compression pass if it overruns the cap.
+export const maxDuration = 180;
 
 export async function GET() {
-  const note = await readUserProfile();
-  return Response.json({ exists: Boolean(note.trim()), note, maxChars: PROFILE_MAX_CHARS });
+  const [note, state] = await Promise.all([readUserProfile(), readProfileState()]);
+  return Response.json({
+    exists: Boolean(note.trim()),
+    note,
+    maxChars: PROFILE_MAX_CHARS,
+    lastRun: state.lastRun ?? null,
+    lastStatus: state.lastStatus ?? null,
+    writer: state.writer ?? "claude",
+  });
 }
 
 export async function POST(request: Request) {
