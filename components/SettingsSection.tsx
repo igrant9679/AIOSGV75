@@ -270,7 +270,19 @@ export default function SettingsSection() {
                       {l.provider} · {l.model}
                     </p>
                   </div>
-                  <StatusOrb accent={l.hasKey ? "lime" : "rose"} pulsing={false} size={7} />
+                  {/* Three states, not two: a localhost agent is ready WITHOUT a key, and
+                      showing it the same green as a keyed one made "what have I actually
+                      entered?" unanswerable at a glance. */}
+                  {l.keyStored ? (
+                    <StatusOrb accent="lime" pulsing={false} size={7} />
+                  ) : l.hasKey ? (
+                    <span className="flex items-center gap-1.5" title="Local endpoint — runs without an API key">
+                      <StatusOrb accent="amber" pulsing={false} size={7} />
+                      <span className="font-mono text-[10px] uppercase tracking-wider text-ink-faint">keyless</span>
+                    </span>
+                  ) : (
+                    <StatusOrb accent="rose" pulsing={false} size={7} />
+                  )}
                   <button
                     onClick={() => (editingId === l.id ? setEditingId(null) : openEdit(l))}
                     aria-label={`Edit ${l.name}`}

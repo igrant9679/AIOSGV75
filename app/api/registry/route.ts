@@ -21,7 +21,11 @@ function safeAccent(a: unknown): Accent {
 function redact(reg: Awaited<ReturnType<typeof readRegistry>>) {
   return {
     // "hasKey" means "ready to use" — local endpoints (Ollama etc.) need no key
-    llms: reg.llms.map(({ apiKey, ...rest }) => ({ ...rest, hasKey: Boolean(apiKey) || isLocalEndpoint(rest.baseUrl) })),
+    llms: reg.llms.map(({ apiKey, ...rest }) => ({
+      ...rest,
+      hasKey: Boolean(apiKey) || isLocalEndpoint(rest.baseUrl),
+      keyStored: Boolean(apiKey),
+    })),
     commandAgents: reg.commandAgents,
     workspaces: reg.workspaces,
   };

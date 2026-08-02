@@ -45,7 +45,11 @@ export interface LlmInfo {
   provider: string;
   baseUrl: string;
   model: string;
+  /** "ready to use" — a stored key OR a localhost endpoint that needs none. */
   hasKey: boolean;
+  /** Whether an API key is actually stored. Distinguishes a keyed remote agent
+   *  from a keyless localhost one, which `hasKey` deliberately conflates. */
+  keyStored: boolean;
   accent: "cyan" | "magenta" | "amber" | "lime" | "violet" | "rose";
   systemPrompt?: string;
 }
