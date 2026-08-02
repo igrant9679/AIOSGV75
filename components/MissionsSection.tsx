@@ -298,6 +298,7 @@ export default function MissionsSection() {
                   >
                     <option value="hourly">Hourly</option>
                     <option value="daily">Daily</option>
+                    <option value="weekdays">Weekdays (Mon–Fri)</option>
                     <option value="weekly">Weekly</option>
                   </select>
                   {freq === "weekly" && (
@@ -523,7 +524,7 @@ export default function MissionsSection() {
                 compact
                 accent="lime"
                 title="No schedules"
-                hint='Switch the launcher to "On a schedule" to run missions hourly, daily, or weekly.'
+                hint='Switch the launcher to "On a schedule" to run missions hourly, daily, weekdays, or weekly.'
               />
             )}
             {schedules.map((s) => (

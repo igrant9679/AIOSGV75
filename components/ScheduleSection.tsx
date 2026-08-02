@@ -9,9 +9,11 @@ import RingGauge from "./ui/RingGauge";
 
 const accentVar = (a: Accent): CSSProperties => ({ "--page-accent": ACCENTS[a].base }) as CSSProperties;
 
-const FREQ_MS: Record<"hourly" | "daily" | "weekly", number> = {
+const FREQ_MS: Record<"hourly" | "daily" | "weekdays" | "weekly", number> = {
   hourly: 3_600_000,
   daily: 86_400_000,
+  // approximate: only used to size the "time until next run" ring
+  weekdays: 86_400_000,
   weekly: 604_800_000,
 };
 
@@ -23,7 +25,7 @@ interface Schedule {
   prompt: string;
   strategy: string;
   agentIds: string[];
-  freq: "hourly" | "daily" | "weekly";
+  freq: "hourly" | "daily" | "weekdays" | "weekly";
   time: string;
   weekday?: number;
   deliver: "vault" | "telegram";
@@ -41,7 +43,7 @@ interface Watcher {
   lastFired?: number;
 }
 
-const FREQ_ACCENT: Record<Schedule["freq"], Accent> = { hourly: "cyan", daily: "lime", weekly: "violet" };
+const FREQ_ACCENT: Record<Schedule["freq"], Accent> = { hourly: "cyan", daily: "lime", weekdays: "amber", weekly: "violet" };
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 function rel(ts: number, now: number): string {
@@ -95,6 +97,7 @@ export default function ScheduleSection() {
   const groups: { key: Schedule["freq"]; label: string; sub: string }[] = [
     { key: "hourly", label: "Hourly", sub: "every hour on the tick" },
     { key: "daily", label: "Daily · runs every day", sub: "fixed daily automation" },
+    { key: "weekdays", label: "Weekdays · Mon–Fri", sub: "skips the weekend" },
     { key: "weekly", label: "Weekly", sub: "one day per week" },
   ];
 
@@ -102,6 +105,10 @@ export default function ScheduleSection() {
   const firesOn = (s: Schedule, dayOffset: number): boolean => {
     if (!s.enabled) return false;
     if (s.freq === "hourly" || s.freq === "daily") return true;
+    if (s.freq === "weekdays") {
+      const wd = new Date(now + dayOffset * 86_400_000).getDay();
+      return wd !== 0 && wd !== 6;
+    }
     const d = new Date(now + dayOffset * 86_400_000);
     return d.getDay() === (s.weekday ?? 0);
   };
@@ -199,7 +206,7 @@ export default function ScheduleSection() {
                   >
                     <div className="flex items-center justify-between">
                       <span className="font-mono text-[11px]" style={{ color: c.base }}>
-                        {s.freq === "hourly" ? "*:00" : s.freq === "weekly" ? `${WEEKDAYS[s.weekday ?? 0]} ${s.time}` : s.time}
+                        {s.freq === "hourly" ? "*:00" : s.freq === "weekly" ? `${WEEKDAYS[s.weekday ?? 0]} ${s.time}` : s.freq === "weekdays" ? `M–F ${s.time}` : s.time}
                       </span>
                       <span className="flex items-center gap-2">
                         {s.enabled && (

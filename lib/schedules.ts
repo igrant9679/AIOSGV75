@@ -30,7 +30,7 @@ export async function expandPromptVars(prompt: string): Promise<string> {
  * archived to the vault like any mission and can additionally be delivered to
  * Telegram through OpenClaw's message bridge.
  */
-export type Frequency = "hourly" | "daily" | "weekly";
+export type Frequency = "hourly" | "daily" | "weekdays" | "weekly";
 export type Delivery = "vault" | "telegram";
 
 export interface Schedule {
@@ -88,6 +88,14 @@ export function computeNextRun(s: Pick<Schedule, "freq" | "time" | "weekday">, f
   next.setHours(hh, mm, 0, 0);
   if (s.freq === "daily") {
     if (next.getTime() <= from) next.setDate(next.getDate() + 1);
+    return next.getTime();
+  }
+  if (s.freq === "weekdays") {
+    // Mon–Fri. Roll forward a day at a time rather than computing an offset:
+    // it handles "it's Friday evening" and "it's Saturday" identically and is
+    // obviously correct at a glance.
+    if (next.getTime() <= from) next.setDate(next.getDate() + 1);
+    while (next.getDay() === 0 || next.getDay() === 6) next.setDate(next.getDate() + 1);
     return next.getTime();
   }
   // weekly

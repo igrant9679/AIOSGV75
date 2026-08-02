@@ -14,7 +14,7 @@ import { AGENT_DEFS } from "@/lib/agents-config";
 export const dynamic = "force-dynamic";
 
 const STRATEGIES = new Set<MissionStrategy>(["single", "moa", "pipeline"]);
-const FREQS = new Set<Frequency>(["hourly", "daily", "weekly"]);
+const FREQS = new Set<Frequency>(["hourly", "daily", "weekdays", "weekly"]);
 const DELIVERIES = new Set<Delivery>(["vault", "telegram"]);
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 

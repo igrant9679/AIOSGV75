@@ -214,8 +214,8 @@ Missions run **server-side** — close the tab, they keep flying. Each agent get
   {
     id: "schedules",
     title: "Schedules & Prompt Variables",
-    keywords: "schedule cron hourly daily weekly recurring librarian ops tuner telegram delivery run now prompt variables recent_notes ops_digest today",
-    body: `Switch the mission launcher to **"On a schedule"**: hourly / daily / weekly, delivered to **Telegram** or vault-only. The Schedules panel shows next-run time, last outcome, ON/OFF toggle, ▶ Run now, and delete.
+    keywords: "schedule cron hourly daily weekdays weekly monday friday recurring librarian ops tuner chief of staff morning brief telegram delivery run now prompt variables recent_notes ops_digest today",
+    body: `Switch the mission launcher to **"On a schedule"**: hourly / daily / **weekdays (Mon–Fri)** / weekly, delivered to **Telegram** or vault-only. The Schedules panel shows next-run time, last outcome, ON/OFF toggle, ▶ Run now, and delete.
 
 **Prompt variables** (expanded at run time):
 - \`{{today}}\` → the date
@@ -313,7 +313,7 @@ Full walkthrough for a new machine: **SETUP-NEW-MACHINE.md** in the repo.`,
 
 **🛠 Tasks (/tasks)** — a personal kanban board: **Pending → In Progress → Done**, each lane color-coded (amber / cyan / lime). Add tasks with Enter, **drag cards between lanes** (or use ◀ ▶), delete on hover; dropping into Done fires confetti. The stat row shows board totals, scheduled-job count, and the **next cron countdown**. Stored in the vault as \`Agentic OS/Tasks.md\`, so it **syncs across machines** like shared memory and goals — and it's a normal Obsidian note: add a \`- [ ] task\` line under a lane heading by hand and the app adopts it; check a box in Obsidian and it lands in Done.
 
-**📅 Schedule (/schedule)** — the cron calendar: every schedule grouped by frequency (hourly / daily / weekly) with time, delivery target, and a **countdown ring** filling toward its next run; watchers listed alongside; a **7-day timeline** showing exactly what fires on which day, with today's row highlighted and a glowing marker tracking the time of day. Run-now and on/off toggles work right from the cards. Creating/editing schedules still happens in the Missions launcher.
+**📅 Schedule (/schedule)** — the cron calendar: every schedule grouped by frequency (hourly / daily / weekdays / weekly) with time, delivery target, and a **countdown ring** filling toward its next run; watchers listed alongside; a **7-day timeline** showing exactly what fires on which day, with today's row highlighted and a glowing marker tracking the time of day. Run-now and on/off toggles work right from the cards. Creating/editing schedules still happens in the Missions launcher.
 
 **📚 Library (/library)** — every markdown document the OS has written into the vault (mission archives, weekly syntheses, chat logs, journal, the Guide), filterable by folder, rendered in a full viewer with **open-in-Obsidian** and **download**. This is the "content folder" pattern: agents save long-form output to files instead of bloating chat context — and the Library is where you read it.
 
