@@ -1,6 +1,6 @@
 import fs from "fs/promises";
 import path from "path";
-import { readUserProfile, writeUserProfile, readGoals, readJournal, todayStamp } from "./vault";
+import { readUserProfile, writeUserProfile, readGoals, readJournal, readMemory, todayStamp } from "./vault";
 import { listExchanges } from "./conversations";
 import { readTasks } from "./tasks";
 import { runAgentText } from "./runners";
@@ -110,10 +110,11 @@ function clip(s: string, n: number): string {
 
 /** Assemble the evidence the writer is allowed to reason from. */
 async function gatherSources() {
-  const [exchanges, goals, tasks] = await Promise.all([
+  const [exchanges, goals, tasks, memory] = await Promise.all([
     listExchanges().catch(() => []),
     readGoals().catch(() => []),
     readTasks().catch(() => ({ tasks: [], preamble: "" })),
+    readMemory().catch(() => ""),
   ]);
 
   // Imported history is ~1,500 records and would drown 17 real chats — and it's
@@ -142,7 +143,15 @@ async function gatherSources() {
   const goalText = goals.map((g) => `- [${g.done ? "x" : " "}] ${g.text}`).join("\n");
   const taskText = tasks.tasks.map((t) => `- (${t.status}) ${t.title}`).join("\n");
 
+  // Curated durable facts. Listed FIRST and marked authoritative on purpose:
+  // raw chat logs preserve statements that were later corrected (a fact saved
+  // in July can be superseded in August), and without this the profile keeps
+  // resurrecting them from the transcript. A correction in Memory.md now
+  // propagates to the profile on the next refresh.
+  const memoryText = clip(memory.replace(/^#[^\n]*\n/gm, "").trim(), 2500);
+
   const blocks = [
+    memoryText && `## Shared memory — curated facts. AUTHORITATIVE: where these contradict an older chat message, these win.\n${memoryText}`,
     chatText && `## What they actually asked their agents (most recent ${chats.length})\n${chatText}`,
     goalText && `## Goals\n${goalText}`,
     taskText && `## Task board\n${taskText}`,
@@ -230,6 +239,10 @@ export async function refreshUserProfile(writerAgentId = "claude"): Promise<Prof
     const cut = body.slice(0, PROFILE_MAX_CHARS - 1);
     const brk = Math.max(cut.lastIndexOf("\n## "), cut.lastIndexOf("\n- "), cut.lastIndexOf("\n"));
     body = `${(brk > PROFILE_MAX_CHARS * 0.5 ? cut.slice(0, brk) : cut).trim()}…`;
+    // Cutting at a line break can leave a section heading whose body was in the
+    // discarded tail ("## Avoid…" and nothing else). A bare heading tells an
+    // agent nothing and reads like a bug, so drop it.
+    body = body.replace(/\n##[^\n]*…?\s*$/, "").trim();
   }
 
   const note = `---
