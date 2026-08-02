@@ -93,7 +93,11 @@ The **model picker** chooses Sonnet / Opus / Haiku per conversation. Sessions re
 - **Answer approval requests** — when an agent requests a mission, you get a 🚦 notification; reply \`approve <id>\` or \`reject <id>\` and OpenClaw executes your decision against the local API
 - Receive scheduled mission results and watcher alerts
 
-The gateway runs as a Windows Scheduled Task (starts on boot). If the bot goes silent, check \`openclaw gateway status\` in a terminal. Note: only **dashboard** conversations are logged to the vault — Telegram-side chats live in OpenClaw's own memory.`,
+The gateway runs as a Windows Scheduled Task (starts on boot). If the bot goes silent, check \`openclaw gateway status\` in a terminal. Note: only **dashboard** conversations are logged to the vault — Telegram-side chats live in OpenClaw's own memory.
+
+**Sending and receiving are separate — this matters in a machine group.** Schedules, watchers and nudges run *only on the cluster master*, so the master is the machine that has to SEND. Set \`TELEGRAM_BOT_TOKEN\` in \`.env.local\` on every machine that can become master and it posts to the Bot API directly — no OpenClaw needed there, and no clash with the gateway (the single-consumer limit applies to polling, not sending). Without the token on a master that lacks OpenClaw, notifications fail *silently*: the send returns false and the run is still marked successful.
+
+RECEIVING (answering approvals from your phone) is different: it needs the gateway, only one machine may poll the bot, and that machine's OpenClaw curls **its own** \`127.0.0.1:3000\`. Approvals live in per-machine \`data/approvals.json\`, so the gateway can only action approvals raised on the machine it runs on. If the master is a different machine, its approvals can't be answered from the phone — keep the gateway on the master, or expect to approve those in the dashboard.`,
   },
   {
     id: "api-llms",
@@ -565,6 +569,7 @@ End a work session by telling any agent: "Remember: <the three facts worth keepi
 | \`OPENCLAW_BIN\` / \`OPENCLAW_CMD\` | OpenClaw binary/command template |
 | \`HERMES_BIN\` / \`HERMES_CMD\` | Hermes binary/command template |
 | \`TELEGRAM_TARGET\` | Telegram recipient id (defaults to your account) |
+| \`TELEGRAM_BOT_TOKEN\` | **Set this on every machine that can become cluster master.** Sends via the Bot API directly instead of spawning \`openclaw\`. Without it, a master that lacks OpenClaw silently drops every scheduled notification |
 | \`EMBED_BASE_URL/API_KEY/MODEL\` | activates semantic retrieval |
 | \`OPENAI_API_KEY\` | Studio image + voice (fallback for the Settings field) |
 | \`GEMINI_API_KEY\` | Studio image via Google Gemini (fallback) |
