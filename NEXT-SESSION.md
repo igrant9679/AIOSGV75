@@ -7,7 +7,8 @@
 ## What this is
 
 **Mission Control** — Idris's local AI operating system at `C:\Users\Admin\Documents\mission-control`
-(Next.js 16 + Tailwind v4 + Framer Motion). Built July 9–16, 2026, versions **v1 → v41**.
+(Next.js 16 + Tailwind v4 + Framer Motion). Built July 9–16, 2026, versions **v1 → v41**;
+maintenance + provider work 2026-07-22 → 08-02 (head **`fb578ec`**).
 Repo: **https://github.com/igrant9679/AIOSGV75** (main, PUBLIC, gh CLI authed as igrant9679).
 
 It orchestrates a fleet of AI agents with an Obsidian vault as its brain:
@@ -19,7 +20,21 @@ history (2,242 conversations distilled)** · voice in+out · light/dark ·
 built-in searchable guide (`/guide`, also exported to the vault for agent RAG).
 
 **Three machines**, all on the same vault (OneDrive): desktop `Admin` (PRIMARY, this one) ·
-laptop `idris` · laptop `sabin`. Clustering is OFF by default = each runs standalone.
+laptop `idris` · laptop `sabin`.
+
+**Clustering is now ON (2026-08-02)** — it is no longer "off by default, each standalone":
+
+| Host | User | Role | State |
+| --- | --- | --- | --- |
+| `DESKTOP-K82OGAE` | Admin | **primary** | **MASTER** (lease term 5) |
+| `IdrisLegion7` | sabin | backup | online, defers |
+| `WIN-C2ANEVBHN6Q` | idris | workstation | **STALE — server down since ~2026-07-31** |
+
+Roles are **per-machine** in `data/cluster.json` (`process.cwd()/data`, NOT the vault) — only
+`Cluster/lease.json` + `Cluster/nodes/*.json` are shared, so a role can only be changed **on that
+machine** (Settings → Machine Group & Roles, or POST `/api/cluster` `{action:"config",role:…}`).
+The master ran on sabin for a while and was deliberately moved back to the desktop — see the
+Telegram row below for why that matters.
 
 ## Running state
 
@@ -36,8 +51,14 @@ laptop `idris` · laptop `sabin`. Clustering is OFF by default = each runs stand
 | --- | --- |
 | Claude CLI | authed (interactive `/login` done); bridge strips `CLAUDE_*`/`ANTHROPIC_*` env except `ANTHROPIC_API_KEY` |
 | OpenClaw | **named Talos** (IDENTITY.md); gateway = Windows Scheduled Task; Telegram bot **@IdrisGV75_bot** paired (owner id 7284896916); approval protocol lives in `~/.openclaw/workspace/TOOLS.md` — **update it if the API port/paths change** |
-| Hermes | Nous Hermes Agent v0.18.2, absolute path in `.env.local`, one-shot `-z {input}` |
-| DeepSeek | real key in `data/registry.json`, working |
+| Hermes | Nous Hermes Agent v0.18.2, absolute path in `.env.local`, one-shot `-z {input}`. **Config is `%LOCALAPPDATA%\hermes\config.yaml` — NOT `~/.hermes/config.yaml`** (that path does not exist; older rows here were wrong). Desktop chain (2026-07-22): primary **`tencent/hy3:free`** ($0), fallback **`z-ai/glm-5.2`**. Fallbacks live in a top-level `fallback_providers:` LIST (`{provider,model,base_url?,api_mode?}`); the commented `fallback_model:` singular in the file is legacy. `hermes fallback add` needs a TTY, so script it by editing the YAML directly — and note **`hermes config set` rewrites the file and strips all trailing comment blocks** (edit by hand to keep them). Backups: `config.yaml.bak-preGlm`, `.bak-preSwap` |
+| **Nous Portal ≠ flat-rate** | Hermes AUTHENTICATES via a Nous subscription (OAuth, auto-refresh), but inference is **metered per token against prepaid credits**. `/v1/models` returns 257 models WITH pricing — `tencent/hy3:free` is the only genuinely $0 one (`"pricing":{"prompt":"0"}`), which is why it's the primary. GLM 5.2 ($0.90/$2.83 per M) and Sakana Fugu are reachable here too, so **roadmap #3's premise was wrong** — they were never un-wired, just metered. ⚠ Nous bearer tokens are JWTs with `expires_in: 3599` → **cannot** be pasted into `data/registry.json` as an MC agent (works 1h, then 401). Hermes refreshes them itself |
+| Telegram transport (**2026-08-02, `fb578ec`**) | `sendTelegram()` now posts to the **Bot API directly when `TELEGRAM_BOT_TOKEN` is set**; falls back to spawning `openclaw` when it isn't. **Why:** schedules/watchers/nudges are gated `if (!isMaster) return` in `scheduler.ts`, so the MASTER sends — and when the master was sabin (no OpenClaw), every scheduled notification vanished **silently** (spawn failed → `false` → run still marked successful). Chunks at 4096 chars (Bot API hard limit; mission reports exceed it), no `parse_mode` (stray `*` would 400 the message), and every failure path now logs. Sending over HTTP does **not** clash with the gateway — the single-consumer limit is on `getUpdates` polling |
+| ⚠ Telegram RECEIVE is still machine-bound | Approvals live in **per-machine `data/approvals.json`**, and OpenClaw's gateway curls **its own** `127.0.0.1:3000`. So the gateway can only action approvals raised on the machine it runs on — an approval created on another master **cannot be answered from the phone**. This is why the master was moved back to the desktop. Unsolved; options are keep gateway+master together, expose an API across the LAN (rejected — the app runs shell commands), or move the pairing whenever the master moves |
+| DeepSeek | real key in `data/registry.json`, working — but **unused → $0 actual** |
+| **OpenRouter (new agent, 2026-07-31)** | ADDED and verified end-to-end: model **`nvidia/nemotron-3-super-120b-a12b:free`**, key in `data/registry.json`. Live test through `/api/llm` streamed deltas AND completed a full tool round-trip (`search_vault "qlik"` → vault hit → answer), usage frame reported **`"cost": 0`**. Free tiers are rate-limited, not unlimited |
+| New provider presets (`lib/providers.ts`) | **Sakana Fugu** (`33cac0e`) — `https://api.sakana.ai/v1`, `fugu-ultra`, key from console.sakana.ai. **Kimi for Coding** (`215381c`) — `https://api.kimi.com/coding/v1`, `kimi-for-coding`, key from the **Kimi Code console**, flat-rate weekly quota (verified OpenAI-shaped: unauthenticated POST returns 401 in an OpenAI error envelope, not 404). **NEITHER HAS A KEY ENTERED — both are inert until you add one.** Moonshot sells three separate things: the coding plan (flat-rate, above), `api.moonshot.ai` (pay-per-token, preset `kimi`), and the consumer chat plan (**no API at all — cannot be connected**) |
+| Auto cost ranks (`lib/router.ts`, `71fbc1a`) | `COST_RANK` is keyed by PROVIDER, which prices the vendor not the model. `costRankFor()` now overrides it: **localhost → 0** and **model id ending `:free` → 0**. Both previously hit the `?? 6` default, so Auto sent cheap work to **paid DeepSeek (2)** while free local Llama sat at 6 — `ollama` was never a key in the table at all. Sakana is pinned at **10** (above Claude's 9): $5/$30 per M, the dearest thing in this fleet (though only #16 of 257 on Nous — `gpt-5.5-pro` is $180/M out). Kimi-for-coding is **1** (flat-rate = free at the margin) |
 | Llama (Ollama) | **installed** — Ollama 0.31.2, llama3.2 (tools-capable) + nomic-embed-text pulled; registered keyless at `http://localhost:11434/v1`; Ollama auto-starts (Startup folder) |
 | Semantic RAG | **ACTIVE** via local embeddings — `EMBED_BASE_URL=http://localhost:11434/v1`, `EMBED_MODEL=nomic-embed-text` in `.env.local` (keyless). Gemini key now optional (only for a Gemini chat agent; recipe commented in `.env.local`) |
 | Codex | CLI 0.144.1 **authed (ChatGPT login) + verified end-to-end** (mission answered 2026-07-11); template `codex exec --skip-git-repo-check {input}` — the flag is required (app spawns from a non-repo cwd) |
@@ -45,8 +66,8 @@ laptop `idris` · laptop `sabin`. Clustering is OFF by default = each runs stand
 | Schedules | 📚 Vault Librarian (Sun 18:00), 🛠 Ops Tuner (Sun 19:00 → Telegram), 📊 **CommunityForce Monday Status (Mon 08:30 → Telegram)**, test schedule (off) |
 | Workspaces | Default, Work, **CommunityForce** |
 | Arena standings (2026-07-13) | Claude 3/3 · DeepSeek 2/5 · Hermes 1/3 · Llama 0/4 — hard tier has a champion, simple tier has evidence (DeepSeek/Hermes wins on easy battles). Battle lessons live in the Guide's Arena section |
-| Laptop (user `idris`) | **deployed 2026-07-12 as WORKSTATION** — vault via OneDrive, Claude + Ollama installed, Talos/Hermes stay desktop-only, schedules empty. Updates: `git pull && npm run build` + restart |
-| Laptop 2 (user `sabin`) | **deployed 2026-07-14 via install.ps1** — THIRD machine (don't assume "laptop" = idris). Hermes installed + dashboard built (one-time `hermes dashboard --no-open` build; `--skip-build` auto-start works after), `HERMES_BIN/CMD` set with the **sabin** path. Talos stays desktop-only |
+| Laptop (user `idris`, host `WIN-C2ANEVBHN6Q`) | **deployed 2026-07-12 as WORKSTATION** — vault via OneDrive, Claude + Ollama installed, Talos/Hermes stay desktop-only, schedules empty. Cluster role **workstation** (can never be master). **⚠ Its server has been DOWN since ~2026-07-31** (heartbeat stale ~41h at time of writing) — updated but `server.cmd` never came back. Harmless as a workstation, but check it |
+| Laptop 2 (user `sabin`, host `IdrisLegion7`) | **deployed 2026-07-14 via install.ps1** — THIRD machine (don't assume "laptop" = idris). Hermes installed + dashboard built (one-time `hermes dashboard --no-open` build; `--skip-build` auto-start works after), `HERMES_BIN/CMD` set with the **sabin** path. Talos stays desktop-only. Cluster role **backup**. Updated to `71fbc1a` on 2026-08-02. **Still needs: `TELEGRAM_BOT_TOKEN` in `.env.local` (otherwise failing over to it silently loses all notifications), a pull to `fb578ec`, and its Hermes is still on GLM 5.2 (metered) rather than free hy3** |
 | Settings | **full inline LLM editing** (v19.1) — pencil opens all fields: name/provider/baseUrl/model/key/prompt/accent; blank key keeps current, REMOVE KEY checkbox for keyless localhost |
 | Ops pages (v20) | **/tasks** kanban (vault-backed: `Agentic OS/Tasks.md`, syncs across machines, hand-edits adopted), **/schedule** cron calendar (7-day timeline over schedules+watchers), **/library** vault content browser (/api/vault/notes); Overview adds disk/data-store vitals, Ops Pulse tiles, 7-day Fleet Activity |
 | Graph (v20.2) | **/graph** knowledge-graph visualization — canvas force sim over /api/vault/graph (notes=nodes, wikilinks=edges), folder legend/filter, hover neighborhoods, click→Obsidian, orphan/hub stats; loop sleeps when settled, timer fallback drives it in hidden tabs (rAF is suspended there) |
@@ -87,26 +108,81 @@ laptop `idris` · laptop `sabin`. Clustering is OFF by default = each runs stand
   outputs are never harvested (anti-recursion). `<mission>` goes through the approvals gate.
 - Watch for a stray NBSP (U+00A0) if exact-match editing fails in ChatThread.tsx.
 - One `.env.local` reference table lives in the Guide's "Settings & Environment Reference".
+- **Adding an LLM provider preset = 3 files:** `lib/providers.ts` (the preset), `lib/router.ts`
+  (a `COST_RANK` entry — the `?? 6` default mis-prices anything genuinely cheap or dear), and
+  `lib/guideContent.ts` (rule 5). Skipping the router entry is the easy one to miss.
+- **`app/api/llm` + `lib/runners.ts` send only `model`/`messages`/`stream`(+`tools`)** — no
+  `temperature`/`max_tokens`/`top_p`. That's why providers with narrow parameter support (Sakana
+  Fugu) drop in unchanged. There's also a transparent one-shot retry without `tools` if a
+  provider 4xxs mentioning them.
+- **`billingFor()` marks any remote-baseUrl registry LLM as `api` (= billed).** That's wrong for
+  flat-rate endpoints like Kimi-for-Coding. Harmless today — the LLM route records token counts,
+  not `costUsd`, so no fabricated dollars appear — but the per-agent tag reads BILLED. Fix only
+  if the Analytics split starts mattering.
 
-## ⚠ OPEN — read first (2026-07-16)
+## ⚠ OPEN — read first (2026-08-02)
 
-1. **Telegram bot token was exposed.** While diagnosing OpenClaw's backend I dumped
-   `~/.openclaw/openclaw.json` to the terminal and the redaction regex missed `botToken` —
-   the live token for **@IdrisGV75_bot** printed into a Claude Code transcript. **Ask Idris
-   whether he rotated it** (@BotFather → `/revoke`, then update `openclaw.json` and restart
-   the gateway). If not done, it's still the top item. Lesson: when dumping any config, redact
-   by *value shape* (long random strings), not by a key allowlist.
-2. **Laptops may need `update.cmd`** — desktop is at v41; `idris` and `sabin` were last updated
-   mid-session (~v37). They need it to index the imported history in Conversations. The History
-   notes themselves already reached them via OneDrive.
-3. **Studio + Content still un-activated** — no real API keys entered (see roadmap #1).
+1. **`TELEGRAM_BOT_TOKEN` is not set on sabin.** The desktop is master and sends fine via the
+   OpenClaw fallback, so nothing is broken *today* — but sabin is the backup, and failing over to
+   it without that token silently loses every notification exactly when you'd most want them.
+   One line in sabin's `.env.local` + pull to `fb578ec` + rebuild. Worth setting on the desktop
+   too (makes sends independent of OpenClaw's health).
+2. **The `idris` laptop's server has been down since ~2026-07-31** (~41h stale heartbeat). It
+   pulled the update but `server.cmd` never came back. It's a workstation so nothing depends on
+   it, but it's not running.
+3. **Telegram bot token was exposed 2026-07-16 and was NEVER rotated.** Verified still live on
+   2026-07-22 (`getMe` → ok, @IdrisGV75_bot, id 8893333281) and confirmed unchanged: every
+   `openclaw.json` backup going back to 07-09 carries the identical token fingerprint
+   (sha256 `23d80fec…`). **Idris explicitly deprioritised this ("don't worry about token")** —
+   do not re-litigate it unsolicited, just don't assume it's fixed. Rotation = @BotFather
+   `/revoke` → update `openclaw.json` → restart gateway. Note the token now also matters for
+   `TELEGRAM_BOT_TOKEN` (item 1), so rotating means updating both places. Lesson that produced
+   the leak: when dumping any config, redact by *value shape* (long random strings), not by a
+   key allowlist — and prefer comparing sha256 prefixes over printing values.
+4. **Sakana + Kimi presets exist but have no keys** — inert until a key is entered, per machine.
+5. **Studio + Content still un-activated** — no real API keys entered (see roadmap #1).
 
 ### Recently fixed, worth not re-breaking
+- **`findstr ":3000 "` matched IPv6 addresses containing `:3000` (fixed 2026-08-02, `dfcdd3e`).**
+  findstr splits its pattern on the space and treats the parts as an **OR-list**, so
+  `[fddb:ee5:df6d:1:982f:3000:a178:2e66]:62546 … LISTENING 4140` matched — a stranger's socket on
+  port 62546. Consequences: `server.cmd`/`launch.cmd`'s "already running?" guard fired and did
+  `exit /b`, so **the server silently refused to start — no error, no window, nothing logged**,
+  striking at random because Windows IPv6 privacy addresses rotate. `update.cmd` was worse: it
+  took `tokens=5` off that line and `taskkill /f`ed it — an unrelated pid (on this desktop, pid
+  4140 was **DeskIn, a remote-desktop agent**, so updating a laptop over remote access would have
+  killed the session). Fix: `/C:` makes the space part of one literal pattern; `update.cmd` now
+  asks Windows for the port owner (`Get-NetTCPConnection`) the way `stop.cmd` always did.
+  **If a server ever "just doesn't come up" with zero output, suspect a guard like this first.**
+- **Don't run `update.cmd` when the pull rewrites `update.cmd` itself.** `cmd.exe` reads a batch
+  file incrementally by BYTE OFFSET and re-reads after each command, so replacing it mid-run
+  resumes at a meaningless position (partial line / skipped / repeated). When a pull touches
+  `update.cmd`, hand-run the steps instead: `.\stop.cmd` → `git pull` → `npm install` →
+  `npm run build` → `Start-Process .\server.cmd -WindowStyle Hidden`.
 - `install-service.cmd` takes an optional folder (v31.1): **argument** → script's own folder →
   **interactive prompt**; refuses a folder with no `server.cmd`. (cmd trap: `set "VAR=%VAR:"=%"`
   unbalances quotes → ". was unexpected at this time"; use `set VAR=%VAR:"=%`, no outer quotes.)
   Healthy VBS = 2 lines: `Set sh = CreateObject("WScript.Shell")` / `sh.Run """<repo>\server.cmd""", 0, False`
 - The "emptied .vbs" scare (2026-07-14) was a **false alarm** — file was intact all along. Don't re-hunt it.
+
+## ✅ DONE 2026-07-22 → 08-02 — providers, cluster roles, two silent-failure bugs
+
+Commits on `main` (all pushed): `33cac0e` Sakana preset · `215381c` Kimi-for-Coding preset ·
+`dfcdd3e` **findstr/taskkill fix** · `71fbc1a` free-model cost ranks · `fb578ec` **Telegram Bot
+API transport**.
+
+- **Hermes** moved off metered GLM 5.2 back to free `tencent/hy3:free` (desktop), GLM demoted to
+  fallback. Confirmed live: the model answered "Tencent Hunyuan 3 free model".
+- **OpenRouter added and fully proven** — streaming + a real `search_vault` tool round-trip,
+  `cost: 0`.
+- **Cluster turned on across all three machines**, master moved desktop → sabin → back to desktop
+  (deliberate: Telegram send AND approval-receive both live where OpenClaw is).
+- **Two silent-failure classes killed:** the `findstr` IPv6 guard (server refusing to start with
+  zero output; `update.cmd` force-killing an unrelated pid) and Telegram sends vanishing on a
+  master without OpenClaw.
+- Billing picture: **real API spend ≈ $0**. Claude/Codex/OpenClaw/Hermes are subscriptions,
+  Llama + OpenRouter are free, DeepSeek's key is configured but unused. The one caveat is that
+  Nous inference is metered prepaid credits, so Hermes only costs $0 while it stays on `:free`.
 
 ## ✅ DONE 2026-07-16 — LLM history import (was roadmap #2 for weeks)
 
@@ -124,11 +200,14 @@ DESKTOP ONLY — never import on another machine (processed flags are per-machin
 
 1. **Studio + Content activation** — the last big un-activated feature. Enter real keys: Studio (OpenAI = image+voice; Gemini/ElevenLabs/Replicate) **and** a publish target (Settings → Publishing now has WordPress **+ Ghost + Webflow**, v35). Only no-key/bad-key paths are proven; a real Claude draft (100/100 SEO) confirmed the content half works. **Ghost/Webflow are untested against real sites** — first live push deserves a watch.
 2. **Phone access** (Tailscale + PWA) — long-deferred. Note `/` still overflows below ~624px (SystemVitals gauges); a task chip was filed for it.
-3. **Configure the remaining idle subscriptions** — GLM 5.2 and Sakana AI still aren't wired in. Hermes natively supports GLM via its `zai` provider (`~/.hermes/config.yaml` fallback_model). ~~OpenClaw on a Gemini API key~~ **DONE 2026-07-16** — it's on the Gemini subscription now, which took real API spend to ≈$0.
+3. ~~**Configure the remaining idle subscriptions**~~ — **largely resolved / premise corrected 2026-07-22.** GLM 5.2 and Sakana were never "un-wired": both are reachable through Hermes's existing Nous Portal login, just **metered per token**, which is why they're fallbacks and not primaries. GLM 5.2 IS now Hermes's fallback on the desktop. Still genuinely un-wired: a **direct Z.ai subscription** (Hermes `zai` provider, `GLM_API_KEY` — canonical; `ZAI_API_KEY`/`Z_AI_API_KEY` are accepted aliases, but `status.py` only checks the canonical one so an alias shows ✗). ~~OpenClaw on a Gemini API key~~ **DONE 2026-07-16**.
+   ⚠ **If wiring Kimi through Hermes, override `base_url`** — Hermes's built-in `kimi-coding` provider hardcodes the METERED `https://api.moonshot.ai/v1`, so the coding-plan key would silently bill per token.
 4. Content niceties: hero image → WP media library + embed; bulk keyword → article runs.
 5. Keep feeding the Arena easy-tier battles so simple routing gets cheaper/smarter.
 6. Deferred (Idris held off 2026-07-14): **named cluster groups** — `group` field in cluster config + `Cluster/<group>/…` namespacing + a Group-name field in the Machine Group panel, for multiple failover groups sharing ONE vault. Not needed today: separate groups = separate vaults (VAULT_DIR), which also separates the brain — that's the current answer to "start a new Group".
 7. Optional: re-distill the richest ~100 conversations at higher quality, or feed `/import`'s ChatGPT half (only Claude exports were present this run — `sources: {claude: 2242}`).
+8. **Telegram approvals across machines** (new, 2026-08-02) — see the "RECEIVE is still machine-bound" row. Today's answer is "keep master + gateway on the desktop", which works but silently constrains where the master can live. A real fix means either syncing `data/approvals.json` (it's deliberately per-machine) or having the gateway target the current master's API.
+9. **Prove Sakana / Kimi-for-Coding end-to-end** once keys exist. Both presets are verified only up to the network boundary — for Kimi that's an unauthenticated 401 in an OpenAI-shaped envelope. OpenRouter is the one that's been fully proven (streaming + a real tool round-trip).
 
 ## Session-workflow notes (learned the hard way)
 
@@ -140,8 +219,32 @@ DESKTOP ONLY — never import on another machine (processed flags are per-machin
 - Long PowerShell one-liners paste badly over RDP; give Idris 2–3 short lines instead.
 - Idris runs 3 machines with **different usernames** — never hand him a path with someone
   else's username in it. The agent page now detects this and says so (v38).
+- **Idris runs commands in PowerShell, not cmd.** Repo scripts need `.\` (`.\stop.cmd`,
+  `.\server.cmd`) because PowerShell doesn't resolve from the cwd; installed tools (`git`, `npm`,
+  `hermes`, `openclaw`) take **no** prefix — he hit `.\npm` after one under-specified answer.
+  Also: Windows PowerShell 5.1 has **no `&&`** (split into separate lines), `start "" /min` is
+  cmd-only (use `Start-Process … -WindowStyle Hidden`), and `curl` is an alias for
+  `Invoke-WebRequest` (use `curl.exe`).
+- **Verify restarts properly:** `stop.cmd` → confirm the port is actually free → then launch.
+  Sleeping 2s and launching blind is how the silent-start bug got misdiagnosed as "my build
+  broke it". `Get-NetTCPConnection -LocalPort 3000 -State Listen` is the check.
+- **A comparison between two values that can BOTH fail silently reports "no change", not
+  "couldn't measure".** Burned twice in one session: a lease-renewal check where both reads
+  returned empty (Node can't resolve Git Bash `/c/...` paths) and a preset check that read a
+  hardcoded *placeholder* instead of the field's value. Assert the reads are non-empty and that
+  you're reading the thing you think you are, before comparing. Also `%errorlevel%` in a
+  one-line cmd `&` chain expands at PARSE time — use `cmd /v:on` + `!errorlevel!`.
+- Cluster failover is **eventually consistent via OneDrive** — expect ~90s for a role change or
+  reclaim to land, and a brief window where two nodes' heartbeats both say `isMaster: true`.
+  The lease file is the arbiter; a `term` bump means a real re-election, an unchanged `term`
+  means a clean uncontested handover.
 
 ## Suggested first message for the new session
 
 > Read NEXT-SESSION.md in mission-control. Check the fleet is green (`/api/system`,
-> `/api/agents`), then: [your goal for the session]
+> `/api/agents`) and the cluster (`/api/cluster` — expect DESKTOP-K82OGAE as master),
+> then: [your goal for the session]
+
+Note `/api/agents` caches a successful version probe **forever** (`expires: Infinity`), so a
+version string there can be stale after a CLI upgrade until the server restarts — the binary on
+disk is the truth (this made OpenClaw look like 2026.6.11 long after it was 2026.7.1).
