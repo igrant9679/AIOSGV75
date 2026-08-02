@@ -1,4 +1,4 @@
-import { readMemory } from "./vault";
+import { readMemory, readUserProfile } from "./vault";
 import { searchVault, type VaultPassage } from "./vaultSearch";
 
 /**
@@ -43,16 +43,36 @@ export async function retrieveMemoryFacts(query: string, maxFacts = 8): Promise<
 export interface AgentContext {
   facts: string;
   passages: VaultPassage[];
+  /** Maintained "who you are working with" note — see lib/userProfile.ts. Unlike
+   *  `facts` (keyword-retrieved, top-8) this is injected WHOLE on every call,
+   *  which is why userProfile.ts hard-caps it. */
+  profile: string;
 }
 
-export const EMPTY_CONTEXT: AgentContext = { facts: "", passages: [] };
+export const EMPTY_CONTEXT: AgentContext = { facts: "", passages: [], profile: "" };
+
+/** Drop frontmatter, the H1, and the generated explainer blockquote — agents
+ *  want the profile body, not the note's own scaffolding. */
+function stripProfileChrome(note: string): string {
+  // `\s*` (not `\n`) after each part: the note has a blank line between the
+  // frontmatter, the H1 and the banner, and a bare `^#` anchor won't match when
+  // the remaining string still starts with that newline.
+  return note
+    .replace(/^---[\s\S]*?---\s*/, "")
+    .replace(/^#\s+User Profile[^\n]*\s*/, "")
+    .replace(/^>[^\n]*\n?/gm, "")
+    .trim();
+}
 
 export async function gatherContext(query: string): Promise<AgentContext> {
-  const [facts, passages] = await Promise.all([
+  const [facts, passages, profileNote] = await Promise.all([
     retrieveMemoryFacts(query),
     searchVault(query, 3).catch(() => [] as VaultPassage[]),
+    readUserProfile().catch(() => ""),
   ]);
-  return { facts, passages };
+  // Strip the frontmatter + generated banner; agents want the profile body.
+  const profile = stripProfileChrome(profileNote);
+  return { facts, passages, profile };
 }
 
 /**
@@ -73,6 +93,8 @@ function passagesText(passages: VaultPassage[]): string {
 /** Preamble block for CLI-style agents (prepended to the transmitted prompt). */
 export function memoryBlock(ctx: AgentContext): string {
   const parts: string[] = [];
+  if (ctx.profile) parts.push(`[Who you are working with — maintained profile:]
+${ctx.profile}`);
   if (ctx.facts) parts.push(`[Shared memory — relevant facts from the user's agent network:]\n${ctx.facts}`);
   if (ctx.passages.length > 0) {
     parts.push(`[Vault context — possibly relevant excerpts from the user's notes:]\n${passagesText(ctx.passages)}`);
@@ -84,6 +106,10 @@ export function memoryBlock(ctx: AgentContext): string {
 /** System-message variant for API LLMs. */
 export function memorySystemBlock(ctx: AgentContext): string {
   const parts: string[] = [];
+  if (ctx.profile) {
+    parts.push(`WHO YOU ARE WORKING WITH (maintained profile, refreshed weekly):
+${ctx.profile}`);
+  }
   if (ctx.facts) {
     parts.push(`SHARED MEMORY (relevant facts saved by you and the user's other AI agents):\n${ctx.facts}`);
   }

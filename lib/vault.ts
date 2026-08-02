@@ -155,6 +155,26 @@ export async function writeMemory(content: string): Promise<void> {
   await fs.writeFile(safeJoin("Memory.md"), content, "utf8");
 }
 
+/**
+ * The maintained user profile — "who you are working with", distinct from
+ * Memory.md's discrete facts. Memory.md is append-only and retrieved by
+ * keyword (top-8 relevant); this is a single coherent note that is REWRITTEN
+ * each refresh and injected whole into every agent. Keeping them apart stops
+ * profile prose from crowding out the specific fact a query actually needed.
+ */
+export async function readUserProfile(): Promise<string> {
+  try {
+    return await fs.readFile(safeJoin("User Profile.md"), "utf8");
+  } catch {
+    return "";
+  }
+}
+
+export async function writeUserProfile(content: string): Promise<void> {
+  await ensureDir(BASE);
+  await fs.writeFile(safeJoin("User Profile.md"), content, "utf8");
+}
+
 export async function appendMemory(entry: string, source: string): Promise<void> {
   await ensureDir(BASE);
   const file = safeJoin("Memory.md");
