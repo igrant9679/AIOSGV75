@@ -449,7 +449,29 @@ EMBED_BASE_URL=…/v1
 EMBED_API_KEY=…
 EMBED_MODEL=…
 \`\`\`
-and retrieval becomes hybrid keyword + meaning, with vectors cached on disk and silent fallback if the endpoint fails.`,
+and retrieval becomes hybrid keyword + meaning, with vectors cached on disk and silent fallback if the endpoint fails.
+
+**Memory vs the User Profile** — two different things, kept apart on purpose. Memory facts are discrete and *retrieved by relevance* (top ~8 for the current message). The [User Profile](#user-profile) is a single coherent note injected **whole, on every call**. Putting profile prose into the fact list would let it crowd out the specific fact a question actually needed.`,
+  },
+  {
+    id: "user-profile",
+    title: "User Profile — who the fleet thinks you are",
+    keywords: "user profile personalization personalisation who you are working with honcho mem0 memory provider weekly refresh distil preferences avoid injected every agent settings panel",
+    body: `Settings → **User Profile**. A maintained "who you are working with" note that is injected into **every** agent's prompt — Claude, Talos, Hermes, Codex, Auto, and every LLM you've added.
+
+It is distilled from four sources: **shared memory · your chats · goals · tasks · journal**. Shared memory is treated as *authoritative* — where a curated fact contradicts an older chat message, the fact wins. That matters because raw chat logs preserve statements you later corrected, and without it the profile keeps resurrecting them.
+
+**Four sections:** How you work · Current focus · Preferences & conventions · Avoid.
+
+**How it behaves**
+- **Rewritten, not appended.** Each refresh merges: keeps what still holds, revises what changed, deletes what the evidence now contradicts. (\`Agentic OS/Memory.md\` is the opposite — append-only.)
+- **Refreshes weekly**, on the cluster master only, so in a machine group exactly one node rewrites the shared note. **Refresh now** in the panel forces it.
+- **Capped at 1500 characters**, because it rides on every single call. If the writer overruns it is asked to compress before anything is cut.
+- **Evidence or omission.** It's told never to infer personality or mood, and to write "not enough signal yet" rather than pad. A short honest profile beats a padded one — a wrong line here becomes a lie every agent repeats.
+
+**Correcting it** — edit \`Agentic OS/User Profile.md\` by hand. The next refresh is *given* your version and told to merge it, so corrections stick rather than being overwritten. If a wrong belief came from a stale memory fact, fix that in Memory.md instead and it will propagate on the next refresh.
+
+**Why not Honcho / mem0?** Hermes can plug into external memory providers (\`hermes memory setup\`), and they're more sophisticated — dialectic reasoning, per-agent isolation. But they are *Hermes* providers: the rest of your fleet can't see them, which fragments the one-shared-brain design. They also bill an LLM call every couple of turns. This trades that depth for fleet-wide reach at $0 on your existing subscription.`,
   },
   {
     id: "knowledge-graph",
@@ -558,9 +580,13 @@ End a work session by telling any agent: "Remember: <the three facts worth keepi
     id: "settings-env",
     title: "Settings & Environment Reference",
     keywords: "settings env environment variables configuration mcp command agents workspaces vault_dir telegram_target embed openclaw hermes bin cmd",
-    body: `**Settings page**: LLM connections · **API Keys** for creative providers (OpenAI/ElevenLabs/Replicate) · custom command agents (any local CLI becomes an agent — \`{input}\` placeholder or stdin) · MCP servers for the Claude bridge · workspaces.
+    body: `**Settings page**: LLM connections · **User Profile** (who the fleet thinks you are — see its own section) · **API Keys** for creative providers (OpenAI/ElevenLabs/Replicate) · **Publishing** targets · custom command agents (any local CLI becomes an agent — \`{input}\` placeholder or stdin) · MCP servers for the Claude bridge · workspaces · **Machine Group & Roles**.
 
 **Where keys live** — LLM keys sit in \`data/registry.json\`; creative-provider keys in \`data/services.json\`. Both are entered in the UI and never leave this machine (both git-ignored). Any key can instead be set as an \`.env.local\` variable, which the app uses as a fallback.
+
+**A green orb on an LLM row means "ready", which is not the same as "keyed"** — a localhost endpoint (Ollama) needs no key and shows **amber + KEYLESS** so you can tell the two apart at a glance. Open the pencil to be certain: the key field reads \`unchanged\` when one is stored and \`no key set\` when it isn't.
+
+Other per-machine state in \`data/\` (all git-ignored, none of it syncs): \`cluster.json\` (this machine's group role), \`user-profile.json\` (profile refresh timestamp), \`schedules.json\`, \`approvals.json\`, \`llm-import.json\`.
 
 **\`.env.local\` reference** (restart the server after changes):
 
