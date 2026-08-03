@@ -26,8 +26,14 @@ import { runAgentText } from "./runners";
  *    and the result is hard-capped.
  */
 
-/** Injected on every agent call — every character here is paid for repeatedly. */
-export const PROFILE_MAX_CHARS = 1200;
+/**
+ * Injected on every agent call — every character here is paid for repeatedly
+ * (~375 tokens at this size). Raised 1200 → 1500 on 2026-08-02: at 1200 the
+ * writer overran on two consecutive refreshes even after the compression pass,
+ * and `## Avoid` was the section that kept getting cut. Widen only on the same
+ * evidence — repeated truncation of real content, not a hunch.
+ */
+export const PROFILE_MAX_CHARS = 1500;
 /** A profile that churns daily is noise; a week is enough for real change. */
 const REFRESH_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000;
 /** Throttle + last-outcome state. Per rule 1 this file is the source of truth —
