@@ -37,11 +37,20 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     keyHint: "the Kimi Code console — NOT platform.moonshot.ai",
   },
   {
+    id: "glm-coding",
+    name: "GLM Coding Plan (subscription)",
+    // NOT /api/paas/v4 — z.ai's two OpenAI endpoints are not interchangeable and
+    // the general one bills per token. This is the flat-rate Coding Plan path.
+    baseUrl: "https://api.z.ai/api/coding/paas/v4",
+    exampleModel: "glm-5.2",
+    keyHint: "the GLM Coding Plan console — NOT the general z.ai API console",
+  },
+  {
     id: "glm",
-    name: "GLM (Z.ai)",
+    name: "GLM (Z.ai) — pay per token",
     baseUrl: "https://api.z.ai/api/paas/v4",
     exampleModel: "glm-4.6",
-    keyHint: "z.ai / bigmodel.cn",
+    keyHint: "z.ai / bigmodel.cn (metered — use the Coding Plan preset for a subscription)",
   },
   {
     id: "grok",

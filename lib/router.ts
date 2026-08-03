@@ -20,6 +20,11 @@ const COST_RANK: Record<string, number> = {
   // costs nothing at the margin. Cheapest thing to reach for — it's already paid.
   // (Distinct from `kimi` below, which is the pay-per-token Moonshot API.)
   "kimi-coding": 1,
+  // Same shape: flat monthly plan, so an extra call costs nothing at the margin.
+  // Quota-limited rather than unlimited (and GLM-5.2 burns 3x quota in the
+  // 14:00-18:00 UTC+8 peak), so it's a good default agent but not a bulk worker.
+  // Distinct from `glm` below, which is z.ai's METERED /api/paas/v4 endpoint.
+  "glm-coding": 1,
   gemini: 1,
   deepseek: 2,
   glm: 3,
