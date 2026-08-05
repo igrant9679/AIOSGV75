@@ -97,7 +97,7 @@ The gateway runs as a Windows Scheduled Task (starts on boot). If the bot goes s
 
 **Sending and receiving are separate — this matters in a machine group.** Schedules, watchers and nudges run *only on the cluster master*, so the master is the machine that has to SEND. Set \`TELEGRAM_BOT_TOKEN\` in \`.env.local\` on every machine that can become master and it posts to the Bot API directly — no OpenClaw needed there, and no clash with the gateway (the single-consumer limit applies to polling, not sending). Without the token on a master that lacks OpenClaw, notifications fail *silently*: the send returns false and the run is still marked successful.
 
-RECEIVING (answering approvals from your phone) is different: it needs the gateway, only one machine may poll the bot, and that machine's OpenClaw curls **its own** \`127.0.0.1:3000\`. Approvals live in per-machine \`data/approvals.json\`, so the gateway can only action approvals raised on the machine it runs on. If the master is a different machine, its approvals can't be answered from the phone — keep the gateway on the master, or expect to approve those in the dashboard.`,
+RECEIVING (answering approvals from your phone) needs the gateway, and **only one machine may poll the bot** — two conflict, Telegram 409s the loser. But the gateway no longer has to be the master: approvals live in the **shared vault** (\`Agentic OS/Approvals.json\`), so it can action an approval raised on any machine, and the master launches the resulting mission. Keep the gateway on whichever machine is most reliably on — that's usually the desktop, not the fastest laptop.`,
   },
   {
     id: "api-llms",
@@ -301,6 +301,12 @@ After either install, run \`npm run build\` and restart so the new \`.env.local\
 **Deliberately per-machine:** schedules & watchers (one master runs them — duplicates double-fire), API keys, arena standings, and the usage ledger (each machine's Auto learns its own history).
 
 **Machine group & master failover** (Settings → **Machine Group & Roles**) — instead of picking the master by hand, enable clustering and give each machine a role: **Primary** (preferred master), **Backup** (takes over if the primary goes down), or **Workstation** (never master). Machines coordinate through a lease file in the shared vault — the master renews it every ~30s; if it stops (machine off), a backup claims the expired lease and starts running the schedules/watchers/automations. It's eventually-consistent (OneDrive-synced), so failover takes a couple of minutes and a brief overlap is possible by design. The panel shows every machine, who's online, who holds master, and each install's folder; you can force "make this machine master" or "step down". With every component installed on each machine, a backup that takes over runs the full stack — schedules, watchers, Hermes, and Telegram delivery. Just keep only ONE Telegram gateway (OpenClaw) polling the bot at a time, since two conflict. Off by default — a lone machine just runs everything.
+
+**Two things that must be right on every machine that can become master**, because both fail *silently* otherwise:
+1. **\`TELEGRAM_BOT_TOKEN\` in \`.env.local\`** — schedules/watchers/nudges run on the master, so the master is what has to send. Without the token on a master lacking OpenClaw, every notification vanishes while runs still record success.
+2. **The install must be up to date.** A master running old code is the whole fleet's behaviour. Run \`.\\update.cmd\` after any change lands.
+
+The **gateway** and the **master** are now independent — approvals are shared through the vault, so put the gateway on the always-on machine and let the fastest machine be master.
 
 **Why not host it in the cloud (Railway etc.)?** The server is the engine room — it spawns local CLIs, reads the vault from disk, and talks to localhost Ollama; none of that exists in a cloud container, and the dashboard has no auth layer (it can run commands, so it binds 127.0.0.1 only). Remote access, when wanted, = **Tailscale** private mesh, not public hosting.
 

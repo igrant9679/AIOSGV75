@@ -22,7 +22,7 @@ manual is `/guide` (source: `lib/guideContent.ts`).
 | Agent | Kind | How it runs |
 | --- | --- | --- |
 | Claude | CLI bridge | `app/api/claude/route.ts` spawns `claude -p --output-format stream-json`, relays NDJSON as SSE; prompt via stdin; MCP servers from `data/mcp.json` ride along |
-| Talos (OpenClaw) | command agent | `openclaw agent … --message {input}`; also the Telegram gateway (bot pairing, approval replies) — PRIMARY machine only |
+| Talos (OpenClaw) | command agent | `openclaw agent … --message {input}`; also the Telegram gateway (bot pairing, approval replies). Only ONE machine may poll the bot, but it need NOT be the master — approvals are vault-shared |
 | Hermes | command agent | Nous Hermes CLI, one-shot `-z {input}`; absolute path from `.env.local` |
 | DeepSeek / any API LLM | OpenAI-compatible | `/api/llm` streaming agentic tool loop (`lib/llmTools.ts`: search_vault, read_note, save_memory, goals, journal, request_mission) |
 | Llama | local LLM | Ollama at `http://localhost:11434/v1`, keyless (`isLocalEndpoint()` in `lib/registry.ts`) |
@@ -114,7 +114,19 @@ manual is `/guide` (source: `lib/guideContent.ts`).
 
 ## Multi-machine model
 
-One PRIMARY machine runs schedules, watchers, and the Telegram gateway; other
-installs are workstations. The Obsidian vault (synced externally) shares
-memory/RAG/goals/journal across machines; `data/*.json`, `.env.local`, and CLI
-logins are per-machine. Details: `SETUP-NEW-MACHINE.md`.
+Clustering is **ON** (2026-08): roles live in per-machine `data/cluster.json`,
+coordination in vault `Agentic OS/Cluster/` (lease + heartbeats). The MASTER
+runs schedules, watchers, nudges, pipeline sync, the weekly profile refresh and
+approval launches — everything behind `clusterTick()` in `scheduler.ts`.
+
+**The Telegram gateway is independent of the master.** Approvals are vault-backed
+(`Agentic OS/Approvals.json`), so any machine can raise or answer one and the
+master launches the mission. Put the gateway on the always-on machine; make the
+fastest machine master.
+
+Shared via the vault: memory/RAG/goals/journal/tasks/**approvals**/profile.
+Per-machine: `data/*.json` (incl. `cluster.json`), `.env.local`, CLI logins.
+
+**Every machine that can become master needs `TELEGRAM_BOT_TOKEN` in
+`.env.local`** — the master is what sends, and without it notifications fail
+silently while runs still record success. Details: `SETUP-NEW-MACHINE.md`.

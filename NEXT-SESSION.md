@@ -8,7 +8,7 @@
 
 **Mission Control** — Idris's local AI operating system at `C:\Users\Admin\Documents\mission-control`
 (Next.js 16 + Tailwind v4 + Framer Motion). Built July 9–16, 2026, versions **v1 → v41**;
-maintenance + provider work 2026-07-22 → 08-02 (head **`fb578ec`**).
+maintenance + provider work 2026-07-22 → 08-05 (head **`72d1b3d`**+).
 Repo: **https://github.com/igrant9679/AIOSGV75** (main, PUBLIC, gh CLI authed as igrant9679).
 
 It orchestrates a fleet of AI agents with an Obsidian vault as its brain:
@@ -24,17 +24,22 @@ laptop `idris` · laptop `sabin`.
 
 **Clustering is now ON (2026-08-02)** — it is no longer "off by default, each standalone":
 
-| Host | User | Role | State |
-| --- | --- | --- | --- |
-| `DESKTOP-K82OGAE` | Admin | **primary** | **MASTER** (lease term 5) |
-| `IdrisLegion7` | sabin | backup | online, defers |
-| `WIN-C2ANEVBHN6Q` | idris | workstation | **STALE — server down since ~2026-07-31** |
+| Host | Label | User | Role | State |
+| --- | --- | --- | --- | --- |
+| `IdrisLegion7` | IdrisLegion7 | sabin | **primary** | **MASTER** (moved 2026-08-05 — desktop "too slow") |
+| `DESKTOP-K82OGAE` | IdrisAsusGV75 | Admin | backup | holds the **Telegram gateway** |
+| `WIN-C2ANEVBHN6Q` | IdrisMSIRaider18 | idris | workstation | back online 2026-08-05 after ~48h down |
+
+⚠ **All three labels start with "Idris"** — the only unambiguous identifier is the install path
+(`C:\Users\sabin\…` vs `C:\Users\Admin\…` vs `C:\Users\idris\…`). A role got set on the wrong
+laptop this way; when the user says "sabine's machine" they mean **IdrisLegion7**.
 
 Roles are **per-machine** in `data/cluster.json` (`process.cwd()/data`, NOT the vault) — only
 `Cluster/lease.json` + `Cluster/nodes/*.json` are shared, so a role can only be changed **on that
 machine** (Settings → Machine Group & Roles, or POST `/api/cluster` `{action:"config",role:…}`).
-The master ran on sabin for a while and was deliberately moved back to the desktop — see the
-Telegram row below for why that matters.
+**The gateway no longer has to be the master** (as of `72d1b3d`) — approvals are vault-backed, so
+the gateway stays on the always-on desktop while the faster laptop runs as master. Any earlier note
+saying "keep the gateway on the master" is obsolete.
 
 ## Running state
 
@@ -54,7 +59,7 @@ Telegram row below for why that matters.
 | Hermes | Nous Hermes Agent v0.18.2, absolute path in `.env.local`, one-shot `-z {input}`. **Config is `%LOCALAPPDATA%\hermes\config.yaml` — NOT `~/.hermes/config.yaml`** (that path does not exist; older rows here were wrong). Desktop chain (2026-07-22): primary **`tencent/hy3:free`** ($0), fallback **`z-ai/glm-5.2`**. Fallbacks live in a top-level `fallback_providers:` LIST (`{provider,model,base_url?,api_mode?}`); the commented `fallback_model:` singular in the file is legacy. `hermes fallback add` needs a TTY, so script it by editing the YAML directly — and note **`hermes config set` rewrites the file and strips all trailing comment blocks** (edit by hand to keep them). Backups: `config.yaml.bak-preGlm`, `.bak-preSwap` |
 | **Nous Portal ≠ flat-rate** | Hermes AUTHENTICATES via a Nous subscription (OAuth, auto-refresh), but inference is **metered per token against prepaid credits**. `/v1/models` returns 257 models WITH pricing — `tencent/hy3:free` is the only genuinely $0 one (`"pricing":{"prompt":"0"}`), which is why it's the primary. GLM 5.2 ($0.90/$2.83 per M) and Sakana Fugu are reachable here too, so **roadmap #3's premise was wrong** — they were never un-wired, just metered. ⚠ Nous bearer tokens are JWTs with `expires_in: 3599` → **cannot** be pasted into `data/registry.json` as an MC agent (works 1h, then 401). Hermes refreshes them itself |
 | Telegram transport (**2026-08-02, `fb578ec`**) | `sendTelegram()` now posts to the **Bot API directly when `TELEGRAM_BOT_TOKEN` is set**; falls back to spawning `openclaw` when it isn't. **Why:** schedules/watchers/nudges are gated `if (!isMaster) return` in `scheduler.ts`, so the MASTER sends — and when the master was sabin (no OpenClaw), every scheduled notification vanished **silently** (spawn failed → `false` → run still marked successful). Chunks at 4096 chars (Bot API hard limit; mission reports exceed it), no `parse_mode` (stray `*` would 400 the message), and every failure path now logs. Sending over HTTP does **not** clash with the gateway — the single-consumer limit is on `getUpdates` polling |
-| ⚠ Telegram RECEIVE is still machine-bound | Approvals live in **per-machine `data/approvals.json`**, and OpenClaw's gateway curls **its own** `127.0.0.1:3000`. So the gateway can only action approvals raised on the machine it runs on — an approval created on another master **cannot be answered from the phone**. This is why the master was moved back to the desktop. Unsolved; options are keep gateway+master together, expose an API across the LAN (rejected — the app runs shell commands), or move the pairing whenever the master moves |
+| ✅ Telegram RECEIVE — SOLVED 2026-08-05 (`72d1b3d`) | Approvals moved from per-machine `data/approvals.json` into the **shared vault** at `Agentic OS/Approvals.json` (same pattern as vault-backed `Tasks.md`). Any machine can raise or answer one; `syncApprovedMissions()` on the MASTER's tick launches the mission, so work lands with the other background duties rather than on whichever laptop answered Telegram. The API route launches immediately when the resolver IS the master, so dashboard approvals still feel instant. **Proven end-to-end**: raised + approved on the desktop (a backup) → sabin (master) stamped `launchedAt` ~60s later, ran it, and archived `2026-08-05 16-56 via-cross-machine-test-approved…` to the vault with Claude's reply. Gotchas baked in: `save()` MERGES by id (several machines write over OneDrive); resolution and `launchedAt` are both one-way so a stale copy can't un-resolve or re-launch; migration stamps `launchedAt` on legacy approved rows (they predate the field — a **July mission was one tick from re-firing**); and a 1h launch window stops any restored backup resurrecting old missions |
 | DeepSeek | real key in `data/registry.json`, working — but **unused → $0 actual** |
 | **OpenRouter (new agent, 2026-07-31)** | ADDED and verified end-to-end: model **`nvidia/nemotron-3-super-120b-a12b:free`**, key in `data/registry.json`. Live test through `/api/llm` streamed deltas AND completed a full tool round-trip (`search_vault "qlik"` → vault hit → answer), usage frame reported **`"cost": 0`**. Free tiers are rate-limited, not unlimited |
 | New provider presets (`lib/providers.ts`) | **Sakana Fugu** (`33cac0e`) — `https://api.sakana.ai/v1`, `fugu-ultra`, key from console.sakana.ai. **Kimi for Coding** (`215381c`) — `https://api.kimi.com/coding/v1`, `kimi-for-coding`, key from the **Kimi Code console**, flat-rate weekly quota (verified OpenAI-shaped: unauthenticated POST returns 401 in an OpenAI error envelope, not 404). **NEITHER HAS A KEY ENTERED — both are inert until you add one.** Moonshot sells three separate things: the coding plan (flat-rate, above), `api.moonshot.ai` (pay-per-token, preset `kimi`), and the consumer chat plan (**no API at all — cannot be connected**) |
@@ -120,16 +125,20 @@ Telegram row below for why that matters.
   not `costUsd`, so no fabricated dollars appear — but the per-agent tag reads BILLED. Fix only
   if the Analytics split starts mattering.
 
-## ⚠ OPEN — read first (2026-08-02)
+## ⚠ OPEN — read first (2026-08-05)
 
-1. **`TELEGRAM_BOT_TOKEN` is not set on sabin.** The desktop is master and sends fine via the
-   OpenClaw fallback, so nothing is broken *today* — but sabin is the backup, and failing over to
-   it without that token silently loses every notification exactly when you'd most want them.
-   One line in sabin's `.env.local` + pull to `fb578ec` + rebuild. Worth setting on the desktop
-   too (makes sends independent of OpenClaw's health).
-2. **The `idris` laptop's server has been down since ~2026-07-31** (~41h stale heartbeat). It
-   pulled the update but `server.cmd` never came back. It's a workstation so nothing depends on
-   it, but it's not running.
+1. **`TELEGRAM_BOT_TOKEN` on sabin — UNVERIFIED and now load-bearing.** Sabin is the MASTER as of
+   2026-08-05, and the master is what sends. It has no OpenClaw, so without that one line in its
+   `.env.local` **every scheduled notification fails silently** — 🗞 Chief of Staff (weekdays 08:00)
+   and 🛠 Ops Tuner (Sun 19:00) included; the send returns false and the run still records success.
+   Idris was told twice; not confirmed either time. **Check this first** — it is the only remaining
+   silent-failure path in the fleet. (Worth setting on the desktop too, so sends don't depend on
+   OpenClaw's health.)
+2. **Sabin's Hermes may still be on metered GLM 5.2.** The desktop runs `tencent/hy3:free` primary
+   with `z-ai/glm-5.2` as fallback; sabin was set to GLM 5.2 *primary* and the swap was never
+   confirmed, so it may be spending prepaid Nous credits on every call. Easiest check/fix is now
+   the UI: **/hermes-lab → Model & Fallback** (per-machine, so it must be done ON sabin), or
+   `hermes fallback list` there.
 3. **Telegram bot token was exposed 2026-07-16 and was NEVER rotated.** Verified still live on
    2026-07-22 (`getMe` → ok, @IdrisGV75_bot, id 8893333281) and confirmed unchanged: every
    `openclaw.json` backup going back to 07-09 carries the identical token fingerprint
@@ -139,8 +148,15 @@ Telegram row below for why that matters.
    `TELEGRAM_BOT_TOKEN` (item 1), so rotating means updating both places. Lesson that produced
    the leak: when dumping any config, redact by *value shape* (long random strings), not by a
    key allowlist — and prefer comparing sha256 prefixes over printing values.
-4. **Sakana + Kimi presets exist but have no keys** — inert until a key is entered, per machine.
+4. **Sakana · Kimi-for-Coding · GLM Coding Plan presets exist but are unproven.** Keys are
+   per-machine. A key was reportedly added for GLM but **never tested** — the live call was
+   interrupted. Only **OpenRouter** has been exercised end-to-end (streaming + a real tool
+   round-trip). ⚠ For GLM, confirm the agent's base URL is `https://api.z.ai/api/coding/paas/v4`
+   (the flat-rate Coding Plan) and NOT `/api/paas/v4` (metered) — same trap as Kimi.
 5. **Studio + Content still un-activated** — no real API keys entered (see roadmap #1).
+6. **Every machine that can become master needs to be UP TO DATE.** Sabin ran as master for a
+   while on code that predated both the Telegram transport and vault-backed approvals. A stale
+   master is the whole fleet's behaviour — `.\update.cmd` after anything lands.
 
 ### Recently fixed, worth not re-breaking
 - **`findstr ":3000 "` matched IPv6 addresses containing `:3000` (fixed 2026-08-02, `dfcdd3e`).**
@@ -164,6 +180,28 @@ Telegram row below for why that matters.
   unbalances quotes → ". was unexpected at this time"; use `set VAR=%VAR:"=%`, no outer quotes.)
   Healthy VBS = 2 lines: `Set sh = CreateObject("WScript.Shell")` / `sh.Run """<repo>\server.cmd""", 0, False`
 - The "emptied .vbs" scare (2026-07-14) was a **false alarm** — file was intact all along. Don't re-hunt it.
+
+## ✅ DONE 2026-08-02 → 08-05 — user profile, vault-backed approvals, GLM subscription
+
+Commits: `d40b255` profile engine · `3eebb33` weekly refresh + Settings panel · `c640e03`
+memory-as-source · `ff4fc47` cap 1500 · `e99033d` guide · `186cb6f` GLM Coding Plan preset ·
+`72d1b3d` **vault-backed approvals**.
+
+- **User Profile** (`lib/userProfile.ts`, Settings panel, `/api/profile`) — a maintained "who you
+  are working with" note distilled from **memory + chats + goals + tasks + journal**, injected
+  WHOLE into every agent via `memorySystemBlock()`. Rewritten (not appended) weekly on the master;
+  capped 1500 chars with a compression pass before any cutting. Memory.md is fed in FIRST and
+  marked authoritative — without it the profile kept resurrecting a corrected fact out of an old
+  chat log. This is the deliberate alternative to Honcho/mem0 (Hermes-only providers that bill an
+  LLM call every couple of turns); see the guide's "User Profile" section for the reasoning.
+- **GLM Coding Plan preset** — z.ai has TWO OpenAI endpoints that are NOT interchangeable:
+  `/api/coding/paas/v4` (flat-rate subscription) vs `/api/paas/v4` (metered). Hermes's built-in
+  `zai` provider hardcodes the metered one, so the subscription belongs in Settings, not Hermes.
+- **Vault-backed approvals** — see the Telegram RECEIVE row. Proven cross-machine.
+- **RapidApplications** — the CMS was renamed off "CommunityForce" on 2026-07-01; a stale memory
+  fact was corrected, a sourced `Workspaces/CommunityForce/Project Overview.md` written from the
+  GitHub API, and the Monday schedule's prompt rebuilt (it had been TIMING OUT at 300s because it
+  told Claude to search a vault that now holds 108 imported notes mentioning the project).
 
 ## ✅ DONE 2026-07-22 → 08-02 — providers, cluster roles, two silent-failure bugs
 
@@ -206,7 +244,7 @@ DESKTOP ONLY — never import on another machine (processed flags are per-machin
 5. Keep feeding the Arena easy-tier battles so simple routing gets cheaper/smarter.
 6. Deferred (Idris held off 2026-07-14): **named cluster groups** — `group` field in cluster config + `Cluster/<group>/…` namespacing + a Group-name field in the Machine Group panel, for multiple failover groups sharing ONE vault. Not needed today: separate groups = separate vaults (VAULT_DIR), which also separates the brain — that's the current answer to "start a new Group".
 7. Optional: re-distill the richest ~100 conversations at higher quality, or feed `/import`'s ChatGPT half (only Claude exports were present this run — `sources: {claude: 2242}`).
-8. **Telegram approvals across machines** (new, 2026-08-02) — see the "RECEIVE is still machine-bound" row. Today's answer is "keep master + gateway on the desktop", which works but silently constrains where the master can live. A real fix means either syncing `data/approvals.json` (it's deliberately per-machine) or having the gateway target the current master's API.
+8. ~~**Telegram approvals across machines**~~ — **DONE 2026-08-05** (`72d1b3d`), see the Telegram RECEIVE row. The gateway and the master are now independent.
 9. **Prove Sakana / Kimi-for-Coding end-to-end** once keys exist. Both presets are verified only up to the network boundary — for Kimi that's an unauthenticated 401 in an OpenAI-shaped envelope. OpenRouter is the one that's been fully proven (streaming + a real tool round-trip).
 
 ## Session-workflow notes (learned the hard way)
