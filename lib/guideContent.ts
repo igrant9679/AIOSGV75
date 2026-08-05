@@ -428,13 +428,17 @@ The goal appears on your kanban board (🤖-prefixed, In Progress → Done; fail
   {
     id: "approvals",
     title: "Approvals (The Autonomy Gate)",
-    keywords: "approval gate approve reject pending card telegram mission request autonomy",
+    keywords: "approval gate approve reject pending card telegram mission request autonomy vault shared queue multi-machine cluster master gateway",
     body: `When an agent requests a mission (via verb or tool), it doesn't run — it becomes a **pending approval**:
 
 1. An amber card appears at the top of every dashboard page → **Approve** / **Reject**
 2. Simultaneously, a 🚦 notification lands in your **Telegram** — reply \`approve <id>\` or \`reject <id>\` from anywhere
 
-Both paths stay in sync; approvals are idempotent (a double-tap can't launch two missions). Approving launches a single-agent Claude mission with the requested task. Cheap reversible verbs (remember/goal/journal) skip the gate.`,
+Both paths stay in sync; approvals are idempotent (a double-tap can't launch two missions). Approving launches a single-agent Claude mission with the requested task. Cheap reversible verbs (remember/goal/journal) skip the gate.
+
+**The queue is shared across machines.** Approvals live in the vault (\`Agentic OS/Approvals.json\`), not in per-machine \`data/\` — so *any* machine can raise one and *any* machine can answer it. That matters because OpenClaw's Telegram gateway curls its **own** \`127.0.0.1:3000\`: when the queue was machine-local, an approval raised by a schedule on the cluster master simply couldn't be answered from your phone if the gateway ran elsewhere. It sat pending. Now the gateway can live wherever you like, independent of who holds the master lease.
+
+**Who actually runs it:** resolving only *marks* the approval. The **master** launches the mission on its next tick (or immediately, if you approved on the master), so the work always lands where the fleet's other background duties run — not on whichever laptop happened to answer Telegram. Approvals older than an hour are never auto-launched, so a restored backup or hand-edited vault file can't resurrect months of old missions.`,
   },
   {
     id: "memory-rag",

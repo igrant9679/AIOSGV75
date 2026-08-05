@@ -209,6 +209,18 @@ export async function clusterStatus() {
   };
 }
 
+/**
+ * Read-only "am I the master right now?". Deliberately NOT clusterTick(): that
+ * heartbeats and runs an election as a side effect, which a request handler has
+ * no business doing. Clustering off → true, matching the lone-machine default.
+ */
+export async function isMasterNow(): Promise<boolean> {
+  const cfg = await readConfig();
+  if (!cfg.enabled) return true;
+  const lease = await readLease();
+  return Boolean(lease && lease.expiresAt > Date.now() && lease.holder === nodeId());
+}
+
 /** Force this machine to become master now (respects nothing — explicit operator action). */
 export async function claimMaster(): Promise<void> {
   const cfg = await readConfig();

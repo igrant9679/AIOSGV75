@@ -1,4 +1,5 @@
-import { listApprovals, createApproval, resolveApproval } from "@/lib/approvals";
+import { listApprovals, createApproval, resolveApproval, syncApprovedMissions } from "@/lib/approvals";
+import { isMasterNow } from "@/lib/cluster";
 
 export const dynamic = "force-dynamic";
 
@@ -25,5 +26,11 @@ export async function PATCH(request: Request) {
   }
   const approval = await resolveApproval(body.id, body.approve, (body.by ?? "dashboard").toString());
   if (!approval) return Response.json({ error: "not found" }, { status: 404 });
+  // Launching is the master's job, but if THIS machine is the master there's no
+  // reason to make the user wait up to 30s for the next tick — approving in the
+  // dashboard should feel immediate. Elsewhere the tick picks it up.
+  if (approval.status === "approved" && (await isMasterNow().catch(() => false))) {
+    void syncApprovedMissions().catch(() => {});
+  }
   return Response.json({ ok: true, status: approval.status, resolvedBy: approval.resolvedBy });
 }
