@@ -148,11 +148,15 @@ saying "keep the gateway on the master" is obsolete.
    `TELEGRAM_BOT_TOKEN` (item 1), so rotating means updating both places. Lesson that produced
    the leak: when dumping any config, redact by *value shape* (long random strings), not by a
    key allowlist — and prefer comparing sha256 prefixes over printing values.
-4. **Sakana · Kimi-for-Coding · GLM Coding Plan presets exist but are unproven.** Keys are
-   per-machine. A key was reportedly added for GLM but **never tested** — the live call was
-   interrupted. Only **OpenRouter** has been exercised end-to-end (streaming + a real tool
-   round-trip). ⚠ For GLM, confirm the agent's base URL is `https://api.z.ai/api/coding/paas/v4`
-   (the flat-rate Coding Plan) and NOT `/api/paas/v4` (metered) — same trap as Kimi.
+4. **Sakana + Kimi-for-Coding presets still have no key** (inert; keys are per-machine).
+   ✅ **GLM is LIVE and proven 2026-08-06** — agent id `glm`, provider `glm-coding`,
+   `https://api.z.ai/api/coding/paas/v4`, model `glm-5.2`, on the **GLM Coding Pro** plan
+   ($64.80/mo, 5× Lite ≈ 400 prompts/5h, auto-renews 2026-09-03). Verified streaming AND a real
+   `search_vault` tool round-trip. **The trap fired for real:** it was first added against
+   `/api/paas/v4` and every call returned `429 code 1113 "Insufficient balance"` — the Coding Plan
+   does NOT fund the metered endpoint, and the SAME key worked immediately once the base URL was
+   switched. A 429/1113 on z.ai means wrong endpoint, not a bad key. Auto now ranks it **1**
+   (flat-rate) alongside kimi-coding/gemini, behind only the free agents.
 5. **Studio + Content still un-activated** — no real API keys entered (see roadmap #1).
 6. **Every machine that can become master needs to be UP TO DATE.** Sabin ran as master for a
    while on code that predated both the Telegram transport and vault-backed approvals. A stale
