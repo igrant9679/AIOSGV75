@@ -97,7 +97,8 @@ saying "keep the gateway on the master" is obsolete.
 | History searchable in Conversations (v41) | `lib/conversations.ts` now indexes `Agentic OS/History/` alongside `Chats/`. **One record PER `## topic`** (not per note — a 12-conversation note is too coarse to search); Index hubs + `## Sources` skipped; frontmatter `date`/`tags` carried onto each record; `Exchange.kind: "chat"\|"history"` threaded through SearchItem/groupSessions/toItem. "Durable facts about the owner" repeats in all 187 notes → title suffixed w/ the run stamp so results are distinguishable. **`conversationAnalytics()` filters to kind==="chat"** — 1,513 history topics all stamped with the distill date would bury the real activity trend + break busiestDay. UI: violet avatar + IMPORTED badge + tag pills + "distilled <date>" instead of host/turns. Verified: 1,530 indexed (1,513 history + 17 chats), "qlik"→159 hits, "salesforce"→69. **This is what makes the import searchable on the laptops too** (vault-synced; raw exports + processed flags stay machine-local) |
 | Billing honesty + retry (v40) | **`lib/billing.ts`** + `/api/billing`: `billingFor(agentId, llms)` → `subscription` (claude via OAuth — no ANTHROPIC_API_KEY) / `api` (registry LLM w/ remote baseUrl = REAL charges) / `local` (localhost = free) / `unknown` (command agents self-authenticate). **Why this exists: the Claude CLI reports `total_cost_usd` even on a subscription — it's an estimate at list prices, NOT a bill.** Analytics + Reports now split "API spend" (billed only; drives the month-end projection) from a violet "subscription usage — not billed" banner; per-agent rows tagged BILLED/SUBSCRIPTION/FREE; subscription costs render as `~$X est`. Desktop reality: API spend $0.00, 19 claude runs ≈$1.46 est. **Distill retry**: `isTransient()` + `BATCH_RETRIES=4` w/ 1m/5m/15m/30m backoff, heartbeating while paused — a rate-limited EVERYTHING run now waits out the window instead of dying; non-transient errors (bad writer, vault gone) fail fast; progress always saved + resumable. |
 | **AUDITED FLEET BILLING (2026-07-16, openclaw updated same day)** | claude=**subscription** (OAuth idris.grant@gmail.com) · codex=**subscription** (ChatGPT login, `~/.codex/auth.json` tokens, no OPENAI_API_KEY) · hermes=**subscription** (Nous Portal OAuth, `config.yaml provider: nous`; supports zai/GLM+kimi+minimax as fallbacks — not configured) · **openclaw=SUBSCRIPTION as of 2026-07-16** (switched from Gemini API key → `google-gemini-cli/gemini-3.1-pro-preview` OAuth as idris.grant@gmail.com; see the row below) · deepseek=**API key** (real, but unused → $0) · llama=**local/free**. **Real API spend is now ≈ $0.** Still NOT configured despite user having subs: GLM 5.2, Sakana AI. ⚠ Telegram bot token was exposed in a config dump 2026-07-16 — CHECK IT WAS ROTATED |
-| OpenClaw → Gemini subscription (2026-07-16) | OpenClaw ships **two** Google providers: `google` (API key, pay-per-token) and **`google-gemini-cli`** (OAuth `oauth-personal`, drives Google's own `@google/gemini-cli`, same `gemini-3.1-pro-preview` model). Switched via `openclaw models auth login --provider google-gemini-cli` (user does the browser sign-in) + `openclaw models set google-gemini-cli/gemini-3.1-pro-preview`. **The `gemini` alias also had to be repointed** (`models aliases add gemini google-gemini-cli/...`) or it silently kept using the API key. **REQUIRED OpenClaw ≥ 2026.7.1**: 2026.6.11 spawned the CLI without `shell:true` → on Windows npm installs `gemini.cmd`, Node's spawn only resolves `.exe` → `spawn gemini ENOENT`. Proven in isolation: `spawn('gemini')`=ENOENT, `spawn('gemini',{shell:true})`=works, `spawn('gemini.cmd')`=EINVAL (Node≥20 blocks .cmd without shell). Verified live after the update: Talos replied "SUBSCRIPTION OK", `models status` shows `oauth=1, api_key=0` for the active provider. `google:default` api_key profile REMAINS — it still powers the web-search plugin (separate from the model). Fallbacks are empty ON PURPOSE: adding one back to `google/*` would silently resume billing when the subscription rate-limits. Config backup: `~/.openclaw/openclaw.json.bak-preGeminiSub` |
+| OpenClaw → Gemini subscription (2026-07-16) | OpenClaw ships **two** Google providers: `google` (API key, pay-per-token) and **`google-gemini-cli`** (OAuth `oauth-personal`, drives Google's own `@google/gemini-cli`, same `gemini-3.1-pro-preview` model). Switched via `openclaw models auth login --provider google-gemini-cli` (user does the browser sign-in) + `openclaw models set google-gemini-cli/gemini-3.1-pro-preview`. **The `gemini` alias also had to be repointed** (`models aliases add gemini google-gemini-cli/...`) or it silently kept using the API key. **REQUIRED OpenClaw ≥ 2026.7.1**: 2026.6.11 spawned the CLI without `shell:true` → on Windows npm installs `gemini.cmd`, Node's spawn only resolves `.exe` → `spawn gemini ENOENT`. Proven in isolation: `spawn('gemini')`=ENOENT, `spawn('gemini',{shell:true})`=works, `spawn('gemini.cmd')`=EINVAL (Node≥20 blocks .cmd without shell). Verified live after the update: Talos replied "SUBSCRIPTION OK", `models status` shows `oauth=1, api_key=0` for the active provider. `google:default` api_key profile REMAINS but is **UNUSED as of 2026-08-08** — it used to power the web-search plugin (separate from the model); web search moved to DuckDuckGo, see the row below. Fallbacks are empty ON PURPOSE: adding one back to `google/*` would silently resume billing when the subscription rate-limits. Config backup: `~/.openclaw/openclaw.json.bak-preGeminiSub` |
+| **Web search = DuckDuckGo, free (2026-08-08)** | `tools.web.search.provider: "duckduckgo"` + stock `duckduckgo` plugin enabled. **Key-free, no account, no quota, $0** — and it took web search off the metered `google:default` key. ⚠ **Talos has TWO search tools and only one obeys this setting:** `mcp_openclaw_web_search` (OpenClaw's, provider-controlled) and `google_web_search` (the Gemini CLI's own built-in, ignores OpenClaw config entirely and returns STALE results for recent events). Diagnose with `openclaw audit --kind tool_action --json` — it names the tool per run. Revert in one line: `openclaw config set tools.web.search.provider gemini` (the Gemini key is still in config, just unused) |
 | server.cmd | prepends `.local\bin` / npm-global / Ollama to PATH (v19.1) — a boot-time PATH once missed the Claude native install and the bridge showed red; if an agent is red but its CLI works in a terminal, suspect server-process PATH |
 
 ## Codebase conventions & gotchas
@@ -125,7 +126,7 @@ saying "keep the gateway on the master" is obsolete.
   not `costUsd`, so no fabricated dollars appear — but the per-agent tag reads BILLED. Fix only
   if the Analytics split starts mattering.
 
-## ⚠ OPEN — read first (2026-08-06)
+## ⚠ OPEN — read first (2026-08-08)
 
 0. **DECIDED 2026-08-06 — the split: gateway stays on the DESKTOP, everything else runs on sabin.**
    Sabin is master (compute, schedules, watchers, approval launches, profile refresh). The desktop
@@ -144,8 +145,12 @@ saying "keep the gateway on the master" is obsolete.
    `.env.local` **every scheduled notification fails silently** — 🗞 Chief of Staff (weekdays 08:00)
    and 🛠 Ops Tuner (Sun 19:00) included; the send returns false and the run still records success.
    Idris was told twice; not confirmed either time. **Check this first** — it is the only remaining
-   silent-failure path in the fleet. (Worth setting on the desktop too, so sends don't depend on
-   OpenClaw's health.)
+   silent-failure path in the fleet.
+   ⚠ **The DESKTOP does not have it either (verified 2026-08-08** — `.env.local` holds only
+   `VAULT_DIR`, `OPENCLAW_CMD`, `HERMES_BIN/CMD`, `EMBED_*`). Sends work here **only** via the
+   `sendTelegram()` fallback that spawns `openclaw` — i.e. the desktop is currently the acting master
+   AND is routing every notification through OpenClaw's health, which is exactly what `fb578ec` was
+   written to stop depending on. Set it on both machines; it's the same token either way (item 3).
 2. **Sabin's Hermes may still be on metered GLM 5.2.** The desktop runs `tencent/hy3:free` primary
    with `z-ai/glm-5.2` as fallback; sabin was set to GLM 5.2 *primary* and the swap was never
    confirmed, so it may be spending prepaid Nous credits on every call. Easiest check/fix is now
@@ -201,6 +206,22 @@ saying "keep the gateway on the master" is obsolete.
    (189, 1.7MB) live in the synced vault, so all three machines get them via RAG, `/conversations`
    and `/graph` — verified (a vault search for "qlik" returns History notes; 150 history matches).
 
+9. **The prod server can die mid-session and NOTHING brings it back (hit 2026-08-08).** The Startup
+   VBS only fires at Windows **login**, and this desktop had been up 17.7 days. The server wrote its
+   last state at **10:33:13** — `watcher.json`, `watcher-sweeps.json` and `usage.json` all stamped
+   that same second, during a watcher sweep plus a 4-run Claude mission — then simply stopped. No
+   error, no window, nothing logged. Found only because `/api/system` refused to connect; restarted
+   by hand (`Start-Process .\server.cmd -WindowStyle Hidden`). The VBS itself is intact and healthy.
+   **Why it mattered:** sabin (the designated master) had been offline since 2026-08-06 14:19, so
+   with the desktop down too **the fleet had NO master at all** — no schedules, watchers, nudges or
+   approval launches anywhere, on any machine. Saturday saved it: the weekday brief had run Fri
+   08-07 08:02 and nothing was due until Mon 08-10 08:00/08:30; `/api/attention` was empty.
+   **Nothing closes this gap yet.** A Scheduled Task on a ~5-min trigger that checks
+   `Get-NetTCPConnection -LocalPort 3000 -State Listen` and relaunches `server.cmd` would. Worth
+   also asking whether the watcher sweep *caused* it — the timing is exact, not approximate.
+   Side effect: `data/usage.json` held only 4 records afterwards (all from that 10:33 mission), so
+   the Analytics/Reports cost ledger currently has almost no history to draw on.
+
 ### Recently fixed, worth not re-breaking
 - **`findstr ":3000 "` matched IPv6 addresses containing `:3000` (fixed 2026-08-02, `dfcdd3e`).**
   findstr splits its pattern on the space and treats the parts as an **OR-list**, so
@@ -223,6 +244,60 @@ saying "keep the gateway on the master" is obsolete.
   unbalances quotes → ". was unexpected at this time"; use `set VAR=%VAR:"=%`, no outer quotes.)
   Healthy VBS = 2 lines: `Set sh = CreateObject("WScript.Shell")` / `sh.Run """<repo>\server.cmd""", 0, False`
 - The "emptied .vbs" scare (2026-07-14) was a **false alarm** — file was intact all along. Don't re-hunt it.
+- **A wrong ANSWER is not proof of a failed TOOL (2026-08-08).** After switching web search to
+  DuckDuckGo, Talos still said the 2026 World Cup "has not taken place" — read as "DDG is broken".
+  The audit log showed DDG was **never called**: the model had picked `google_web_search` instead
+  and answered from training data. DDG worked the moment it was actually invoked. Same silent-success
+  shape as the findstr and Telegram bugs. **Check which tool ran before diagnosing the tool.**
+
+## ✅ DONE 2026-08-08 — web search repaired, then moved to DuckDuckGo (free)
+
+**No repo commits — every change here is per-machine config on the DESKTOP** (`~/.openclaw/openclaw.json`
++ `~/.openclaw/workspace/TOOLS.md`). None of it travels with `git pull`; redo it on any machine that
+needs working web search.
+
+**The reported symptom:** `mcp_openclaw_web_search` failing with "unavailable model".
+**Root cause:** OpenClaw's Gemini web-search plugin defaults to `gemini-2.5-flash` and no
+`webSearch.model` override was set. Google retired that model:
+`404 NOT_FOUND — "no longer available to new users"`. Nothing local had broken — the API key was
+valid and Talos's OAuth was healthy. ⚠ **The dead model still LISTS** (7 of 50 models the key can
+see are 2.5-series), so `models list` looks fine; only a real call reveals it. Fixed with
+`openclaw config set plugins.entries.google.config.webSearch.model gemini-3.5-flash` → verified,
+returned correct grounded answers.
+
+**Then moved off Gemini entirely to stop the metering.** That plugin bills per token against
+`google:default` — the one genuinely metered thing in the fleet. Brave was the first choice but
+needs an account + API key (user action, and capped). The stock **`duckduckgo`** plugin is key-free,
+so: `openclaw plugins enable duckduckgo` + `openclaw config set tools.web.search.provider duckduckgo`
++ gateway restart. **Verified end-to-end on natural phrasing** ("what's the weather in DC right now?")
+→ live weather, correct World Cup result with a source URL. Cost: **$0**.
+
+**⚠ The trap that cost most of the session — TWO search tools:**
+
+| Tool | Controlled by | Behaviour |
+| --- | --- | --- |
+| `mcp_openclaw_web_search` | `tools.web.search.provider` | the one you configure. Works. |
+| `google_web_search` | **nothing in OpenClaw** — Gemini CLI built-in | ignores your provider setting; returns stale results for recent events |
+
+The model picks between them and often prefers the built-in, which "succeeds" while producing a
+confidently wrong answer. **`openclaw audit --kind tool_action --json` names the tool per run** —
+that is how you tell a broken provider from a bypassed one.
+
+**Two attempts to hard-block the built-in — record so nobody redoes them:**
+1. ❌ `excludeTools: ["google_web_search"]` in the gemini-cli profile `settings.json` is **INERT** in
+   CLI 0.51.0 — the bundle marks it `@deprecated Use Policy Engine instead` and genuinely ignores it.
+   Tried, confirmed no effect, **reverted**; the OAuth profile is byte-identical and `oauth_creds.json`
+   was never touched (item 7's warning respected).
+2. ✅ **A "Web search — which tool to use" section in `~/.openclaw/workspace/TOOLS.md`** (backup:
+   `TOOLS.md.bak-preWebSearch`) telling Talos to use `mcp_openclaw_web_search`, never answer current
+   events from memory, and report a search failure rather than falling back. **Needs a gateway restart
+   to load** — it appeared not to work until then. This BIASES tool choice, it does not block:
+   `google_web_search` still fires sometimes alongside. A hard block would need the gemini-cli Policy
+   Engine, which has no documented settings key (real work, not a config tweak).
+
+Also confirmed while here: **Talos's Gemini OAuth is healthy and self-refreshing** — token went
+`expired · 0m` → `expiring · 51m` across a live call, and the refresh did **not** re-trigger the
+`GOOGLE_CLOUD_PROJECT` onboarding check that blocks new grants on sabin. Quota Pro/Flash 100% left.
 
 ## ✅ DONE 2026-08-02 → 08-05 — user profile, vault-backed approvals, GLM subscription
 
