@@ -26,8 +26,8 @@ laptop `idris` · laptop `sabin`.
 
 | Host | Label | User | Role | State |
 | --- | --- | --- | --- | --- |
-| `IdrisLegion7` | IdrisLegion7 | sabin | **primary** | **MASTER** (moved 2026-08-05 — desktop "too slow") |
-| `DESKTOP-K82OGAE` | IdrisAsusGV75 | Admin | backup | holds the **Telegram gateway** |
+| `IdrisLegion7` | IdrisLegion7 | sabin | **primary** | **MASTER** (moved 2026-08-05 — desktop "too slow") · all compute |
+| `DESKTOP-K82OGAE` | IdrisAsusGV75 | Admin | backup | **Telegram gateway + the only working Gemini OAuth** — keep it ON |
 | `WIN-C2ANEVBHN6Q` | IdrisMSIRaider18 | idris | workstation | back online 2026-08-05 after ~48h down |
 
 ⚠ **All three labels start with "Idris"** — the only unambiguous identifier is the install path
@@ -125,7 +125,19 @@ saying "keep the gateway on the master" is obsolete.
   not `costUsd`, so no fabricated dollars appear — but the per-agent tag reads BILLED. Fix only
   if the Analytics split starts mattering.
 
-## ⚠ OPEN — read first (2026-08-05)
+## ⚠ OPEN — read first (2026-08-06)
+
+0. **DECIDED 2026-08-06 — the split: gateway stays on the DESKTOP, everything else runs on sabin.**
+   Sabin is master (compute, schedules, watchers, approval launches, profile refresh). The desktop
+   keeps the **Telegram gateway** only — which means **the desktop must stay powered on** for
+   phone approvals. Moving the gateway was attempted and abandoned: see item 7. Vault-backed
+   approvals (`72d1b3d`) make this split safe — the gateway can action an approval raised
+   anywhere, and the master launches the mission.
+   **Sabin's remaining per-machine setup** (none of it travels with `git pull`): `.\update.cmd` ·
+   `TELEGRAM_BOT_TOKEN` (item 1) · re-enter **3 LLM keys** in Settings (deepseek, openrouter, and
+   **glm — base URL MUST be `/api/coding/paas/v4`**) since `data/registry.json` is machine-local ·
+   Hermes → free model (item 2) · `claude` then `/login` · verify `.env.local` `HERMES_BIN/CMD`
+   name **sabin's** paths, not `C:\Users\Admin\…` (a copied .env is the #1 red-agent cause).
 
 1. **`TELEGRAM_BOT_TOKEN` on sabin — UNVERIFIED and now load-bearing.** Sabin is the MASTER as of
    2026-08-05, and the master is what sends. It has no OpenClaw, so without that one line in its
@@ -161,6 +173,33 @@ saying "keep the gateway on the master" is obsolete.
 6. **Every machine that can become master needs to be UP TO DATE.** Sabin ran as master for a
    while on code that predated both the Telegram transport and vault-backed approvals. A stale
    master is the whole fleet's behaviour — `.\update.cmd` after anything lands.
+7. **⚠ DO NOT DISTURB the desktop's Gemini OAuth grant — it may be unreproducible.** Moving the
+   gateway to sabin was abandoned here. OpenClaw + `@google/gemini-cli` installed fine on sabin
+   (2026.7.1-2, CLI 0.54.0), the browser OAuth *succeeded*, but OpenClaw then failed with
+   **`This account requires GOOGLE_CLOUD_PROJECT or GOOGLE_CLOUD_PROJECT_ID to be set`** — using
+   the SAME account (idris.grant@gmail.com) that works on the desktop. Established by testing:
+   the desktop's existing grant still serves inference (Talos answered), its `.gemini/projects.json`
+   is empty, and **no `GOOGLE_CLOUD_PROJECT` is set anywhere** (Process/User/Machine all unset).
+   So the account is fine; Google appears to refuse *new* grants that old ones are grandfathered
+   into. The only visible difference is the CLI version — desktop **0.51.0** (granted 2026-07-16)
+   vs sabin **0.54.0**. **Untested lead:** `npm i -g @google/gemini-cli@0.51.0` on sabin, then
+   retry the login (0.51.0 is still on npm). **Never "fix" this by setting GOOGLE_CLOUD_PROJECT** —
+   that routes inference through a billed GCP project and undoes the OAuth switch that took
+   OpenClaw's spend to ~$0. Practical consequence: OpenClaw is installed on sabin but has no model
+   auth, so **Talos shows RED on sabin's agent page** and can't chat there; `openclaw message send`
+   still works (no model needed). Also note the desktop's token was seen refreshing normally, but
+   if a refresh ever re-runs the failing onboarding check, the desktop could break the same way
+   and may not be re-establishable.
+8. **The ChatGPT half of the history was NEVER imported** — the 2026-07-16 run was
+   `sources: {claude: 2242}`, range 2023-07-16 → 2026-07-14. Safe to run **on sabin with no
+   prerequisites** (zero ChatGPT entries exist, so nothing can duplicate). A *fresh Claude* export
+   is different: it contains the whole history, so `data/llm-import.json` (2,242 entries, all
+   `processed`, ids are stable UUIDs + `fp` content fingerprints) must be copied to sabin FIRST or
+   a distill regenerates all 187 notes **into the shared vault**, duplicating them fleet-wide.
+   The 853MB of old export ZIPs do **not** need moving — you'd download fresh ones anyway; only
+   that 480KB index matters. **Knowledge is already everywhere**: the distilled `History/` notes
+   (189, 1.7MB) live in the synced vault, so all three machines get them via RAG, `/conversations`
+   and `/graph` — verified (a vault search for "qlik" returns History notes; 150 history matches).
 
 ### Recently fixed, worth not re-breaking
 - **`findstr ":3000 "` matched IPv6 addresses containing `:3000` (fixed 2026-08-02, `dfcdd3e`).**
