@@ -96,9 +96,9 @@ saying "keep the gateway on the master" is obsolete.
 | Self-healing daemons + path hint (v38) | **`lib/daemons.ts`**: Daemon gained `fallbackArgs`/`fallbackNote`. Fast path stays `dashboard --skip-build --no-open` (~4s); if the port doesn't open, `startDaemon`/`ensureDaemons` automatically relaunch with `dashboard --no-open` (real UI build, minutes) — so a fresh install or a cleared build repairs ITSELF instead of needing a hand-run. `startDaemon` returns `{building:true}` (HTTP 202, not an error) and DaemonsPanel shows "building its web UI" + polls. Daemon stdout/stderr now go to **`data/<id>.log`** (was `stdio:"ignore"` — failures were invisible). **Offline-agent hint** (`offlineHint()` in the agents route → `AgentInfo.hint` → red box on the agent page): when a configured absolute path doesn't exist AND names a different `\Users\<name>` than `os.userInfo().username`, it says so plainly — this is the #1 cause of a red agent (a `.env.local` copied between machines) and "binary not found" used to send people reinstalling. Verified by simulating the bug on the desktop |
 | History searchable in Conversations (v41) | `lib/conversations.ts` now indexes `Agentic OS/History/` alongside `Chats/`. **One record PER `## topic`** (not per note — a 12-conversation note is too coarse to search); Index hubs + `## Sources` skipped; frontmatter `date`/`tags` carried onto each record; `Exchange.kind: "chat"\|"history"` threaded through SearchItem/groupSessions/toItem. "Durable facts about the owner" repeats in all 187 notes → title suffixed w/ the run stamp so results are distinguishable. **`conversationAnalytics()` filters to kind==="chat"** — 1,513 history topics all stamped with the distill date would bury the real activity trend + break busiestDay. UI: violet avatar + IMPORTED badge + tag pills + "distilled <date>" instead of host/turns. Verified: 1,530 indexed (1,513 history + 17 chats), "qlik"→159 hits, "salesforce"→69. **This is what makes the import searchable on the laptops too** (vault-synced; raw exports + processed flags stay machine-local) |
 | Billing honesty + retry (v40) | **`lib/billing.ts`** + `/api/billing`: `billingFor(agentId, llms)` → `subscription` (claude via OAuth — no ANTHROPIC_API_KEY) / `api` (registry LLM w/ remote baseUrl = REAL charges) / `local` (localhost = free) / `unknown` (command agents self-authenticate). **Why this exists: the Claude CLI reports `total_cost_usd` even on a subscription — it's an estimate at list prices, NOT a bill.** Analytics + Reports now split "API spend" (billed only; drives the month-end projection) from a violet "subscription usage — not billed" banner; per-agent rows tagged BILLED/SUBSCRIPTION/FREE; subscription costs render as `~$X est`. Desktop reality: API spend $0.00, 19 claude runs ≈$1.46 est. **Distill retry**: `isTransient()` + `BATCH_RETRIES=4` w/ 1m/5m/15m/30m backoff, heartbeating while paused — a rate-limited EVERYTHING run now waits out the window instead of dying; non-transient errors (bad writer, vault gone) fail fast; progress always saved + resumable. |
-| **AUDITED FLEET BILLING (2026-07-16, openclaw updated same day)** | claude=**subscription** (OAuth idris.grant@gmail.com) · codex=**subscription** (ChatGPT login, `~/.codex/auth.json` tokens, no OPENAI_API_KEY) · hermes=**subscription** (Nous Portal OAuth, `config.yaml provider: nous`; supports zai/GLM+kimi+minimax as fallbacks — not configured) · **openclaw=SUBSCRIPTION as of 2026-07-16** (switched from Gemini API key → `google-gemini-cli/gemini-3.1-pro-preview` OAuth as idris.grant@gmail.com; see the row below) · deepseek=**API key** (real, but unused → $0) · llama=**local/free**. **Real API spend is now ≈ $0.** Still NOT configured despite user having subs: GLM 5.2, Sakana AI. ⚠ Telegram bot token was exposed in a config dump 2026-07-16 — CHECK IT WAS ROTATED |
-| OpenClaw → Gemini subscription (2026-07-16) | OpenClaw ships **two** Google providers: `google` (API key, pay-per-token) and **`google-gemini-cli`** (OAuth `oauth-personal`, drives Google's own `@google/gemini-cli`, same `gemini-3.1-pro-preview` model). Switched via `openclaw models auth login --provider google-gemini-cli` (user does the browser sign-in) + `openclaw models set google-gemini-cli/gemini-3.1-pro-preview`. **The `gemini` alias also had to be repointed** (`models aliases add gemini google-gemini-cli/...`) or it silently kept using the API key. **REQUIRED OpenClaw ≥ 2026.7.1**: 2026.6.11 spawned the CLI without `shell:true` → on Windows npm installs `gemini.cmd`, Node's spawn only resolves `.exe` → `spawn gemini ENOENT`. Proven in isolation: `spawn('gemini')`=ENOENT, `spawn('gemini',{shell:true})`=works, `spawn('gemini.cmd')`=EINVAL (Node≥20 blocks .cmd without shell). Verified live after the update: Talos replied "SUBSCRIPTION OK", `models status` shows `oauth=1, api_key=0` for the active provider. `google:default` api_key profile REMAINS but is **UNUSED as of 2026-08-08** — it used to power the web-search plugin (separate from the model); web search moved to DuckDuckGo, see the row below. Fallbacks are empty ON PURPOSE: adding one back to `google/*` would silently resume billing when the subscription rate-limits. Config backup: `~/.openclaw/openclaw.json.bak-preGeminiSub` |
-| **Web search = DuckDuckGo, free (2026-08-08)** | `tools.web.search.provider: "duckduckgo"` + stock `duckduckgo` plugin enabled. **Key-free, no account, no quota, $0** — and it took web search off the metered `google:default` key. ⚠ **Talos has TWO search tools and only one obeys this setting:** `mcp_openclaw_web_search` (OpenClaw's, provider-controlled) and `google_web_search` (the Gemini CLI's own built-in, ignores OpenClaw config entirely and returns STALE results for recent events). Diagnose with `openclaw audit --kind tool_action --json` — it names the tool per run. Revert in one line: `openclaw config set tools.web.search.provider gemini` (the Gemini key is still in config, just unused) |
+| **AUDITED FLEET BILLING (2026-07-16, openclaw updated same day)** | claude=**subscription** (OAuth idris.grant@gmail.com) · codex=**subscription** (ChatGPT login, `~/.codex/auth.json` tokens, no OPENAI_API_KEY) · hermes=**subscription** (Nous Portal OAuth, `config.yaml provider: nous`; supports zai/GLM+kimi+minimax as fallbacks — not configured) · **openclaw=SUBSCRIPTION as of 2026-07-16** (switched from Gemini API key → `google-gemini-cli/gemini-3.1-pro-preview` OAuth as idris.grant@gmail.com; see the row below) — **since 2026-08-09 openclaw runs `zai/glm-5.2` on the GLM Coding Pro FLAT-RATE plan instead: still $0 marginal, still not per-token, just a different subscription** · deepseek=**API key** (real, but unused → $0) · llama=**local/free**. **Real API spend is now ≈ $0.** Still NOT configured despite user having subs: GLM 5.2, Sakana AI. ⚠ Telegram bot token was exposed in a config dump 2026-07-16 — CHECK IT WAS ROTATED |
+| OpenClaw → Gemini subscription (2026-07-16, **SUPERSEDED 2026-08-09** — Talos now runs `zai/glm-5.2`; the OAuth grant below is intact but UNUSED, and this row is kept because it documents how to restore it) | OpenClaw ships **two** Google providers: `google` (API key, pay-per-token) and **`google-gemini-cli`** (OAuth `oauth-personal`, drives Google's own `@google/gemini-cli`, same `gemini-3.1-pro-preview` model). Switched via `openclaw models auth login --provider google-gemini-cli` (user does the browser sign-in) + `openclaw models set google-gemini-cli/gemini-3.1-pro-preview`. **The `gemini` alias also had to be repointed** (`models aliases add gemini google-gemini-cli/...`) or it silently kept using the API key. **REQUIRED OpenClaw ≥ 2026.7.1**: 2026.6.11 spawned the CLI without `shell:true` → on Windows npm installs `gemini.cmd`, Node's spawn only resolves `.exe` → `spawn gemini ENOENT`. Proven in isolation: `spawn('gemini')`=ENOENT, `spawn('gemini',{shell:true})`=works, `spawn('gemini.cmd')`=EINVAL (Node≥20 blocks .cmd without shell). Verified live after the update: Talos replied "SUBSCRIPTION OK", `models status` shows `oauth=1, api_key=0` for the active provider. `google:default` api_key profile REMAINS but is **UNUSED as of 2026-08-08** — it used to power the web-search plugin (separate from the model); web search moved to DuckDuckGo, see the row below. Fallbacks are empty ON PURPOSE: adding one back to `google/*` would silently resume billing when the subscription rate-limits. Config backup: `~/.openclaw/openclaw.json.bak-preGeminiSub` |
+| **Web search = DuckDuckGo, free (2026-08-08)** | `tools.web.search.provider: "duckduckgo"` + stock `duckduckgo` plugin enabled. **Key-free, no account, no quota, $0** — and it took web search off the metered `google:default` key. ⚠ **Talos used to have TWO search tools and only one obeyed this setting** — `mcp_openclaw_web_search` (OpenClaw's) and `google_web_search` (the Gemini CLI's built-in, ignores OpenClaw config, returns STALE results for recent events). **Resolved 2026-08-09 by moving Talos to `zai/glm-5.2`** — the built-in shipped inside `@google/gemini-cli`, so it disappeared with it; the tool is now plain `web_search`. **This returns the moment any machine runs Talos on `google-gemini-cli` again.** Diagnose with `openclaw audit --kind tool_action --json` — it names the tool per run. Revert in one line: `openclaw config set tools.web.search.provider gemini` (the Gemini key is still in config, just unused) |
 | server.cmd | prepends `.local\bin` / npm-global / Ollama to PATH (v19.1) — a boot-time PATH once missed the Claude native install and the bridge showed red; if an agent is red but its CLI works in a terminal, suspect server-process PATH |
 
 ## Codebase conventions & gotchas
@@ -222,6 +222,13 @@ saying "keep the gateway on the master" is obsolete.
    Side effect: `data/usage.json` held only 4 records afterwards (all from that 10:33 mission), so
    the Analytics/Reports cost ledger currently has almost no history to draw on.
 
+10. **`kimi-2` on the idris laptop is broken — wrong vendor's key (found 2026-08-09, NOT fixed).**
+    The agent holds the **z.ai GLM key**, not a Moonshot one, so `https://api.moonshot.ai/v1` 401s.
+    Proven: 401 on all three Moonshot surfaces, **200 on `https://api.z.ai/api/coding/paas/v4`**.
+    Needs a real Moonshot `sk-…` key or deletion — and that laptop could gain a proper GLM agent
+    from the key already sitting there. Must be done ON WIN-C2ANEVBHN6Q (`registry.json` is
+    per-machine; invisible from the desktop). Full detail in the 2026-08-09 DONE section.
+
 ### Recently fixed, worth not re-breaking
 - **`findstr ":3000 "` matched IPv6 addresses containing `:3000` (fixed 2026-08-02, `dfcdd3e`).**
   findstr splits its pattern on the space and treats the parts as an **OR-list**, so
@@ -283,21 +290,73 @@ The model picks between them and often prefers the built-in, which "succeeds" wh
 confidently wrong answer. **`openclaw audit --kind tool_action --json` names the tool per run** —
 that is how you tell a broken provider from a bypassed one.
 
-**Two attempts to hard-block the built-in — record so nobody redoes them:**
+**FOUR attempts to hard-block the built-in — ALL FOUR FAILED. Do not redo them:**
 1. ❌ `excludeTools: ["google_web_search"]` in the gemini-cli profile `settings.json` is **INERT** in
    CLI 0.51.0 — the bundle marks it `@deprecated Use Policy Engine instead` and genuinely ignores it.
    Tried, confirmed no effect, **reverted**; the OAuth profile is byte-identical and `oauth_creds.json`
    was never touched (item 7's warning respected).
-2. ✅ **A "Web search — which tool to use" section in `~/.openclaw/workspace/TOOLS.md`** (backup:
-   `TOOLS.md.bak-preWebSearch`) telling Talos to use `mcp_openclaw_web_search`, never answer current
-   events from memory, and report a search failure rather than falling back. **Needs a gateway restart
-   to load** — it appeared not to work until then. This BIASES tool choice, it does not block:
-   `google_web_search` still fires sometimes alongside. A hard block would need the gemini-cli Policy
-   Engine, which has no documented settings key (real work, not a config tweak).
+2. ❌ **Policy Engine TOML** — the non-deprecated mechanism. Schema is real (`[[rule]]` with
+   `toolName`/`decision = "deny"`/`priority` 0-999, loaded from a `policies/` dir of `.toml` files).
+   Written to BOTH the gemini-cli profile `.gemini/policies/` and the real
+   `C:\Users\Admin\.gemini\policies\` (note: on Windows `os.homedir()` follows `USERPROFILE`, not the
+   `HOME` OpenClaw sets, and `C:\Users\Admin\.gemini` IS live). **Ignored in both locations** —
+   OpenClaw drives the CLI headless, where policy decisions appear not to gate tool exposure. Both
+   files deleted; no inert artifacts left behind.
+3. ❌ **Guidance in `~/.openclaw/workspace/TOOLS.md`** (backup: `TOOLS.md.bak-preWebSearch`).
+   ⚠ **TOOLS.md IS NOT INJECTED INTO TALOS'S CONTEXT.** Asked directly, Talos answers "nothing about
+   that" — it cannot see the file. This was a **no-op**, and an earlier version of this document
+   wrongly recorded it as working. AGENTS.md tells you to keep local notes there, and rule 7 says the
+   approval protocol is mirrored there, but nothing proves the model actually reads it — **if you need
+   Talos to know something, verify it can quote it back.**
+4. ❌ Equivalent guidance in `AGENTS.md` (kept — accurate, harmless, but **unproven**; the model still
+   picked the built-in afterwards).
+
+**✅ WHAT ACTUALLY FIXED IT (2026-08-09): move Talos off the Gemini CLI.** `google_web_search` was
+never OpenClaw's to disable — it ships *inside* `@google/gemini-cli`. Change the model provider and
+the tool ceases to exist. See the DONE section below.
 
 Also confirmed while here: **Talos's Gemini OAuth is healthy and self-refreshing** — token went
 `expired · 0m` → `expiring · 51m` across a live call, and the refresh did **not** re-trigger the
 `GOOGLE_CLOUD_PROJECT` onboarding check that blocks new grants on sabin. Quota Pro/Flash 100% left.
+The grant is intact and unused; `openclaw models set google-gemini-cli/gemini-3.1-pro-preview` reverts.
+
+## ✅ DONE 2026-08-09 — Talos moved to GLM; web search finally deterministic
+
+**Per-machine config on the DESKTOP only. Backup: `~/.openclaw/openclaw.json.bak-preGlmSwap`.**
+
+**Talos's model: `google-gemini-cli/gemini-3.1-pro-preview` → `zai/glm-5.2`.** The bare question
+"Who won the FIFA World Cup 2026?" had failed **five times running** on Gemini — the model called
+`google_web_search`, got stale results, and answered from its training prior ("has not occurred")
+even though a search had run. On GLM it answers correctly first try, and the audit shows the tool
+used is now plain **`web_search`** (OpenClaw's, DuckDuckGo-backed). `google_web_search` is **gone**.
+
+How it was wired (deliberately NOT via the onboarding wizard, to avoid touching other config):
+```
+openclaw plugins install @openclaw/zai-provider
+openclaw config set models.providers.zai.baseUrl https://api.z.ai/api/coding/paas/v4
+openclaw config set env.ZAI_API_KEY <key from Mission Control data/registry.json>
+openclaw models set zai/glm-5.2
+openclaw config set plugins.allow '[\"zai\"]' --strict-json   # silences an untrusted-plugin warning
+```
+⚠ **Do NOT use `--auth-choice zai-api-key`** — OpenClaw's auto-detect probes the **metered**
+`zai-global` (`/api/paas/v4`) endpoint **before** the Coding Plan ones, per its own docs. Force
+`zai-coding-global` or set `baseUrl` directly, as above. Key verified against the coding endpoint
+BEFORE wiring (returned `GLM OK`). Cost: **$0 marginal** — existing GLM Coding Pro flat-rate plan.
+⚠ PowerShell eats inner quotes on native args: `'["zai"]'` arrives as `[zai]` and fails validation.
+Use `'[\"zai\"]'`.
+
+**Regression-checked:** Talos still executes shell commands (`exec` tool) and correctly read
+`/api/approvals` — so the **Telegram approval gateway survived the model swap**. Full phone
+round-trip NOT retested. Talos now has a different brain; expect a tone/behaviour shift.
+
+**⚠ `kimi-2` on the idris laptop (WIN-C2ANEVBHN6Q) — 401, wrong vendor's key.** Agent id is
+`kimi-2` (NOT `kimi`), provider `kimi`, `https://api.moonshot.ai/v1`, model `kimi-k2-0905-preview`.
+Its stored `apiKey` is **the z.ai GLM key** (len 49, prefix `020`) — proven by 401 on all three
+Moonshot surfaces (`.ai`, `.cn`, `api.kimi.com/coding/v1`) and **200 against
+`https://api.z.ai/api/coding/paas/v4`**. Fix on that machine: put a real Moonshot `sk-…` key in (or
+delete the agent), and consider adding a proper **GLM agent** there with that key instead — it is a
+live Coding Plan key. `registry.json` is per-machine, so none of this is visible or fixable from the
+desktop. Grok on that laptop looks fine (`apiKey` len 84 → `https://api.x.ai/v1`).
 
 ## ✅ DONE 2026-08-02 → 08-05 — user profile, vault-backed approvals, GLM subscription
 
@@ -390,6 +449,17 @@ DESKTOP ONLY — never import on another machine (processed flags are per-machin
   hardcoded *placeholder* instead of the field's value. Assert the reads are non-empty and that
   you're reading the thing you think you are, before comparing. Also `%errorlevel%` in a
   one-line cmd `&` chain expands at PARSE time — use `cmd /v:on` + `!errorlevel!`.
+  **Third instance 2026-08-09 (kimi-2):** a `Where-Object { $_.id -eq 'kimi' }` that matched
+  NOTHING made `$a.apiKey.Length` render as blank, so an auth test sent `Bearer ` with no key and
+  got a clean **401 from all three Moonshot endpoints** — read as "the key is dead" when the key had
+  never been sent. Twice in a row, because the id was `kimi-2` and it was visible in the user's
+  screenshot the whole time. **PowerShell returns `$null` for a missed lookup and `$null.Prop`
+  does not throw** — print `len=` and a 3-char prefix and eyeball them BEFORE trusting any result.
+  The real answer took one command once the read was asserted.
+- **Verify an agent can actually QUOTE an instruction before believing it landed (2026-08-09).**
+  `~/.openclaw/workspace/TOOLS.md` is NOT injected into Talos's context — asked point-blank it says
+  "nothing about that". A whole fix was built on editing it and reported as working. Ask the agent
+  to quote the new text back; if it can't, the file isn't reaching the model.
 - Cluster failover is **eventually consistent via OneDrive** — expect ~90s for a role change or
   reclaim to land, and a brief window where two nodes' heartbeats both say `isMaster: true`.
   The lease file is the arbiter; a `term` bump means a real re-election, an unchanged `term`
