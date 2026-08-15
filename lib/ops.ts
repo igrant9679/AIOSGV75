@@ -3,7 +3,7 @@ import { listStandings } from "./arena";
 import { getEvalData } from "./evals";
 import { listSchedules } from "./schedules";
 import { listWatchers } from "./watchers";
-import { readRegistry } from "./registry";
+import { readRegistry, isLocalEndpoint } from "./registry";
 
 /**
  * Operations digest for the self-tuning review: everything the OS knows
@@ -70,7 +70,13 @@ export async function opsDigest(): Promise<string> {
   }
 
   lines.push("", "FLEET:");
-  lines.push(`- claude (CLI) + LLMs: ${reg.llms.map((l) => `${l.name}${l.apiKey ? "" : " [NO KEY]"}`).join(", ") || "none"}`);
+  // "ready" means the same thing here as everywhere else: a key, OR a localhost
+  // endpoint that needs none. Testing apiKey alone mislabelled local Ollama as
+  // broken, and the Chief of Staff brief duly advised removing it from the fleet.
+  const notReady = (l: { apiKey: string; baseUrl: string }) => !l.apiKey && !isLocalEndpoint(l.baseUrl);
+  lines.push(
+    `- claude (CLI) + LLMs: ${reg.llms.map((l) => `${l.name}${notReady(l) ? " [NO KEY]" : ""}`).join(", ") || "none"}`,
+  );
   lines.push(`- command agents: openclaw, hermes${reg.commandAgents.length ? ", " + reg.commandAgents.map((a) => a.name).join(", ") : ""}`);
 
   return lines.join("\n");

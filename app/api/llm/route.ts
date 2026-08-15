@@ -1,6 +1,6 @@
 import { findLlm, isLocalEndpoint } from "@/lib/registry";
 import { gatherContext, memorySystemBlock, type AgentContext } from "@/lib/retrieval";
-import { TOOL_DEFS, executeTool } from "@/lib/llmTools";
+import { toolDefs, executeTool } from "@/lib/llmTools";
 
 export const dynamic = "force-dynamic";
 
@@ -55,6 +55,8 @@ export async function POST(request: Request) {
   ];
 
   const encoder = new TextEncoder();
+  // Resolved once per request: the list depends on whether a Brave key exists.
+  const tools = await toolDefs();
   const callUpstream = (withTools: boolean) =>
     fetch(`${llm.baseUrl}/chat/completions`, {
       method: "POST",
@@ -66,7 +68,7 @@ export async function POST(request: Request) {
         model: llm.model,
         messages: convo,
         stream: true,
-        ...(withTools ? { tools: TOOL_DEFS } : {}),
+        ...(withTools ? { tools } : {}),
       }),
       signal: request.signal,
     });

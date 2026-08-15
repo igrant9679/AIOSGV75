@@ -11,7 +11,7 @@ interface ServiceStatus {
   id: string;
   label: string;
   blurb: string;
-  categories: ("image" | "voice" | "video")[];
+  categories: ("image" | "voice" | "video" | "search")[];
   envVar: string;
   keyHint: string;
   keyPrefix: string;
@@ -24,7 +24,7 @@ const inputCls =
   "h-10 w-full rounded-lg border border-line bg-panel-2 px-3 font-mono text-[12px] text-ink outline-none placeholder:text-ink-faint focus:border-line-bright";
 const labelCls = "mb-1 block font-mono text-[10px] tracking-[0.14em] text-ink-faint";
 
-const CAT_LABEL: Record<string, string> = { image: "Image", voice: "Voice", video: "Video" };
+const CAT_LABEL: Record<string, string> = { image: "Image", voice: "Voice", video: "Video", search: "Web Search" };
 
 export default function ServiceKeysPanel() {
   const { addEvent } = useMission();

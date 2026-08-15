@@ -3,11 +3,17 @@ import path from "path";
 import { searchVault } from "./vaultSearch";
 import { appendMemory, readGoals, writeGoals, appendJournalEntry, vaultInfo } from "./vault";
 import { createApproval } from "./approvals";
+import { webSearch, formatResults, isWebSearchReady } from "./webSearch";
 
 /**
  * Native function tools for API LLMs (OpenAI tool-calling format). These are
  * the OS verbs plus read access — everything is local vault/OS surface, and
  * the only spending action (request_mission) goes through the approval gate.
+ *
+ * `web_search` is the one exception and lives outside this list: it leaves the
+ * machine, so it's only offered when a Brave key exists (see `toolDefs()`).
+ * Advertising a tool that can only return "not configured" wastes a whole
+ * round of the agentic loop and teaches the model the fleet has no web access.
  */
 export const TOOL_DEFS = [
   {
@@ -94,6 +100,28 @@ export const TOOL_DEFS = [
   },
 ];
 
+export const WEB_SEARCH_TOOL = {
+  type: "function",
+  function: {
+    name: "web_search",
+    description:
+      "Search the live web and return the top results with titles, URLs and snippets. Use this for anything current, external, or outside your training data — news, prices, releases, documentation, people, companies. Cite the URLs you use.",
+    parameters: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "the search query, phrased as you would type it into a search engine" },
+        count: { type: "integer", description: "how many results to return (1-10, default 5)" },
+      },
+      required: ["query"],
+    },
+  },
+};
+
+/** The tools to advertise on this call — web search only when it can actually run. */
+export async function toolDefs(): Promise<typeof TOOL_DEFS> {
+  return (await isWebSearchReady()) ? [...TOOL_DEFS, WEB_SEARCH_TOOL] : TOOL_DEFS;
+}
+
 export async function executeTool(name: string, argsJson: string, source: string): Promise<string> {
   let args: Record<string, unknown> = {};
   try {
@@ -143,6 +171,13 @@ export async function executeTool(name: string, argsJson: string, source: string
         if (!note) return "error: note is empty";
         await appendJournalEntry(note.slice(0, 5000), source);
         return "journal updated";
+      }
+      case "web_search": {
+        const query = String(args.query ?? "").trim();
+        if (!query) return "error: query is empty";
+        const raw = Number(args.count);
+        const results = await webSearch(query, Number.isFinite(raw) ? Math.trunc(raw) : 5);
+        return formatResults(results).slice(0, 4000);
       }
       case "request_mission": {
         const task = String(args.task ?? "").trim();

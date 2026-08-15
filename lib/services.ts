@@ -11,7 +11,7 @@ import path from "path";
  * a fallback so the same install works whether the operator prefers the UI or
  * a dotfile. Keys NEVER leave the server — the API only exposes "configured".
  */
-export type ServiceCategory = "image" | "voice" | "video";
+export type ServiceCategory = "image" | "voice" | "video" | "search";
 
 export interface ServiceCatalogEntry {
   id: string;
@@ -53,6 +53,15 @@ export const SERVICE_CATALOG: ServiceCatalogEntry[] = [
     envVar: "ELEVENLABS_API_KEY",
     keyHint: "elevenlabs.io → Profile → API Keys",
     keyPrefix: "sk_… / xi-…",
+  },
+  {
+    id: "brave",
+    label: "Brave Search",
+    blurb: "Gives every API LLM a web_search tool — the fleet's only route to anything newer than its training data.",
+    categories: ["search"],
+    envVar: "BRAVE_API_KEY",
+    keyHint: "api-dashboard.search.brave.com → API Keys (free tier: 1 query/sec, 2,000/month)",
+    keyPrefix: "BSA…",
   },
   {
     id: "replicate",

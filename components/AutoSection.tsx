@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ACCENTS } from "@/lib/accents";
 import Panel from "./ui/Panel";
@@ -15,13 +15,52 @@ import { useMission, runControllers } from "./store";
 
 const CHAT_ID = "auto";
 
+interface PoolMember {
+  id: string;
+  name: string;
+  okRate: number | null;
+}
+interface PoolInfo {
+  ready: number;
+  total: number;
+  degraded: boolean;
+  members: PoolMember[];
+  dropped: PoolMember[];
+}
+
 /** Chat page for the smart-routing Auto agent. */
 export default function AutoSection() {
   const { addEvent, chats, appendChat, clearChat, busy, setBusy, registry } = useMission();
 
   const entries = chats[CHAT_ID] ?? [];
   const isBusy = busy[CHAT_ID] ?? false;
-  const readyModels = 1 + registry.llms.filter((l) => l.hasKey).length; // claude + keyed LLMs
+
+  // The badge reports the router's OWN pool, not a count of configured models:
+  // the health filter benches anything failing more than half its runs, so
+  // "ready" and "configured" genuinely differ. Falls back to the naive count
+  // only until the first fetch lands.
+  const [pool, setPool] = useState<PoolInfo | null>(null);
+  const loadPool = useCallback(async () => {
+    try {
+      const res = await fetch("/api/auto");
+      if (res.ok) setPool((await res.json()) as PoolInfo);
+    } catch {
+      /* server not ready */
+    }
+  }, []);
+  useEffect(() => {
+    loadPool();
+  }, [loadPool]);
+
+  const readyModels = pool?.ready ?? 1 + registry.llms.filter((l) => l.hasKey).length;
+  const benched = pool?.dropped ?? [];
+  const poolTitle = pool?.degraded
+    ? "Every model is failing — the health filter was bypassed so Auto still has somewhere to route."
+    : benched.length > 0
+      ? `Benched by the health filter (under 50% success over 30 days): ${benched
+          .map((m) => `${m.name} ${Math.round((m.okRate ?? 0) * 100)}%`)
+          .join(", ")}`
+      : `Routing across: ${(pool?.members ?? []).map((m) => m.name).join(", ")}`;
 
   // Routing decisions live in this chat's system lines ("→ agent · reason").
   const routes = useMemo(
@@ -83,9 +122,10 @@ export default function AutoSection() {
       } finally {
         setBusy(CHAT_ID, false);
         runControllers.delete(CHAT_ID);
+        loadPool(); // this run just moved someone's okRate
       }
     },
-    [entries, appendChat, addEvent, setBusy],
+    [entries, appendChat, addEvent, setBusy, loadPool],
   );
 
   return (
@@ -95,8 +135,11 @@ export default function AutoSection() {
         title="Auto — Smart Router"
         right={
           <div className="flex items-center gap-2.5">
-            <StatusOrb accent={isBusy ? "amber" : "lime"} size={8} />
-            <span className="font-mono text-[10px] text-ink-dim">{readyModels} models in pool</span>
+            <StatusOrb accent={isBusy ? "amber" : pool?.degraded ? "rose" : "lime"} size={8} />
+            <span className="font-mono text-[10px] text-ink-dim" title={poolTitle}>
+              {readyModels} models in pool
+              {benched.length > 0 && <span className="text-neon-amber"> · {benched.length} benched</span>}
+            </span>
             <button
               onClick={() => clearChat(CHAT_ID)}
               title="Clear chat"

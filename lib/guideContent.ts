@@ -140,11 +140,12 @@ Notes: local speed/quality depends on your hardware — 7–8B models run comfor
   {
     id: "llm-tools",
     title: "LLM Tools (Function Calling)",
-    keywords: "tools function calling search_vault read_note save_memory add_goal list_goals append_journal request_mission agentic loop",
-    body: `API LLMs aren't just chatbots — each chat runs an agentic tool loop with seven native tools, executed locally:
+    keywords: "tools function calling search_vault read_note save_memory add_goal list_goals append_journal request_mission agentic loop web_search brave internet web access",
+    body: `API LLMs aren't just chatbots — each chat runs an agentic tool loop with native tools, executed locally:
 
 | Tool | Effect |
 | --- | --- |
+| \`web_search\` | search the live web via Brave — **only appears once a Brave key is set** |
 | \`search_vault\` | search your entire Obsidian vault |
 | \`read_note\` | read any vault note by path |
 | \`save_memory\` | write to shared memory |
@@ -152,12 +153,14 @@ Notes: local speed/quality depends on your hardware — 7–8B models run comfor
 | \`append_journal\` | timestamped journal entry |
 | \`request_mission\` | request a background Claude mission — **goes through your approval gate** |
 
-Tool activity streams into the chat as dim cards (call → result), then the model continues its answer. Models can chain up to 5 tool rounds. Providers without tool support get a transparent retry without tools.`,
+Tool activity streams into the chat as dim cards (call → result), then the model continues its answer. Models can chain up to 5 tool rounds. Providers without tool support get a transparent retry without tools.
+
+**Web access is off by default.** Every tool above except \`web_search\` is local — nothing leaves the machine — which is why an API LLM will otherwise tell you it can't browse. Add a **Brave Search** key in Settings → Service Keys (or \`BRAVE_API_KEY\` in \`.env.local\`) and \`web_search\` is offered to every API LLM at once, no per-agent setup. Keys are per-machine, so do it on each. Free tier: 1 query/second, 2,000/month — a burst of parallel chats can trip a **429 rate limit**, which surfaces in the tool card rather than failing the whole reply. Until a key exists the tool isn't advertised at all, so models don't waste a round discovering it's missing. Claude and the command agents are unaffected — they bring their own web access.`,
   },
   {
     id: "auto",
     title: "Auto — Smart Routing",
-    keywords: "auto router routing tier simple standard hard failover cheapest arena win rate health",
+    keywords: "auto router routing tier simple standard hard failover cheapest arena win rate health pool benched models in pool",
     body: `**Auto** is a virtual agent that picks the right real model per task:
 
 - **Simple** (short, factual) → the cheapest ready model
@@ -166,7 +169,9 @@ Tool activity streams into the chat as dim cards (call → result), then the mod
 
 It also reads the usage ledger for **health** — models failing more than half their recent runs are skipped — and **fails over to Claude** automatically if the chosen model errors. Every answer shows a routing line: who answered and why. Auto works in chat, missions, and schedules. It gets smarter as you crown Arena winners and accumulate usage data.
 
-The Auto page keeps a **Recent Routes** panel — the last few routing decisions with the chosen model and the router's stated reason, so you can see the routing brain at work (and catch it picking expensive models for cheap questions).`,
+The Auto page keeps a **Recent Routes** panel — the last few routing decisions with the chosen model and the router's stated reason, so you can see the routing brain at work (and catch it picking expensive models for cheap questions).
+
+**"N models in pool"** in the page header is the router's *live* pool, not a count of what you've configured — Claude plus every ready LLM, minus anything the health filter has benched. A **"· N benched"** suffix appears when models were skipped; hover the badge to see which ones and their success rate. So a low number means one of two different things: either that machine's registry is thin (**API keys are per-machine** — re-enter them in Settings after installing on a new machine), or a model has been failing and Auto stopped reaching for it. Command agents (Talos, Hermes, Codex) are never in this pool — Auto routes to Claude and API LLMs only.`,
   },
   {
     id: "chat-features",

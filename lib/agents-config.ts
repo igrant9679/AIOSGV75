@@ -24,8 +24,13 @@ export const AGENT_DEFS: AgentDef[] = [
     tagline: "Personal assistant gateway",
     accent: "magenta",
     binary: process.env.OPENCLAW_BIN ?? "openclaw",
+    // `--agent main` is not optional: without a target, current OpenClaw exits with
+    // "No target session selected. Use --agent <id> …". This default was missing it,
+    // so any machine without an OPENCLAW_CMD override in .env.local failed every run.
+    // If a machine's agent isn't called `main` (check `openclaw agents list`),
+    // override the whole line with OPENCLAW_CMD.
     commandTemplate:
-      process.env.OPENCLAW_CMD ?? `${process.env.OPENCLAW_BIN ?? "openclaw"} agent --message {input}`,
+      process.env.OPENCLAW_CMD ?? `${process.env.OPENCLAW_BIN ?? "openclaw"} agent --agent main --message {input}`,
     versionArgs: ["--version"],
   },
   {

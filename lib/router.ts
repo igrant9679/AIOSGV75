@@ -74,18 +74,35 @@ export function classifyTier(prompt: string): RouteDecision["tier"] {
   return "standard";
 }
 
-export async function routeTask(prompt: string): Promise<RouteDecision> {
-  const tier = classifyTier(prompt);
-  const [reg, standings, usage] = await Promise.all([readRegistry(), listStandings(), readUsage(30)]);
+export interface Candidate {
+  id: string;
+  name: string;
+  costRank: number;
+  winRate: number | null;
+  battles: number;
+  okRate: number | null;
+}
 
-  interface Candidate {
-    id: string;
-    name: string;
-    costRank: number;
-    winRate: number | null;
-    battles: number;
-    okRate: number | null;
-  }
+export interface RoutablePool {
+  /** Everything Auto can reach: Claude plus every ready registry LLM. */
+  candidates: Candidate[];
+  /** What routing actually picks from, once the health filter has run. */
+  pool: Candidate[];
+  /** Candidates the health filter removed, each with the okRate that did it. */
+  dropped: Candidate[];
+  /** Every candidate failed the filter, so it was bypassed and `pool` = `candidates`. */
+  degraded: boolean;
+}
+
+/**
+ * The set of agents Auto will actually choose between, right now.
+ *
+ * Shared by `routeTask` and the `/api/auto` GET the UI reads, so the "N models
+ * in pool" badge can never drift from the real thing — it used to count keyed
+ * registry entries, which silently ignored both Claude and the health filter.
+ */
+export async function routablePool(): Promise<RoutablePool> {
+  const [reg, standings, usage] = await Promise.all([readRegistry(), listStandings(), readUsage(30)]);
 
   const okRateFor = (id: string): number | null => {
     const runs = usage.filter((e) => e.agent === id);
@@ -117,7 +134,18 @@ export async function routeTask(prompt: string): Promise<RouteDecision> {
 
   // drop anything with a clearly bad track record
   const healthy = candidates.filter((c) => c.okRate === null || c.okRate >= 0.5);
-  const pool = healthy.length > 0 ? healthy : candidates;
+  const degraded = healthy.length === 0;
+  return {
+    candidates,
+    pool: degraded ? candidates : healthy,
+    dropped: degraded ? [] : candidates.filter((c) => !healthy.includes(c)),
+    degraded,
+  };
+}
+
+export async function routeTask(prompt: string): Promise<RouteDecision> {
+  const tier = classifyTier(prompt);
+  const { pool } = await routablePool();
 
   const quality = (c: Candidate) => (c.battles > 0 && c.winRate !== null ? c.winRate : -1);
 

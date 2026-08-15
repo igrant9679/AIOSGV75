@@ -27,7 +27,8 @@ interface StudioItem {
 interface ServiceStatus {
   id: string;
   label: string;
-  categories: Kind[];
+  /** Wider than Kind — the catalog also carries non-Studio services (e.g. "search"). */
+  categories: (Kind | string)[];
   configured: boolean;
 }
 
