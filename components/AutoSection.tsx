@@ -18,7 +18,7 @@ const CHAT_ID = "auto";
 interface PoolMember {
   id: string;
   name: string;
-  okRate: number | null;
+  health: number | null;
 }
 interface PoolInfo {
   ready: number;
@@ -57,8 +57,8 @@ export default function AutoSection() {
   const poolTitle = pool?.degraded
     ? "Every model is failing — the health filter was bypassed so Auto still has somewhere to route."
     : benched.length > 0
-      ? `Benched by the health filter (under 50% success over 30 days): ${benched
-          .map((m) => `${m.name} ${Math.round((m.okRate ?? 0) * 100)}%`)
+      ? `Benched by the health filter (under 50% recent success — newer runs count for more): ${benched
+          .map((m) => `${m.name} ${Math.round((m.health ?? 0) * 100)}%`)
           .join(", ")}`
       : `Routing across: ${(pool?.members ?? []).map((m) => m.name).join(", ")}`;
 

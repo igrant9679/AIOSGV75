@@ -1,6 +1,6 @@
 import { readRegistry, isLocalEndpoint } from "./registry";
 import { listStandings } from "./arena";
-import { readUsage } from "./usage";
+import { readUsage, type UsageEntry } from "./usage";
 
 /**
  * The "Auto" agent's brain: classify the task, then pick the best real agent
@@ -80,7 +80,50 @@ export interface Candidate {
   costRank: number;
   winRate: number | null;
   battles: number;
-  okRate: number | null;
+  /** Recency-weighted success rate — see `healthFor`. Null = not enough evidence. */
+  health: number | null;
+}
+
+/** Below this, an agent is benched. */
+const HEALTH_FLOOR = 0.5;
+/** A run's weight halves every 7 days, so current behaviour outvotes history. */
+const HEALTH_HALF_LIFE_DAYS = 7;
+/** Same-outcome runs this close together are one event, not independent samples. */
+const INCIDENT_WINDOW_MS = 5 * 60_000;
+
+/**
+ * How reliable an agent looks *right now*, from the usage ledger.
+ *
+ * A flat average over the window had two failure modes that compounded badly.
+ * On 2026-08-11 an expired Claude OAuth token failed 11 missions inside one
+ * minute; the ledger counted that as 11 independent votes, when the number
+ * really only recorded how many jobs happened to be in flight during a single
+ * outage. And once auth was fixed, that month-old minute still outvoted every
+ * healthy run since — the agent was provably working and provably benched.
+ *
+ * So: collapse same-outcome runs inside a 5-minute window into one incident,
+ * then weight each incident by age with a 7-day half-life. An outage costs one
+ * (decaying) vote, and one fresh success is enough to demonstrate recovery.
+ */
+export function healthFor(runs: UsageEntry[], now: number): number | null {
+  const incidents = new Map<string, { ok: boolean; ts: number }>();
+  for (const e of runs) {
+    const key = `${e.ok ? 1 : 0}:${Math.floor(e.ts / INCIDENT_WINDOW_MS)}`;
+    const seen = incidents.get(key);
+    if (!seen || e.ts > seen.ts) incidents.set(key, { ok: Boolean(e.ok), ts: e.ts });
+  }
+  // One incident is an anecdote — the old rule wanted 2 runs, this wants 2 events.
+  if (incidents.size < 2) return null;
+
+  let okWeight = 0;
+  let totalWeight = 0;
+  for (const inc of incidents.values()) {
+    const ageDays = Math.max(0, (now - inc.ts) / 86_400_000);
+    const weight = Math.pow(0.5, ageDays / HEALTH_HALF_LIFE_DAYS);
+    totalWeight += weight;
+    if (inc.ok) okWeight += weight;
+  }
+  return totalWeight > 0 ? okWeight / totalWeight : null;
 }
 
 export interface RoutablePool {
@@ -104,11 +147,8 @@ export interface RoutablePool {
 export async function routablePool(): Promise<RoutablePool> {
   const [reg, standings, usage] = await Promise.all([readRegistry(), listStandings(), readUsage(30)]);
 
-  const okRateFor = (id: string): number | null => {
-    const runs = usage.filter((e) => e.agent === id);
-    if (runs.length < 2) return null;
-    return runs.filter((e) => e.ok).length / runs.length;
-  };
+  const now = Date.now();
+  const healthOf = (id: string): number | null => healthFor(usage.filter((e) => e.agent === id), now);
   const standingFor = (id: string) => standings.find((s) => s.agentId === id);
 
   const candidates: Candidate[] = [
@@ -118,7 +158,7 @@ export async function routablePool(): Promise<RoutablePool> {
       costRank: CLAUDE_COST_RANK,
       winRate: standingFor("claude") ? standingFor("claude")!.wins / Math.max(1, standingFor("claude")!.battles) : null,
       battles: standingFor("claude")?.battles ?? 0,
-      okRate: okRateFor("claude"),
+      health: healthOf("claude"),
     },
     ...reg.llms
       .filter((l) => l.apiKey || isLocalEndpoint(l.baseUrl))
@@ -128,12 +168,12 @@ export async function routablePool(): Promise<RoutablePool> {
         costRank: costRankFor(l),
         winRate: standingFor(l.id) ? standingFor(l.id)!.wins / Math.max(1, standingFor(l.id)!.battles) : null,
         battles: standingFor(l.id)?.battles ?? 0,
-        okRate: okRateFor(l.id),
+        health: healthOf(l.id),
       })),
   ];
 
-  // drop anything with a clearly bad track record
-  const healthy = candidates.filter((c) => c.okRate === null || c.okRate >= 0.5);
+  // drop anything that looks broken right now
+  const healthy = candidates.filter((c) => c.health === null || c.health >= HEALTH_FLOOR);
   const degraded = healthy.length === 0;
   return {
     candidates,

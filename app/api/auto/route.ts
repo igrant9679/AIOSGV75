@@ -6,10 +6,10 @@ export const dynamic = "force-dynamic";
 /** Who Auto would actually pick from right now — drives the "N models in pool" badge. */
 export async function GET() {
   const p = await routablePool();
-  const brief = (c: { id: string; name: string; okRate: number | null }) => ({
+  const brief = (c: { id: string; name: string; health: number | null }) => ({
     id: c.id,
     name: c.name,
-    okRate: c.okRate,
+    health: c.health,
   });
   return Response.json({
     ready: p.pool.length,

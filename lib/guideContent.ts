@@ -167,7 +167,7 @@ Tool activity streams into the chat as dim cards (call → result), then the mod
 - **Standard** → the best proven performer by Arena win-rate
 - **Hard** (code, analysis, writing) → the reigning Arena champion
 
-It also reads the usage ledger for **health** — models failing more than half their recent runs are skipped — and **fails over to Claude** automatically if the chosen model errors. Every answer shows a routing line: who answered and why. Auto works in chat, missions, and schedules. It gets smarter as you crown Arena winners and accumulate usage data.
+It also reads the usage ledger for **health** — models failing more than half their recent runs are skipped — and **fails over to Claude** automatically if the chosen model errors. Health is deliberately **recency-weighted**: a run's weight halves every 7 days, and same-outcome runs inside a 5-minute window count as *one* event. That matters because an outage fails however many jobs happened to be in flight — 11 missions dying in one minute is one broken credential, not 11 votes — and because a fixed agent should be able to prove it works again in a run or two rather than waiting a month for the average to recover. Every answer shows a routing line: who answered and why. Auto works in chat, missions, and schedules. It gets smarter as you crown Arena winners and accumulate usage data.
 
 The Auto page keeps a **Recent Routes** panel — the last few routing decisions with the chosen model and the router's stated reason, so you can see the routing brain at work (and catch it picking expensive models for cheap questions).
 
