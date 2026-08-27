@@ -8,7 +8,8 @@
 
 **Mission Control** — Idris's local AI operating system at `C:\Users\Admin\Documents\mission-control`
 (Next.js 16 + Tailwind v4 + Framer Motion). Built July 9–16, 2026, versions **v1 → v41**;
-maintenance + provider work 2026-07-22 → 08-05 (head **`72d1b3d`**+).
+maintenance + provider work 2026-07-22 → 08-05; v42/v42.1 2026-08-15 (honest Auto pool,
+recency-weighted health); **fleet restructure 2026-08-27 — GV75 desktop RETIRED** (head **`5df39c8`**+).
 Repo: **https://github.com/igrant9679/AIOSGV75** (main, PUBLIC, gh CLI authed as igrant9679).
 
 It orchestrates a fleet of AI agents with an Obsidian vault as its brain:
@@ -19,20 +20,20 @@ Creative Studio · SEO content pipeline → WordPress/Ghost/Webflow · **importe
 history (2,242 conversations distilled)** · voice in+out · light/dark ·
 built-in searchable guide (`/guide`, also exported to the vault for agent RAG).
 
-**Three machines**, all on the same vault (OneDrive): desktop `Admin` (PRIMARY, this one) ·
-laptop `idris` · laptop `sabin`.
+**Two active machines** since 2026-08-27 (the GV75 desktop was DECOMMISSIONED — see the
+dated section below), both on the same vault (OneDrive):
 
-**Clustering is now ON (2026-08-02)** — it is no longer "off by default, each standalone":
-
-| Host | Label | User | Role | State |
+| Host | Label | Profile | Role | State |
 | --- | --- | --- | --- | --- |
-| `IdrisLegion7` | IdrisLegion7 | sabin | **primary** | **MASTER** (moved 2026-08-05 — desktop "too slow") · all compute |
-| `DESKTOP-K82OGAE` | IdrisAsusGV75 | Admin | backup | **Telegram gateway + the only working Gemini OAuth** — keep it ON |
-| `WIN-C2ANEVBHN6Q` | IdrisMSIRaider18 | idris | workstation | back online 2026-08-05 after ~48h down |
+| `IdrisLegion7` | IdrisLegion7 | `C:\Users\sabin` (account NAMED `idris`!) | **primary** | **MASTER** · all 4 schedules · **Telegram gateway (Talos)** · bot token in `.env.local` |
+| `WIN-C2ANEVBHN6Q` | IdrisMSIRaider18 | `C:\Users\idris` (`msi\idris`) | **backup** (promoted 2026-08-27) | armed: schedules + bot token; takes over if the primary's lease lapses (gateway does NOT fail over) |
+| `DESKTOP-K82OGAE` | IdrisAsusGV75 | `C:\Users\Admin` | **RETIRED 2026-08-27** | server stopped, autostart + gateway OFF, forgotten from cluster; repo/`data\*.json` (keys) left intact on disk |
 
-⚠ **All three labels start with "Idris"** — the only unambiguous identifier is the install path
-(`C:\Users\sabin\…` vs `C:\Users\Admin\…` vs `C:\Users\idris\…`). A role got set on the wrong
-laptop this way; when the user says "sabine's machine" they mean **IdrisLegion7**.
+⚠ **Account names lie on the laptops**: Legion7's Windows account is NAMED `idris` but its
+profile folder is `C:\Users\sabin` (renamed account — there is NO sabin login), and Raider18's
+is `msi\idris`, so `whoami` cannot distinguish the laptops — use `hostname`. Key every script
+off `$env:USERPROFILE`, never `$env:USERNAME`. When the user says "sabine's machine" they mean
+**IdrisLegion7**.
 
 Roles are **per-machine** in `data/cluster.json` (`process.cwd()/data`, NOT the vault) — only
 `Cluster/lease.json` + `Cluster/nodes/*.json` are shared, so a role can only be changed **on that
@@ -44,11 +45,49 @@ saying "keep the gateway on the master" is obsolete.
 ## Running state
 
 - **Prod server auto-starts at Windows login** (`Mission Control Server.vbs` in Startup →
-  `server.cmd` → `npm start -- -H 127.0.0.1`, port 3000, localhost-only).
+  `server.cmd` → `npm start -- -H 127.0.0.1`, port 3000, localhost-only) — on the laptops.
+- **GV75 desktop: retired 2026-08-27.** Its Startup VBS was moved into the repo as
+  `Mission Control Server.vbs.disabled` (restore = move back to `shell:startup`); its
+  `data/cluster.json` is `enabled:false, role:workstation`. Do NOT start its server or
+  re-enable its "OpenClaw Gateway" task.
 - Desktop shortcut "Mission Control" opens it. `stop.cmd` kills it.
 - **Dev cycle rule:** run `stop.cmd` BEFORE `npm run dev` (port conflict); after code changes
   run `npm run build` then restart via the VBS so the boot server serves the new code.
   If dev serves stale CSS/JS after big edits: `rm -rf .next/dev` and restart dev.
+
+## 2026-08-27 — GV75 decommissioned; schedules, token, and Telegram gateway moved
+
+Executed from a desktop Claude session (this file's last update from that machine). Three
+helper scripts now live in vault **`Agentic OS/Cluster/`** — all idempotent, all machine-agnostic.
+
+- **Desktop off the cluster**: server killed, Startup VBS → repo as `.disabled`, "OpenClaw
+  Gateway" task disabled, every `DESKTOP-K82OGAE*` node file removed from vault
+  `Cluster/nodes/` (incl. OneDrive "-Area51" sync-conflict copies), `data/cluster.json`
+  disabled. Repo, `data/*.json` (holds real keys), and all CLI installs left intact on disk.
+- ⚠ **The gateway process SURVIVED the task disable** and kept polling Telegram for hours: it
+  is a bare `node.exe … openclaw\dist\index.js gateway --port 18789` spawned detached by a VBS
+  launcher that exits instantly — the task shows Ready/Disabled while it lives, and
+  `ProcessName -match 'openclaw'` never finds it. **Detect it by asking who owns port 18789
+  and reading that PID's command line.** Killed ~11:40 after it truthfully answered a Telegram
+  test with "I'm on DESKTOP-K82OGAE".
+- **Schedules**: the 4 live schedules existed only in the desktop's per-machine
+  `data/schedules.json`. Recreated on **Legion7 AND Raider18** via `recreate-schedules.json` +
+  `recreate-schedules-legion7.ps1` (idempotent by title, POSTs to local `/api/schedules`; also
+  fixed a mojibake em-dash in the Ops Tuner prompt). Only the master fires them → no doubles.
+- **Telegram send**: `TELEGRAM_BOT_TOKEN` added to Legion7's and Raider18's `.env.local` via
+  `set-telegram-token.ps1` (prompts for the value locally, verifies via getMe, backs up,
+  restarts the server). The value lives in the desktop's `~/.openclaw/openclaw.json`
+  (`channels.telegram.botToken`) — never in this file.
+- **Telegram receive / Talos**: gateway MOVED to Legion7 via `setup-openclaw-gateway.ps1`
+  (v2 — keys off `USERPROFILE` because of the renamed account; archives any pre-existing
+  non-Talos `.openclaw` first, recognizing the Talos config by its Telegram pairing). Payload
+  (openclaw.json + credentials/identity/devices/agents/workspace, ~0.7 MB zip) was transferred
+  manually, both copies deleted afterwards. Surprise find: a forgotten claude-cli OpenClaw
+  already on Legion7 → archived to `C:\Users\sabin\.openclaw-gv75-claudecli`. Proven
+  end-to-end: Talos answered from Legion7 and updated its own IDENTITY.md to say so.
+- **Rules now in force**: only ONE machine may poll the bot — **Legion7**; GV75's gateway task
+  stays disabled forever. Legion7 = gateway AND master → Telegram-approved missions launch
+  instantly. Raider18 failover covers schedules/watchers/Telegram SEND only.
 
 ## Fleet & config state (rows dated; billing audit + machines current as of 2026-07-16)
 
@@ -68,11 +107,11 @@ saying "keep the gateway on the master" is obsolete.
 | Semantic RAG | **ACTIVE** via local embeddings — `EMBED_BASE_URL=http://localhost:11434/v1`, `EMBED_MODEL=nomic-embed-text` in `.env.local` (keyless). Gemini key now optional (only for a Gemini chat agent; recipe commented in `.env.local`) |
 | Codex | CLI 0.144.1 **authed (ChatGPT login) + verified end-to-end** (mission answered 2026-07-11); template `codex exec --skip-git-repo-check {input}` — the flag is required (app spawns from a non-repo cwd) |
 | Vault | **moved 2026-07-12 into OneDrive (LSI Media LLC)**: `C:\Users\Admin\LSI Media LLC\Working Files Idris - Documents\AI Mission Control\IdrisGV75` (VAULT_DIR in `.env.local`; pinned "always keep on this device") → app writes under `Agentic OS/` |
-| Schedules | 📚 Vault Librarian (Sun 18:00), 🛠 Ops Tuner (Sun 19:00 → Telegram), 📊 **CommunityForce Monday Status (Mon 08:30 → Telegram)**, test schedule (off) |
+| Schedules | **2026-08-27: live on Legion7 + Raider18 (the desktop's copies died with it; test schedule not carried over)** — 📚 Vault Librarian (Sun 18:00 → vault), 🛠 Ops Tuner (Sun 19:00 → Telegram), 🗞 Chief of Staff (weekdays 08:00 → Telegram), 📊 CommunityForce Monday Status (Mon 08:30 → Telegram) |
 | Workspaces | Default, Work, **CommunityForce** |
 | Arena standings (2026-07-13) | Claude 3/3 · DeepSeek 2/5 · Hermes 1/3 · Llama 0/4 — hard tier has a champion, simple tier has evidence (DeepSeek/Hermes wins on easy battles). Battle lessons live in the Guide's Arena section |
-| Laptop (user `idris`, host `WIN-C2ANEVBHN6Q`) | **deployed 2026-07-12 as WORKSTATION** — vault via OneDrive, Claude + Ollama installed, Talos/Hermes stay desktop-only, schedules empty. Cluster role **workstation** (can never be master). **⚠ Its server has been DOWN since ~2026-07-31** (heartbeat stale ~41h at time of writing) — updated but `server.cmd` never came back. Harmless as a workstation, but check it |
-| Laptop 2 (user `sabin`, host `IdrisLegion7`) | **deployed 2026-07-14 via install.ps1** — THIRD machine (don't assume "laptop" = idris). Hermes installed + dashboard built (one-time `hermes dashboard --no-open` build; `--skip-build` auto-start works after), `HERMES_BIN/CMD` set with the **sabin** path. Talos stays desktop-only. Cluster role **backup**. Updated to `71fbc1a` on 2026-08-02. **Still needs: `TELEGRAM_BOT_TOKEN` in `.env.local` (otherwise failing over to it silently loses all notifications), a pull to `fb578ec`, and its Hermes is still on GLM 5.2 (metered) rather than free hy3** |
+| Laptop (user `idris`, host `WIN-C2ANEVBHN6Q`) | **deployed 2026-07-12 as WORKSTATION** — vault via OneDrive, Claude + Ollama installed, Talos/Hermes stay desktop-only, schedules empty. Cluster role **workstation** (can never be master). **⚠ Its server has been DOWN since ~2026-07-31** (heartbeat stale ~41h at time of writing) — updated but `server.cmd` never came back. **2026-08-27: back online, PROMOTED TO BACKUP and armed (schedules + Telegram token) — but its uptime record is the fleet's weak point; watch its online badge** |
+| Laptop 2 (user `sabin`, host `IdrisLegion7`) | **deployed 2026-07-14 via install.ps1** — THIRD machine (don't assume "laptop" = idris). Hermes installed + dashboard built (one-time `hermes dashboard --no-open` build; `--skip-build` auto-start works after), `HERMES_BIN/CMD` set with the **sabin** path. Talos stays desktop-only. Cluster role **backup**. Updated to `71fbc1a` on 2026-08-02. **Formerly needed `TELEGRAM_BOT_TOKEN` + a newer pull — BOTH RESOLVED 2026-08-27** (token in `.env.local`; runs current-enough code, it accepted `weekdays` schedules). Its Hermes may still be on GLM 5.2 (metered) rather than free hy3 — unverified |
 | Settings | **full inline LLM editing** (v19.1) — pencil opens all fields: name/provider/baseUrl/model/key/prompt/accent; blank key keeps current, REMOVE KEY checkbox for keyless localhost |
 | Ops pages (v20) | **/tasks** kanban (vault-backed: `Agentic OS/Tasks.md`, syncs across machines, hand-edits adopted), **/schedule** cron calendar (7-day timeline over schedules+watchers), **/library** vault content browser (/api/vault/notes); Overview adds disk/data-store vitals, Ops Pulse tiles, 7-day Fleet Activity |
 | Graph (v20.2) | **/graph** knowledge-graph visualization — canvas force sim over /api/vault/graph (notes=nodes, wikilinks=edges), folder legend/filter, hover neighborhoods, click→Obsidian, orphan/hub stats; loop sleeps when settled, timer fallback drives it in hidden tabs (rAF is suspended there) |
