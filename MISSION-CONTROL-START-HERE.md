@@ -386,13 +386,14 @@ bill** (`lib/billing.ts` exists to keep that split honest in Analytics and Repor
 
 **Open items carried forward** (full detail in `NEXT-SESSION.md` § "⚠ OPEN"):
 
-1. **Nothing restarts a dead prod server mid-session.** The Startup VBS only fires
-   at Windows *login*. On 2026-08-08 the desktop's server stopped silently mid-run
-   while the designated master was also offline — the fleet had **no master at all**
-   for two days, and only a quiet weekend hid it. A ~5-minute Scheduled Task that
-   checks `Get-NetTCPConnection -LocalPort 3000 -State Listen` and relaunches
-   `server.cmd` would close this. **Still open, and the best first contribution a new
-   machine could make.**
+1. ~~**Nothing restarts a dead prod server mid-session.**~~ **Fixed in code
+   2026-09-04** — `install-watchdog.cmd` registers a 5-minute Scheduled Task that
+   relaunches `server.cmd` when port 3000 stops listening (`SETUP-NEW-MACHINE.md`
+   §4f). Installed and verified on Raider18. **Still to do: run it once on Legion7**
+   (and any future master-capable machine) — the task is per-machine and does not
+   arrive with `git pull`. Background: on 2026-08-08 the desktop's server stopped
+   silently mid-run while the designated master was also offline — the fleet had
+   **no master at all** for two days, and only a quiet weekend hid it.
 2. **Raider18's uptime is the fleet's weak point** — it was down ~4 weeks in August
    before being promoted to backup. Watch its online badge.
 3. **`kimi-2` on Raider18 holds the wrong vendor's key** (the z.ai GLM key pointed at

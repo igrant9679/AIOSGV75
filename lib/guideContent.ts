@@ -644,6 +644,8 @@ Other per-machine state in \`data/\` (all git-ignored, none of it syncs): \`clus
 
 **The startup launcher is empty, broken, or points at the wrong folder** — re-run **\`install-service.cmd\`**; it rewrites \`Mission Control Server.vbs\` in your Startup folder from scratch and relaunches the server. It normally targets the folder it lives in, but since every machine keeps the repo somewhere different you can name the folder explicitly: \`install-service.cmd "D:\\code\\my-mission-control"\`. If that folder has no \`server.cmd\`, it asks you to type the right path rather than writing a launcher that points nowhere.
 
+**The server died mid-session and nothing brought it back** — the Startup launcher only fires at *login*. Run **\`install-watchdog.cmd\`** in the repo once: it registers a "Mission Control Watchdog" Scheduled Task that checks port 3000 every 5 minutes and relaunches \`server.cmd\` (hidden) if nothing is listening — confirming the server actually answers, not launching blind. It stands down while \`data\\watchdog.pause\` exists (auto-expires after 2 h) or while a \`next build\`/\`next dev\` is running, and it never kills a hung server (in-flight runs die with the process — that is a human call). Actions and warnings go to \`data\\watchdog.log\`; \`install-watchdog.cmd status\` shows the task and log tail, \`install-watchdog.cmd uninstall\` removes it. Install it on every machine that can become master.
+
 **Claude fails with 401** — the CLI login expired. Run \`claude\` in a terminal and \`/login\` once.
 
 **API LLM errors** — 401 bad key · 402 no credit (top up with the provider) · a model failing repeatedly is skipped by Auto until it succeeds again.

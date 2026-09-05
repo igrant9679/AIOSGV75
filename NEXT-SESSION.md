@@ -255,8 +255,16 @@ helper scripts now live in vault **`Agentic OS/Cluster/`** — all idempotent, a
    with the desktop down too **the fleet had NO master at all** — no schedules, watchers, nudges or
    approval launches anywhere, on any machine. Saturday saved it: the weekday brief had run Fri
    08-07 08:02 and nothing was due until Mon 08-10 08:00/08:30; `/api/attention` was empty.
-   **Nothing closes this gap yet.** A Scheduled Task on a ~5-min trigger that checks
-   `Get-NetTCPConnection -LocalPort 3000 -State Listen` and relaunches `server.cmd` would. Worth
+   **CLOSED IN CODE 2026-09-04:** `install-watchdog.cmd` registers exactly that — a 5-min
+   Scheduled Task ("Mission Control Watchdog", `watchdog.vbs` → `watchdog.ps1`) that relaunches
+   `server.cmd` when port 3000 stops listening and confirms `/api/system` answers. Verified on
+   Raider18 (kill → recovered in 4 s via the real task path; repeating trigger fires on its own).
+   **Per-machine — still needs running once on Legion7.** Guards: `data\watchdog.pause`,
+   skips during `next build/dev`, never kills a hung server. Also on the same day: Raider18's
+   Claude CLI OAuth had silently expired → every scheduled mission since 09-03 failed with
+   "OAuth session expired and could not be refreshed" while it was acting master (Legion7
+   offline ~13 h). `claude` → `/login` fixed it; Chief of Staff run-now then delivered to
+   Telegram. That is the *other* silent no-master mode: server up, master held, zero output. Worth
    also asking whether the watcher sweep *caused* it — the timing is exact, not approximate.
    Side effect: `data/usage.json` held only 4 records afterwards (all from that 10:33 mission), so
    the Analytics/Reports cost ledger currently has almost no history to draw on.

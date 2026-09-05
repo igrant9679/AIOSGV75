@@ -399,6 +399,30 @@ installer already added itself to Startup, OneDrive starts at sign-in by
 default, and the agent CLIs (Claude/Codex) aren't services — the server
 spawns them on demand with your persisted logins.
 
+### 4f. Watchdog — restart a server that dies mid-session
+
+The Startup VBS only fires at **login**. A machine that stays up for weeks can
+lose its server silently (it happened 2026-08-08, and the fleet had no master
+for two days). Double-click **`install-watchdog.cmd`** in the repo once. It
+registers a Scheduled Task, **"Mission Control Watchdog"**, that runs every
+5 minutes as your logged-in user: if nothing is listening on port 3000 it
+relaunches `server.cmd` hidden, then waits until `/api/system` answers rather
+than launching blind. Do this on **every machine that can become master**.
+
+- Pause it during a dev cycle: `New-Item data\watchdog.pause` (auto-expires
+  after 2 hours; `Remove-Item` it to resume sooner). It also stands down by
+  itself while a `next build` / `next dev` process is running.
+- It never kills anything. A server that is listening but not answering is
+  only logged as a warning — in-flight runs die with the process.
+- Log: `data\watchdog.log` (actions and warnings only, self-truncating).
+- `install-watchdog.cmd status` shows the task, last result, and log tail;
+  `install-watchdog.cmd uninstall` removes it. The same three files
+  (`watchdog.ps1`, `watchdog.vbs`, `install-watchdog.cmd`) resolve their own
+  folder, so nothing needs editing when the repo lives somewhere else.
+- Laptops: the task is registered with "start/continue on battery" so a
+  backup node keeps its watchdog exactly when it is likeliest to be the only
+  master.
+
 Optional desktop shortcut → `launch.cmd` (opens browser; starts a dev server
 only if the port is free). `stop.cmd` kills the server (it ends with a
 `pause` — expects a keypress when run by hand).
