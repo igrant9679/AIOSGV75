@@ -5,7 +5,8 @@ import { useMemo, useState } from "react";
 import Panel from "../ui/Panel";
 import EmptyState from "../ui/EmptyState";
 import type { ActivitySource } from "@/lib/activity";
-import { useHub, SourcePill, StatusDot, HubError, IndexingNote, Chip, SOURCE_META, ago, clockTime, dayLabel } from "./common";
+import { LAUNCH_SURFACE_META, LAUNCH_SURFACE_ORDER, type LaunchSurface } from "@/lib/launchSurface";
+import { useHub, SourcePill, StatusDot, ViaTag, HubError, IndexingNote, Chip, SOURCE_META, ago, clockTime, dayLabel, stamp, timesTitle } from "./common";
 
 /** Timeline — one stream of every AI action, filterable by tool, machine and project. */
 export default function TimelineSection() {
@@ -14,19 +15,23 @@ export default function TimelineSection() {
   const [source, setSource] = useState<ActivitySource | "all">("all");
   const [host, setHost] = useState("all");
   const [project, setProject] = useState("all");
+  const [via, setVia] = useState<LaunchSurface | "all">("all");
 
   const facets = useMemo(() => {
     const sources = new Set<ActivitySource>();
     const hosts = new Set<string>();
     const projects = new Map<string, number>();
+    const vias = new Map<LaunchSurface, number>();
     for (const i of hub?.items ?? []) {
       sources.add(i.source);
       hosts.add(i.host);
+      if (i.via) vias.set(i.via, (vias.get(i.via) ?? 0) + 1);
       if (i.project) projects.set(i.project, (projects.get(i.project) ?? 0) + 1);
     }
     return {
       sources: [...sources],
       hosts: [...hosts].sort(),
+      vias: LAUNCH_SURFACE_ORDER.filter((v) => vias.has(v)).map((v) => [v, vias.get(v)!] as const),
       projects: [...projects.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([p]) => p),
     };
   }, [hub]);
@@ -38,9 +43,10 @@ export default function TimelineSection() {
         (source === "all" || i.source === source) &&
         (host === "all" || i.host === host) &&
         (project === "all" || i.project === project) &&
+        (via === "all" || i.via === via) &&
         (!needle || `${i.title} ${i.detail ?? ""} ${i.project ?? ""} ${i.agent}`.toLowerCase().includes(needle)),
     );
-  }, [hub, q, source, host, project]);
+  }, [hub, q, source, host, project, via]);
 
   const groups = useMemo(() => {
     const out: { day: string; items: typeof filtered }[] = [];
@@ -79,6 +85,17 @@ export default function TimelineSection() {
             <Chip key={h} active={host === h} onClick={() => setHost(h)}>{h}</Chip>
           ))}
         </div>
+        {facets.vias.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="panel-title pr-1" title="Where each Claude Code / Codex session was started">Started in</span>
+            <Chip active={via === "all"} onClick={() => setVia("all")}>All</Chip>
+            {facets.vias.map(([v, n]) => (
+              <Chip key={v} active={via === v} onClick={() => setVia(v)} title={LAUNCH_SURFACE_META[v].hint}>
+                {LAUNCH_SURFACE_META[v].label} · {n}
+              </Chip>
+            ))}
+          </div>
+        )}
         {facets.projects.length > 0 && (
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="panel-title pr-1">Project</span>
@@ -99,15 +116,25 @@ export default function TimelineSection() {
                 <p className="panel-title pb-1 pt-2">{g.day}</p>
                 {g.items.map((i) => {
                   const row = (
-                    <span className="flex items-center gap-3 border-b border-line py-2">
+                    <span className="flex items-center gap-3 border-b border-line py-2" title={i.startedAt ? timesTitle({ startedAt: i.startedAt, updatedAt: i.ts, lastOpenedAt: i.lastOpenedAt }) : undefined}>
                       <span className="w-10 shrink-0 font-mono text-[10px] text-ink-faint">{clockTime(i.ts)}</span>
                       <SourcePill source={i.source} />
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-xs font-semibold text-ink">{i.title}</span>
                         <span className="block truncate font-mono text-[10px] text-ink-faint">
-                          {[i.agent, i.project, i.host, i.detail].filter(Boolean).join(" · ")}
+                          {[
+                            i.agent,
+                            i.project,
+                            i.host,
+                            i.detail,
+                            i.startedAt && i.startedAt < i.ts - 60_000 ? `started ${stamp(i.startedAt)}` : undefined,
+                            i.lastOpenedAt ? `opened ${ago(i.lastOpenedAt)} ago` : undefined,
+                          ]
+                            .filter(Boolean)
+                            .join(" · ")}
                         </span>
                       </span>
+                      <ViaTag via={i.via} />
                       <StatusDot status={i.status} />
                     </span>
                   );
@@ -132,6 +159,7 @@ export default function TimelineSection() {
                 <div key={i.id} className="flex items-center gap-2 border-b border-line py-1.5 last:border-b-0">
                   <StatusDot status={i.status} />
                   <span className="min-w-0 flex-1 truncate text-xs text-ink">{i.title}</span>
+                  <ViaTag via={i.via} />
                   <span className="font-mono text-[10px] text-ink-faint">{ago(i.ts)}</span>
                 </div>
               ))}

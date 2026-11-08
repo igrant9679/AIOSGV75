@@ -6,7 +6,7 @@ import Panel from "../ui/Panel";
 import GlowTile from "../ui/GlowTile";
 import EmptyState from "../ui/EmptyState";
 import { ACCENTS } from "@/lib/accents";
-import { useHub, SourcePill, StatusDot, MeterRow, HubError, IndexingNote, ago } from "./common";
+import { useHub, SourcePill, ViaTag, StatusDot, MeterRow, HubError, IndexingNote, ago } from "./common";
 
 /**
  * Command — the status-first home of the second brain: what's running, what's
@@ -84,6 +84,7 @@ export default function CommandSection() {
                     {i.host}
                   </span>
                 </span>
+                <ViaTag via={i.via} />
                 <SourcePill source={i.source} />
               </div>
             ))}

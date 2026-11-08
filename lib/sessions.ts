@@ -4,6 +4,21 @@ import path from "path";
 import os from "os";
 import readline from "readline";
 import zlib from "zlib";
+import {
+  UNSORTED,
+  JOBS_PROJECT,
+  desktopAppTitles,
+  folderProject,
+  inferWorkDir,
+  tallyDirs,
+  jobTitle,
+  pathsIn,
+  prettyProject,
+  readJobDefs,
+  type ProjectSource,
+  type TitleSource,
+} from "./projectNames";
+import { readNames } from "./sessionNaming";
 
 /**
  * Native session reader — the "capture" layer of the second brain. Reads the
@@ -46,6 +61,20 @@ export interface SessionSummary {
   tokensCached: number;
   model?: string;
   origin?: string; // claude-desktop, sdk-cli, Codex Desktop, …
+  /** cleaned first human prompt (also used to recognize Mission Control jobs) */
+  firstPrompt?: string;
+  /** names recorded in the session file itself */
+  aiTitle?: string;
+  customTitle?: string;
+  /** folders this session read or edited, with counts (cache only — see projectNames.tallyDirs) */
+  touchedDirs?: [string, number][];
+  /** where `project` / `title` came from — see lib/projectNames.ts */
+  projectSource?: ProjectSource;
+  titleSource?: TitleSource;
+  /** the folder behind `project`, when there is one */
+  folder?: string;
+  /** desktop app only: when you last had this session open */
+  lastOpenedAt?: number;
   status: SessionStatus;
   indexing?: boolean; // true = stub, full parse still pending
 }
@@ -74,7 +103,7 @@ const CLAUDE_JSON = path.join(HOME, ".claude.json");
 const CODEX_SESSIONS = path.join(HOME, ".codex", "sessions");
 const CODEX_INDEX = path.join(HOME, ".codex", "session_index.jsonl");
 const CACHE_FILE = path.join(process.cwd(), "data", "sessions-cache.json");
-const CACHE_VERSION = 3; // bump when parsing changes, so cached summaries are re-read
+const CACHE_VERSION = 5; // bump when parsing changes, so cached summaries are re-read
 const PARSE_BUDGET_MS = 6_000;
 const RUNNING_WINDOW_MS = 3 * 60_000;
 
@@ -233,9 +262,19 @@ function cleanPrompt(text: string): string {
     const nl = body.indexOf("\n", pre);
     body = nl >= 0 ? body.slice(nl + 1) : "";
   }
-  const stripped = body
-    .replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, "")
-    .replace(/<[a-z_-]+>[\s\S]*?<\/[a-z_-]+>/g, "")
+  // Injected context blocks (<system-reminder>, Codex's <environment_context>,
+  // <recommended_plugins>…): match open/close by tag name so nested tags
+  // can't leak, then drop any leftover tag-only lines.
+  let stripped = body;
+  for (let i = 0; i < 4; i++) {
+    const next = stripped.replace(/<([a-z][\w-]*)(?:\s[^>]*)?>[\s\S]*?<\/\1>/gi, "");
+    if (next === stripped) break;
+    stripped = next;
+  }
+  stripped = stripped
+    .split(/\r?\n/)
+    .filter((l) => !/^\s*<\/?[a-z][\w-]*[^>]*>\s*$/i.test(l))
+    .join("\n")
     .trim();
   const first =
     stripped
@@ -281,6 +320,7 @@ async function parseClaude(file: string): Promise<CachedEntry["summary"] & { sam
   let origin: string | undefined;
   const seen = new Set<string>();
   const samples: [number, number][] = [];
+  const touched: string[] = [];
 
   const rl = readline.createInterface({ input: fs.createReadStream(file, { encoding: "utf8" }), crlfDelay: Infinity });
   for await (const line of rl) {
@@ -320,7 +360,20 @@ async function parseClaude(file: string): Promise<CachedEntry["summary"] & { sam
       if (!prompt) continue;
       userTurns++;
       if (!firstPrompt) firstPrompt = prompt;
-    } else if (type === "assistant" && msg?.usage) {
+      continue;
+    }
+    if (type === "assistant" && Array.isArray(msg?.content) && touched.length < 600) {
+      // Which folders did this session actually work in? (file tools + shell paths)
+      for (const c of msg.content as { type?: string; input?: Record<string, unknown> }[]) {
+        if (c?.type !== "tool_use" || !c.input) continue;
+        for (const k of ["file_path", "notebook_path", "path"]) {
+          const v = c.input[k];
+          if (typeof v === "string" && v) touched.push(v);
+        }
+        if (typeof c.input.command === "string") touched.push(...pathsIn(c.input.command).slice(0, 6));
+      }
+    }
+    if (type === "assistant" && msg?.usage) {
       const mid = msg.id ?? String(o.requestId ?? "");
       if (mid && seen.has(mid)) continue; // one API message is written once per content block
       if (mid) seen.add(mid);
@@ -344,6 +397,10 @@ async function parseClaude(file: string): Promise<CachedEntry["summary"] & { sam
     title: customTitle || aiTitle || firstPrompt || "Untitled session",
     cwd,
     project: projectOf(cwd),
+    firstPrompt: firstPrompt || undefined,
+    aiTitle: aiTitle || undefined,
+    customTitle: customTitle || undefined,
+    touchedDirs: tallyDirs(touched),
     startedAt,
     updatedAt,
     userTurns,
@@ -394,6 +451,7 @@ async function parseCodex(file: string): Promise<{ summary: CachedEntry["summary
   let rateLimits: CodexRateLimits | undefined;
   let openTurn = false;
   const samples: [number, number][] = [];
+  const touched: string[] = [];
 
   for (const line of text.split("\n")) {
     if (!line) continue;
@@ -422,6 +480,10 @@ async function parseCodex(file: string): Promise<{ summary: CachedEntry["summary
         userTurns++;
         if (!firstPrompt) firstPrompt = prompt;
       }
+    } else if (o.type === "response_item" && /call$/.test(String(p.type)) && touched.length < 600) {
+      // shell / patch tool calls: arguments (function_call) or input (custom_tool_call)
+      const raw = typeof p.arguments === "string" ? p.arguments : typeof p.input === "string" ? p.input : "";
+      if (raw) touched.push(...pathsIn(raw).slice(0, 8));
     } else if (o.type === "event_msg") {
       if (p.type === "task_started") openTurn = true;
       if (p.type === "task_complete" || p.type === "turn_aborted") openTurn = false;
@@ -455,6 +517,8 @@ async function parseCodex(file: string): Promise<{ summary: CachedEntry["summary
       title: firstPrompt || "Untitled session",
       cwd,
       project: projectOf(cwd),
+      firstPrompt: firstPrompt || undefined,
+      touchedDirs: tallyDirs(touched),
       startedAt,
       updatedAt,
       userTurns,
@@ -599,6 +663,7 @@ export async function sessionsSnapshot(): Promise<SessionsSnapshot> {
   const fresh = await readCache();
   const titles = await codexTitles();
   const liveMap = await liveClaude();
+  const [appTitles, jobs, names] = await Promise.all([desktopAppTitles(), readJobDefs(), readNames()]);
   const now = Date.now();
   const sessions: SessionSummary[] = [];
   let done = 0;
@@ -629,16 +694,25 @@ export async function sessionsSnapshot(): Promise<SessionsSnapshot> {
     done++;
     const s = e.summary;
     let status: SessionStatus;
-    let title = s.title;
+    let liveName: string | undefined;
     if (s.tool === "claude") {
       const live = liveMap.get(s.id);
       status = claudeStatus(live);
-      if (live?.name && title === "Untitled session") title = live.name;
+      liveName = live?.name;
     } else {
-      title = titles.get(s.id) ?? title;
       status = e.openTurn && now - f.mtimeMs < RUNNING_WINDOW_MS ? "running" : "ended";
     }
-    sessions.push({ ...s, title, host, status });
+    const named = resolveNames(s, {
+      override: names.sessions[s.key],
+      app: s.tool === "claude" ? appTitles.get(s.id) : undefined,
+      liveName,
+      codexName: s.tool === "codex" ? titles.get(s.id) : undefined,
+      job: jobTitle(s.firstPrompt, s.startedAt, jobs),
+    });
+    const { touchedDirs: _dirs, ...rest } = s;
+    void _dirs;
+    const lastOpenedAt = s.tool === "claude" ? appTitles.get(s.id)?.lastOpenedAt : undefined;
+    sessions.push({ ...rest, ...named, lastOpenedAt, host, status });
   }
 
   sessions.sort((a, b) => b.updatedAt - a.updatedAt);
@@ -649,6 +723,49 @@ export async function sessionsSnapshot(): Promise<SessionsSnapshot> {
     indexing: { done, total: found.length },
     generatedAt: now,
   };
+}
+
+/** Pick the best title and project for a session — order documented in lib/projectNames.ts. */
+function resolveNames(
+  s: CachedEntry["summary"],
+  ev: {
+    override?: { title?: string; project?: string; by: "user" | "ai" };
+    app?: { title?: string; byUser: boolean };
+    liveName?: string;
+    codexName?: string;
+    job?: string;
+  },
+): Pick<SessionSummary, "title" | "titleSource" | "project" | "projectSource" | "folder"> {
+  const o = ev.override;
+  const userO = o?.by === "user" ? o : undefined;
+  const aiO = o?.by === "ai" ? o : undefined;
+
+  const titles: [string | undefined, TitleSource][] = [
+    [userO?.title, "user"],
+    [ev.app?.byUser ? ev.app.title : undefined, "user"],
+    [s.customTitle, "user"],
+    [ev.job, "job"],
+    [ev.codexName, "codex"],
+    [aiO?.title, "ai"],
+    [s.aiTitle ?? ev.app?.title, "auto"],
+    [ev.liveName, "app"],
+    [s.firstPrompt, "prompt"],
+  ];
+  const [title, titleSource] = titles.find(([t]) => t && t.trim()) ?? ["Untitled session", "prompt"];
+
+  const folderDir = folderProject(s.cwd);
+  const workDir = inferWorkDir(s.touchedDirs);
+  let project: string;
+  let projectSource: ProjectSource;
+  let folder: string | undefined;
+  if (userO?.project) [project, projectSource] = [userO.project, "user"];
+  else if (folderDir) [project, projectSource, folder] = [prettyProject(folderDir), "folder", folderDir];
+  else if (ev.job) [project, projectSource] = [JOBS_PROJECT, "job"];
+  else if (workDir) [project, projectSource, folder] = [prettyProject(workDir), "files", workDir];
+  else if (aiO?.project) [project, projectSource] = [aiO.project, "ai"];
+  else [project, projectSource] = [UNSORTED, "unsorted"];
+
+  return { title: title!.trim(), titleSource, project, projectSource, folder };
 }
 
 function sumWindow(cache: CacheFile, tool: SessionTool, ms: number): number {

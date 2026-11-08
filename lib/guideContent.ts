@@ -85,8 +85,15 @@ Settings are stored in this browser (\`localStorage\`: \`mc-appearance\`, theme 
 
 **The five pages**
 - **Command** — status first: running now, waiting on you, done today, memories saved today; Needs you, Live now, and subscription meters.
-- **Timeline** — every action from every tool in one stream, filterable by tool, machine and project, with search.
-- **Projects** — the brain by project (a project = a working folder): every session in it from any tool, memories that mention it, and a vault search scoped to it.
+- **Timeline** — every action from every tool in one stream, filterable by tool, machine, project and **Started in** (Desktop app, Terminal, IDE, or Background — headless claude -p / codex exec runs, which is where Mission Control's own agents and schedules show up), with search. Session rows on Command, Timeline and Projects carry the same tag.
+- **Projects** — the brain by project: every session in it from any tool, with created / last changed / last opened times, memories that mention it, and a vault search scoped to it.
+
+**How sessions and projects get their names**
+- **Session titles**, best first: your rename here → a rename in the Claude desktop app or /rename → Mission Control job name ("Chief of Staff · Nov 4") → Codex thread name → AI name → the auto-title → the first prompt.
+- **Projects**, best first: your rename → the folder the session was started in, if it's a real project → the project folder holding most of the files the session read or edited (the outermost folder with .git / package.json / CLAUDE.md, so a monorepo's apps/web counts as the monorepo) → **Mission Control jobs** for scheduled runs → **Group with AI** → **Unsorted**. Home folders, Documents, desktop-app scratch folders and Codex Desktop's dated chat folders are never used as project names.
+- **Group with AI** (Projects page) — one short Claude Haiku run on your subscription that puts Unsorted sessions into named projects and renames sessions whose title is really a pasted prompt. It never changes a name you set. Needs the Claude Code CLI signed in on this machine (run claude in a terminal, then /login).
+- **Rename** — the ✎ next to a project or session name. Saving an empty name goes back to the automatic one. Renames and AI names live in data/session-names.json.
+- **Times** — created = first message, last changed = last activity in the session file, last opened = when you last had it open in the Claude desktop app (only the desktop app records this).
 - **Fleet** — machines × subscriptions. This machine's cells are live; other machines in the machine group show their heartbeat until session summaries are shared through the vault.
 - **Board** — give the fleet a goal; the manager (Claude) splits it into subtasks, workers run them (Auto router or pinned agents), the reviewer (Claude) passes them or sends them back. Same engine as the Orchestrator on Tasks.
 

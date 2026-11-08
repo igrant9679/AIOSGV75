@@ -34,10 +34,11 @@ function cleanEnv(): NodeJS.ProcessEnv {
   return env;
 }
 
-export function runClaudeText(prompt: string): Promise<RunResult> {
+/** extraArgs: e.g. ["--model", "haiku", "--no-session-persistence"] for light housekeeping runs. */
+export function runClaudeText(prompt: string, extraArgs: string[] = []): Promise<RunResult> {
   const started = Date.now();
   return new Promise((resolve) => {
-    const child = spawn("claude", ["-p", "--output-format", "json"], {
+    const child = spawn("claude", ["-p", "--output-format", "json", ...extraArgs], {
       shell: true,
       cwd: os.homedir(),
       env: cleanEnv(),

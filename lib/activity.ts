@@ -1,4 +1,5 @@
 import { sessionsSnapshot, type SessionSummary, type SubscriptionMeter } from "./sessions";
+import { launchSurface, type LaunchSurface } from "./launchSurface";
 import { listMissions } from "./missions";
 import { listOrchestrations, type Orchestration } from "./orchestrator";
 import { collectAttention, type AttentionItem } from "./attention";
@@ -30,6 +31,11 @@ export interface ActivityItem {
   host: string;
   status: ActivityStatus;
   href?: string;
+  /** Sessions only: where it was started (desktop app, terminal, IDE, background). */
+  via?: LaunchSurface;
+  /** Sessions only: created / last opened in the desktop app (ts = last changed). */
+  startedAt?: number;
+  lastOpenedAt?: number;
 }
 
 export interface MemoryFact {
@@ -101,6 +107,9 @@ export async function hubSnapshot(): Promise<HubSnapshot> {
       project: s.project,
       host: s.host,
       status: s.status === "ended" ? "done" : s.status,
+      via: launchSurface(s.origin),
+      startedAt: s.startedAt,
+      lastOpenedAt: s.lastOpenedAt,
     });
   }
 

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { ACCENTS, type Accent } from "@/lib/accents";
 import type { HubSnapshot, ActivitySource, ActivityStatus } from "@/lib/activity";
 import type { SubscriptionMeter } from "@/lib/sessions";
+import { LAUNCH_SURFACE_META, type LaunchSurface } from "@/lib/launchSurface";
 import StatusOrb from "../ui/StatusOrb";
 
 /** Shared client plumbing for the second-brain pages. */
@@ -61,6 +62,20 @@ export function SourcePill({ source, label }: { source: ActivitySource | "kimi";
   );
 }
 
+/** Where a session was started — Desktop app, Terminal, IDE, Background. */
+export function ViaTag({ via }: { via?: LaunchSurface }) {
+  if (!via) return null;
+  const m = LAUNCH_SURFACE_META[via];
+  return (
+    <span
+      title={m.hint}
+      className="inline-flex shrink-0 items-center rounded-md border border-line px-1.5 py-0.5 font-mono text-[10px] tracking-wide text-ink-dim"
+    >
+      {m.label}
+    </span>
+  );
+}
+
 export function StatusDot({ status }: { status: ActivityStatus }) {
   const m = STATUS_META[status];
   return (
@@ -97,6 +112,33 @@ export function fmtTokens(n: number): string {
 export function clockTime(ts: number): string {
   const d = new Date(ts);
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
+/** "today 14:02", "yesterday 09:15", "Nov 4, 14:02", "Nov 4 2025" — a date you can read at a glance. */
+export function stamp(ts?: number): string {
+  if (!ts) return "—";
+  const d = new Date(ts);
+  const now = new Date();
+  const time = clockTime(ts);
+  if (d.toDateString() === now.toDateString()) return `today ${time}`;
+  if (d.toDateString() === new Date(Date.now() - 86_400_000).toDateString()) return `yesterday ${time}`;
+  const md = d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  return d.getFullYear() === now.getFullYear() ? `${md}, ${time}` : `${md} ${d.getFullYear()}`;
+}
+
+/** Full timestamps for a hover tooltip. */
+export function timesTitle(t: { startedAt?: number; updatedAt?: number; lastOpenedAt?: number }): string {
+  const full = (ts?: number) => (ts ? new Date(ts).toLocaleString() : "—");
+  const lines = [`Created: ${full(t.startedAt)}`, `Last changed: ${full(t.updatedAt)}`];
+  if (t.lastOpenedAt) lines.push(`Last opened: ${full(t.lastOpenedAt)}`);
+  return lines.join("\n");
+}
+
+/** "created Nov 4, 10:12 · changed 2h ago · opened 5m ago" */
+export function timesLine(t: { startedAt?: number; updatedAt?: number; lastOpenedAt?: number }): string {
+  const parts = [`created ${stamp(t.startedAt)}`, `changed ${t.updatedAt ? `${ago(t.updatedAt)} ago` : "—"}`];
+  if (t.lastOpenedAt) parts.push(`opened ${ago(t.lastOpenedAt)} ago`);
+  return parts.join(" · ");
 }
 
 export function dayLabel(ts: number): string {
@@ -168,10 +210,12 @@ export function IndexingNote({ hub }: { hub: HubSnapshot | null }) {
   );
 }
 
-export function Chip({ active, onClick, children }: { active?: boolean; onClick?: () => void; children: ReactNode }) {
+export function Chip({ active, onClick, title, children }: { active?: boolean; onClick?: () => void; title?: string; children: ReactNode }) {
   return (
     <button
       type="button"
+      title={title}
+      aria-pressed={active}
       onClick={onClick}
       className="cursor-pointer rounded-md border px-2 py-1 font-mono text-[10px] tracking-wide transition-colors hover:bg-white/[0.06]"
       style={{
