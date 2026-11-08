@@ -156,9 +156,15 @@ function Read-EnvValue($key) {
   if ($line) { return ($line -replace "^\s*$key\s*=\s*", '').Trim('"', ' ') }
   return $null
 }
+function Test-Vault($p) {
+  # String concat, not Join-Path: Join-Path throws when the path's drive doesn't exist
+  # on this machine (e.g. a .env.local copied from a PC that has a D: drive).
+  if (-not $p) { return $false }
+  try { return [bool](Test-Path -LiteralPath ($p.TrimEnd('\', '/') + '\Agentic OS') -ErrorAction Stop) } catch { return $false }
+}
 $current = Read-EnvValue "VAULT_DIR"
 $vaultDir = $Vault
-if (-not $vaultDir -and $current -and (Test-Path (Join-Path $current "Agentic OS"))) { $vaultDir = $current }
+if (-not $vaultDir -and (Test-Vault $current)) { $vaultDir = $current }
 $script:envBackedUp = $false
 function Set-EnvKey($key, $value) {
   # Set KEY=value in .env.local: replace an existing (or commented-out) line, else append. Backs up once.
@@ -497,7 +503,6 @@ elseif ($InstallCodex -or (YesNo "Install the Codex CLI?" $false)) {
 # ---- 9. Obsidian vault -----------------------------------------------------
 do { if (-not (Should "vault")) { break }
 Section "Obsidian vault (the shared brain)"
-function Test-Vault($p) { return ($p -and (Test-Path (Join-Path $p "Agentic OS"))) }
 function Find-Vaults {
   $roots = New-Object System.Collections.Generic.List[string]
   foreach ($v in @($env:OneDriveCommercial, $env:OneDrive, $env:OneDriveConsumer)) { if ($v -and (Test-Path $v)) { $roots.Add($v) } }
@@ -520,6 +525,7 @@ if (Test-Path $envFile) {
 }
 if ($Mode -eq "modify") { $vaultDir = $Vault }
 if (-not $vaultDir -and $Mode -ne "modify" -and (Test-Vault $current)) { $vaultDir = $current; Ok "VAULT_DIR already points at the vault: $current" }
+if (-not $vaultDir -and $current -and -not (Test-Vault $current)) { Warn "VAULT_DIR in .env.local is '$current', which doesn't exist on this machine (copied from another PC?)" }
 if (-not $vaultDir) {
   Info "looking for the synced vault (a folder containing 'Agentic OS')..."
   $cands = @(Find-Vaults)
@@ -529,6 +535,9 @@ if (-not $vaultDir) {
     if ($pick -match '^\d+$' -and [int]$pick -ge 1 -and [int]$pick -le $cands.Count) { $vaultDir = $cands[[int]$pick - 1] } else { $vaultDir = $pick }
   } else {
     Warn "no vault found. Sync the 'AI Mission Control\IdrisGV75' folder with OneDrive first (LSI Media LLC library)."
+    Info "  1. Sign in to OneDrive on this PC (as this Windows user) with your LSI Media account"
+    Info "  2. In SharePoint, open the 'Working Files Idris' library -> AI Mission Control -> IdrisGV75 -> 'Sync' (or 'Add shortcut to My files')"
+    Info "  3. Wait until 'Agentic OS' appears in File Explorer, then paste that IdrisGV75 path below or re-run the installer"
     $vaultDir = Ask "Paste the vault path now, or press Enter to set it later" ""
   }
 }
@@ -739,15 +748,15 @@ if (-not $wantAuto) {
     Done "auto-start and watchdog turned off - start it with server.cmd when you need it"
   }
 }
-elseif ($DryRun) { Warn "would install the hidden login launcher ($vbs) and the 5-minute watchdog task" }
+elseif ($DryRun) { Warn "would register the '$WatchdogTask' task (starts the server at login, restarts it within 5 minutes)" }
 else {
-  Set-Content -Path $vbs -Value @('Set sh = CreateObject("WScript.Shell")', ('sh.Run """' + $server + '""", 0, False')) -Encoding Ascii
-  Done "starts hidden at every login"
+  # One Scheduled Task does both jobs (no .vbs launcher: Smart App Control blocks those).
+  # watchdog.ps1 -Install also removes an old Startup-folder launcher.
   $wd = Join-Path $RepoDir 'watchdog.ps1'
   if (Test-Path $wd) {
     & powershell -NoProfile -ExecutionPolicy Bypass -File $wd -Install | Out-Host
-    if ($LASTEXITCODE -eq 0) { Done "watchdog restarts it within 5 minutes if it ever stops" } else { Todo "watchdog didn't register - run install-watchdog.cmd" }
-  }
+    if ($LASTEXITCODE -eq 0) { Done "starts hidden at every login, and restarts within 5 minutes if it ever stops" } else { Todo "the '$WatchdogTask' task didn't register - run install-watchdog.cmd" }
+  } else { Todo "watchdog.ps1 is missing from $RepoDir - run update.cmd, then install-watchdog.cmd" }
 }
 
 } while ($false)
@@ -760,7 +769,8 @@ if ($DryRun -or $NoStart) { Info "skipped" }
 elseif (Test-Path $server) {
   if ($Mode -eq "modify") { Info "restarting so the changes apply..."; Stop-MissionControl; Start-Sleep -Seconds 2 }
   if (-not (Get-NetTCPConnection -LocalPort 3000 -State Listen -ErrorAction SilentlyContinue)) {
-    if (Test-Path $vbs) { & wscript.exe $vbs }
+    # Prefer the task: it starts the server as you, not elevated, even from an admin window.
+    if (Get-ScheduledTask -TaskName $WatchdogTask -ErrorAction SilentlyContinue) { Start-ScheduledTask -TaskName $WatchdogTask }
     else { Start-Process -FilePath "cmd.exe" -ArgumentList "/c `"$server`"" -WindowStyle Hidden -WorkingDirectory $RepoDir }
   }
   Info "waiting for http://127.0.0.1:3000 ..."

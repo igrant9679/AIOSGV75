@@ -371,71 +371,54 @@ Open http://127.0.0.1:3000. On first boot the app scaffolds
    browsers…); they ride along on every Claude run.
 5. **Schedules & Watchers — PRIMARY only.** Leave empty on workstations.
 
-### 4e. Auto-start at login
+### 4e. Auto-start at login + watchdog
 
-**Easiest — run the installer:** double-click **`install-service.cmd`** in the
-repo. It writes a hidden-launcher `Mission Control Server.vbs` into *this
-user's* Startup folder (pointing at this clone's `server.cmd`) and starts the
-server immediately. Re-run any time to repair it. This is the fix if the server
-"doesn't auto-start" or "dies when I close the PowerShell window" — that happens
-when the server was only ever started by hand in a terminal (closing the window
-kills it); the VBS runs it hidden and detached so neither happens.
+**Easiest: run the installer** (it does this for you), or double-click
+**`install-service.cmd`** in the repo. Either one registers a Scheduled Task,
+**"Mission Control Watchdog"**, for *this user* that:
 
-**Repo in a different folder on this machine?** By default the script points at
-whatever folder it lives in, which is right in the normal case. You can override
-that — pass the folder as an argument:
+- starts the server hidden at every login (20 seconds after sign-in), and
+- checks every 5 minutes and relaunches `server.cmd` if nothing is listening on
+  port 3000, then waits until `/api/system` answers rather than launching blind
+  (2026-08-08 a master's server died silently and the fleet had no master for
+  two days).
+
+The task runs `conhost.exe --headless powershell.exe ... watchdog.ps1`, so no
+window flashes and **no .vbs file is involved**. Older installs used a
+`Mission Control Server.vbs` in the Startup folder plus `watchdog.vbs`; Smart App
+Control blocks .vbs files ("An Application Control policy has blocked this
+file"), and Windows is retiring VBScript. Re-registering the task deletes the
+old Startup launcher.
+
+This is also the fix if the server "doesn't auto-start" or "dies when I close
+the PowerShell window" (it was only ever started by hand in a terminal).
+
+**Repo in a different folder on this machine?** Pass the folder:
 
 ```
 install-service.cmd "D:\code\my-mission-control"
 ```
 
-and if the folder it resolves has no `server.cmd` in it, it stops and asks you to
-type the path instead of writing a broken launcher. Pasted quotes and a trailing
-backslash are both fine.
-
-<details><summary>What it does by hand</summary>
-
-`server.cmd` starts the prod server safely (skips if port 3000 is taken, binds
-127.0.0.1). To run it hidden at login manually: `Win+R` → `shell:startup` →
-create `Mission Control Server.vbs`:
-
-```vb
-Set sh = CreateObject("WScript.Shell")
-sh.Run """C:\Users\<you>\Documents\mission-control\server.cmd""", 0, False
-```
-
-Test without rebooting: double-click the VBS, wait ~15 seconds, reload the
-dashboard. (Watch that the file didn't save as `.vbs.txt`.)
-</details>
-
-**What auto-starts what** — only the server needs this VBS. Ollama's
-installer already added itself to Startup, OneDrive starts at sign-in by
-default, and the agent CLIs (Claude/Codex) aren't services — the server
-spawns them on demand with your persisted logins.
-
-### 4f. Watchdog — restart a server that dies mid-session
-
-The Startup VBS only fires at **login**. A machine that stays up for weeks can
-lose its server silently (it happened 2026-08-08, and the fleet had no master
-for two days). Double-click **`install-watchdog.cmd`** in the repo once. It
-registers a Scheduled Task, **"Mission Control Watchdog"**, that runs every
-5 minutes as your logged-in user: if nothing is listening on port 3000 it
-relaunches `server.cmd` hidden, then waits until `/api/system` answers rather
-than launching blind. Do this on **every machine that can become master**.
+If that folder has no `server.cmd`, it asks you to type the path instead.
+Pasted quotes and a trailing backslash are fine.
 
 - Pause it during a dev cycle: `New-Item data\watchdog.pause` (auto-expires
   after 2 hours; `Remove-Item` it to resume sooner). It also stands down by
   itself while a `next build` / `next dev` process is running.
 - It never kills anything. A server that is listening but not answering is
-  only logged as a warning — in-flight runs die with the process.
+  only logged as a warning; in-flight runs die with the process.
 - Log: `data\watchdog.log` (actions and warnings only, self-truncating).
 - `install-watchdog.cmd status` shows the task, last result, and log tail;
-  `install-watchdog.cmd uninstall` removes it. The same three files
-  (`watchdog.ps1`, `watchdog.vbs`, `install-watchdog.cmd`) resolve their own
-  folder, so nothing needs editing when the repo lives somewhere else.
+  `install-watchdog.cmd uninstall` removes it. `watchdog.ps1` and the .cmd
+  files resolve their own folder, so nothing needs editing.
 - Laptops: the task is registered with "start/continue on battery" so a
   backup node keeps its watchdog exactly when it is likeliest to be the only
   master.
+
+**What auto-starts what**: only the server needs this task. The installer adds
+Ollama to Startup, OneDrive starts at sign-in by default, and the agent CLIs
+(Claude/Codex) aren't services; the server spawns them on demand with your
+persisted logins.
 
 Optional desktop shortcut → `launch.cmd` (opens browser; starts a dev server
 only if the port is free). `stop.cmd` kills the server (it ends with a

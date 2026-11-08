@@ -1,10 +1,10 @@
 ﻿# Mission Control watchdog
 # ---------------------------------------------------------------------------
-# Closes the gap the Startup launcher leaves: "Mission Control Server.vbs" only
-# fires at Windows LOGIN, so a prod server that dies mid-session stays dead
-# (2026-08-08: the master's server stopped silently and the fleet had no master
-# for two days). This script is run by a Scheduled Task every 5 minutes. If
-# nothing is listening on 127.0.0.1:3000 it relaunches server.cmd, hidden.
+# Starts Mission Control at login and keeps it running: a Scheduled Task runs
+# this script at login and every 5 minutes (2026-08-08: the master's server
+# stopped silently and the fleet had no master for two days). If nothing is
+# listening on 127.0.0.1:3000 it launches server.cmd, hidden. No .vbs files:
+# Smart App Control blocks them, and Windows is retiring VBScript.
 #
 #   .\watchdog.ps1              one check (what the task runs)
 #   .\watchdog.ps1 -Install     register / repair the 5-minute Scheduled Task
@@ -40,7 +40,6 @@ $DataDir  = Join-Path $Repo 'data'
 $LogFile  = Join-Path $DataDir 'watchdog.log'
 $PauseFile = Join-Path $DataDir 'watchdog.pause'
 $ServerCmd = Join-Path $Repo 'server.cmd'
-$Launcher  = Join-Path $Repo 'watchdog.vbs'
 
 function Write-Log([string]$msg) {
   if (-not (Test-Path $DataDir)) { New-Item -ItemType Directory -Path $DataDir | Out-Null }
@@ -82,14 +81,21 @@ function Test-DevCycleRunning {
 # --------------------------------------------------------------------------
 function Install-Watchdog {
   if (-not (Test-Path $ServerCmd)) { throw "server.cmd not found next to this script ($Repo)" }
-  if (-not (Test-Path $Launcher))  { throw "watchdog.vbs not found next to this script ($Repo)" }
 
-  # wscript + the VBS is what keeps the 5-minute check from flashing a console
-  # window in the interactive session (same trick as the Startup launcher).
-  $action  = New-ScheduledTaskAction -Execute 'wscript.exe' -Argument ('"{0}"' -f $Launcher) -WorkingDirectory $Repo
-  $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) `
+  # `conhost --headless` keeps the check from flashing a console window. It
+  # replaced wscript + watchdog.vbs (2026-11-08): Smart App Control / App
+  # Control policies block .vbs files outright, and Windows is retiring VBScript.
+  $psArgs  = '-NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File "{0}"' -f (Join-Path $Repo 'watchdog.ps1')
+  $action  = New-ScheduledTaskAction -Execute 'conhost.exe' -Argument ('--headless powershell.exe ' + $psArgs) -WorkingDirectory $Repo
+  $me = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+  # At login (this is also what starts the server at login - no Startup-folder
+  # launcher needed) and every 5 minutes after that.
+  $atLogon = New-ScheduledTaskTrigger -AtLogOn -User $me
+  $atLogon.Delay = 'PT20S'
+  $every5  = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) `
                -RepetitionInterval (New-TimeSpan -Minutes 5) `
                -RepetitionDuration (New-TimeSpan -Days 3650)
+  $trigger = @($atLogon, $every5)
   # Laptops: the defaults stop tasks on battery - that is exactly when a
   # backup node is most likely to be the only master, so override them.
   $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
@@ -97,15 +103,19 @@ function Install-Watchdog {
                 -ExecutionTimeLimit (New-TimeSpan -Minutes 3) -Hidden
   # Interactive = runs in the logged-in session the server itself lives in,
   # no stored password needed.
-  $me = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
   $principal = New-ScheduledTaskPrincipal -UserId $me -LogonType Interactive -RunLevel Limited
 
   Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger `
     -Settings $settings -Principal $principal -Force `
-    -Description "Every 5 min: if nothing listens on 127.0.0.1:$Port, relaunch Mission Control's server.cmd (hidden). Script: $Repo\watchdog.ps1" | Out-Null
+    -Description "At login and every 5 min: if nothing listens on 127.0.0.1:$Port, start Mission Control's server.cmd (hidden). Script: $Repo\watchdog.ps1" | Out-Null
 
-  Write-Log "installed task '$TaskName' as $me (every 5 min, repo $Repo)"
-  Write-Host "Installed '$TaskName' for $me - every 5 minutes, repo: $Repo"
+  # The task now starts the server at login, so an old Startup-folder launcher
+  # would only race it (and is blocked outright where .vbs files are).
+  $oldVbs = Join-Path ([Environment]::GetFolderPath('Startup')) 'Mission Control Server.vbs'
+  if (Test-Path $oldVbs) { Remove-Item $oldVbs -Force -ErrorAction SilentlyContinue; Write-Host "Removed the old Startup launcher ($oldVbs) - the task starts the server at login now." }
+
+  Write-Log "installed task '$TaskName' as $me (at login + every 5 min, repo $Repo)"
+  Write-Host "Installed '$TaskName' for $me - at login and every 5 minutes, repo: $Repo"
   Show-Status
 }
 

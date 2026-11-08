@@ -103,12 +103,15 @@ manual is `/guide` (source: `lib/guideContent.ts`).
 
 ## Dev cycle (production server auto-starts at login)
 
-- The **prod** server starts at Windows login via `Mission Control Server.vbs`
-  (Startup folder) → `server.cmd` → `npm start -- -H 127.0.0.1`.
+- The **prod** server starts at Windows login via the "Mission Control Watchdog"
+  Scheduled Task (`conhost --headless` → `watchdog.ps1` → `server.cmd` →
+  `npm start -- -H 127.0.0.1`); the same task re-checks every 5 minutes. No
+  .vbs launchers: Smart App Control blocks them.
 - Run `stop.cmd` **before** `npm run dev` (port conflict). Note `stop.cmd`
   ends with a `pause` — don't chain it in scripts without piping input.
-- After code changes: `npm run build`, then restart via the VBS so the boot
-  server serves the new code. The running server keeps old bundles until then.
+- After code changes: `npm run build`, then restart (stop port 3000, then
+  `Start-ScheduledTask 'Mission Control Watchdog'`) so the boot server serves
+  the new code. The running server keeps old bundles until then.
 - Dev serving stale CSS/JS after big edits → `rm -rf .next/dev`, restart dev.
 - Verify health: `/api/system`, `/api/agents` (cold-boot probes can take ~45s).
 

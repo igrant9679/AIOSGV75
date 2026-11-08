@@ -36,29 +36,29 @@ call :normalize
 goto check
 
 :install
-set "STARTUP=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup"
-set "VBS=%STARTUP%\Mission Control Server.vbs"
-
 echo Installing auto-start...
 echo   app folder: %REPO%
-echo   launcher:   %VBS%
 echo.
 
-rem Write a tiny launcher that runs server.cmd with window style 0 (hidden) and
-rem does not wait. That hidden, detached launch is why it survives closing any
-rem window; putting it in the Startup folder is why it runs at every login.
-> "%VBS%" echo Set sh = CreateObject("WScript.Shell")
->> "%VBS%" echo sh.Run """%REPO%\server.cmd""", 0, False
-
-if not exist "%VBS%" (
-  echo ERROR: could not write the startup launcher - check permissions.
+rem One Scheduled Task ("Mission Control Watchdog") starts the server hidden at
+rem login and restarts it within 5 minutes if it stops. It replaced the old
+rem Startup-folder .vbs launcher, which Smart App Control blocks; installing
+rem the task also removes that old launcher.
+if not exist "%REPO%\watchdog.ps1" (
+  echo ERROR: watchdog.ps1 is missing from %REPO% - run update.cmd first.
+  pause
+  exit /b 1
+)
+powershell -NoProfile -ExecutionPolicy Bypass -File "%REPO%\watchdog.ps1" -Install
+if errorlevel 1 (
+  echo ERROR: could not register the scheduled task - see the message above.
   pause
   exit /b 1
 )
 
-echo Auto-start installed. Launching now (hidden)...
-wscript.exe "%VBS%"
-
+echo.
+echo Auto-start installed. Starting now (hidden)...
+powershell -NoProfile -Command "Start-ScheduledTask -TaskName 'Mission Control Watchdog'"
 echo.
 echo Done:
 echo   - Starts automatically at every login.
@@ -78,7 +78,7 @@ pause
 exit /b 1
 
 rem Strip any quotes the user pasted, plus a trailing backslash, so the path we
-rem bake into the VBS is always a clean "<folder>" with no separator surprises.
+rem pass to watchdog.ps1 is always a clean "<folder>" with no separator surprises.
 :normalize
 if defined REPO set REPO=%REPO:"=%
 if not defined REPO goto :eof
