@@ -1,6 +1,7 @@
 import { sessionsSnapshot, type SessionSummary, type SubscriptionMeter } from "./sessions";
 import { launchSurface, type LaunchSurface } from "./launchSurface";
 import { mergeRemoteSessions, type RemoteMachine } from "./sessionShare";
+import { isRetired, readRetired } from "./cluster";
 import { listMissions } from "./missions";
 import { listOrchestrations, type Orchestration } from "./orchestrator";
 import { collectAttention, type AttentionItem } from "./attention";
@@ -37,6 +38,8 @@ export interface ActivityItem {
   /** Sessions only: created / last opened in the desktop app (ts = last changed). */
   startedAt?: number;
   lastOpenedAt?: number;
+  /** from a decommissioned machine (Agentic OS/Cluster/retired.json): history, not a machine to filter by */
+  retired?: boolean;
 }
 
 export interface MemoryFact {
@@ -173,6 +176,16 @@ export async function hubSnapshot(): Promise<HubSnapshot> {
       status: "done",
       href: "/memory",
     });
+  }
+
+  // Activity recorded by decommissioned machines stays as history, labelled as retired.
+  const retired = await soft(readRetired(), {});
+  for (const it of items) {
+    const r = it.host ? isRetired(retired, it.host) : undefined;
+    if (r) {
+      it.host = `${r.label} (retired)`;
+      it.retired = true;
+    }
   }
 
   items.sort((a, b) => b.ts - a.ts);

@@ -214,7 +214,12 @@ export default function ClusterPanel() {
                   </p>
                 </div>
                 {!n.self && (
-                  <button onClick={() => post({ action: "forget", host: n.host }, `Forgot ${n.host}`)} aria-label={`Forget ${n.host}`} className="cursor-pointer rounded p-1 text-ink-faint transition-colors hover:text-neon-rose">
+                  <button
+                    onClick={() => post({ action: "retire", host: n.host }, `Retired ${n.label || n.host} — it won't rejoin the group`)}
+                    aria-label={`Retire ${n.label || n.host}`}
+                    title="Retire this machine (decommissioned): removes it from the group and keeps it out — it can't rejoin or become master. Undo by deleting its entry in Agentic OS/Cluster/retired.json."
+                    className="cursor-pointer rounded p-1 text-ink-faint transition-colors hover:text-neon-rose"
+                  >
                     <IconTrash width={13} height={13} />
                   </button>
                 )}

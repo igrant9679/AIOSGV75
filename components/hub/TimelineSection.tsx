@@ -27,7 +27,7 @@ export default function TimelineSection() {
     const vias = new Map<LaunchSurface, number>();
     for (const i of hub?.items ?? []) {
       sources.add(i.source);
-      hosts.add(i.host);
+      if (!i.retired) hosts.add(i.host); // decommissioned machines aren't a filter choice
       if (i.via) vias.set(i.via, (vias.get(i.via) ?? 0) + 1);
       if (i.project) projects.set(i.project, (projects.get(i.project) ?? 0) + 1);
     }
@@ -44,7 +44,7 @@ export default function TimelineSection() {
     return (hub?.items ?? []).filter(
       (i) =>
         (source === "all" || i.source === source) &&
-        (host === "all" || i.host === host) &&
+        (host === "all" || (host === "__retired" ? i.retired : i.host === host)) &&
         (project === "all" || i.project === project) &&
         (via === "all" || i.via === via) &&
         (!needle || `${i.title} ${i.detail ?? ""} ${i.project ?? ""} ${i.agent}`.toLowerCase().includes(needle)),
@@ -95,6 +95,11 @@ export default function TimelineSection() {
           {facets.hosts.map((h) => (
             <Chip key={h} active={host === h} onClick={() => setHost(h)}>{h}</Chip>
           ))}
+          {(hub?.items ?? []).some((i) => i.retired) && (
+            <Chip active={host === "__retired"} onClick={() => setHost("__retired")} title="History from decommissioned machines">
+              Retired
+            </Chip>
+          )}
         </div>
         {facets.vias.length > 0 && (
           <div className="flex flex-wrap items-center gap-1.5">

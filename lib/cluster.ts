@@ -108,13 +108,50 @@ async function writeLease(l: Lease): Promise<void> {
   await fs.writeFile(leaseFile(), JSON.stringify(l, null, 2), "utf8");
 }
 
+// ─── retired machines (shared through the vault so every machine agrees) ───
+
+export interface RetiredMachine {
+  label: string;
+  retiredAt: string;
+}
+
+function retiredFile(): string {
+  return path.join(clusterDir(), "retired.json");
+}
+
+/** Decommissioned machines, by host. Never shown as machines and never allowed to hold the master lease. */
+export async function readRetired(): Promise<Record<string, RetiredMachine>> {
+  try {
+    return JSON.parse(await fs.readFile(retiredFile(), "utf8")) as Record<string, RetiredMachine>;
+  } catch {
+    return {};
+  }
+}
+
+export function isRetired(retired: Record<string, RetiredMachine>, host: string): RetiredMachine | undefined {
+  const k = Object.keys(retired).find((h) => h.toLowerCase() === host.toLowerCase());
+  return k ? retired[k] : undefined;
+}
+
+/** Retire a machine: drop its heartbeat and remember it, so it can't reappear in the group. */
+export async function retireNode(host: string, label?: string): Promise<void> {
+  const retired = await readRetired();
+  const known = (await readNodes()).find((n) => n.host.toLowerCase() === host.toLowerCase());
+  retired[host] = { label: label || known?.label || host, retiredAt: new Date().toISOString().slice(0, 10) };
+  await fs.mkdir(clusterDir(), { recursive: true });
+  await fs.writeFile(retiredFile(), JSON.stringify(retired, null, 2), "utf8");
+  await forgetNode(host);
+}
+
 async function readNodes(): Promise<NodeInfo[]> {
   const files = await fs.readdir(nodesDir()).catch(() => [] as string[]);
+  const retired = await readRetired();
   const nodes: NodeInfo[] = [];
   for (const f of files) {
     if (!f.endsWith(".json")) continue;
     try {
-      nodes.push(JSON.parse(await fs.readFile(path.join(nodesDir(), f), "utf8")) as NodeInfo);
+      const n = JSON.parse(await fs.readFile(path.join(nodesDir(), f), "utf8")) as NodeInfo;
+      if (!isRetired(retired, n.host)) nodes.push(n);
     } catch {
       /* skip corrupt */
     }
@@ -175,6 +212,8 @@ export async function clusterTick(): Promise<boolean> {
   const cfg = await readConfig();
   if (!cfg.enabled) return true;
   if (!(await vaultAvailable())) return cfg.role === "primary"; // vault outage: only the primary keeps firing
+  // A retired machine that was switched back on must never run master duties or rejoin the group.
+  if (isRetired(await readRetired(), nodeId())) return false;
   try {
     const isMaster = await elect(cfg);
     await writeHeartbeat(cfg, isMaster);

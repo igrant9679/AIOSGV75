@@ -1,4 +1,4 @@
-import { clusterStatus, writeConfig, claimMaster, releaseMaster, forgetNode, clusterTick, type Role } from "@/lib/cluster";
+import { clusterStatus, writeConfig, claimMaster, releaseMaster, retireNode, clusterTick, type Role } from "@/lib/cluster";
 
 export const dynamic = "force-dynamic";
 
@@ -29,9 +29,10 @@ export async function POST(request: Request) {
       await releaseMaster();
       return Response.json(await clusterStatus());
     }
-    if (body.action === "forget") {
+    // "forget" kept for older clients; both now retire (remove + keep out)
+    if (body.action === "retire" || body.action === "forget") {
       if (!body.host) return Response.json({ error: "host required" }, { status: 400 });
-      await forgetNode(body.host);
+      await retireNode(body.host);
       return Response.json(await clusterStatus());
     }
     return Response.json({ error: "unknown action" }, { status: 400 });

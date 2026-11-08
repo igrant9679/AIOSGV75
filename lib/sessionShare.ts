@@ -2,7 +2,7 @@ import crypto from "crypto";
 import fsp from "fs/promises";
 import os from "os";
 import path from "path";
-import { clusterStatus, readConfig } from "./cluster";
+import { clusterStatus, isRetired, readConfig, readRetired } from "./cluster";
 import { vaultAvailable, vaultInfo } from "./vault";
 import { sessionsSnapshot, type SessionSummary, type SubscriptionMeter } from "./sessions";
 import { readNames } from "./sessionNaming";
@@ -191,6 +191,7 @@ export async function maybeShare(): Promise<void> {
 export async function readRemoteSessions(): Promise<SharedSessionsFile[]> {
   if (!(await sharingOn())) return [];
   const me = os.hostname().toLowerCase();
+  const retired = await readRetired().catch(() => ({}));
   let names: string[] = [];
   try {
     names = await fsp.readdir(shareDir());
@@ -202,7 +203,7 @@ export async function readRemoteSessions(): Promise<SharedSessionsFile[]> {
     if (!n.endsWith(".json")) continue;
     try {
       const f = JSON.parse(await fsp.readFile(path.join(shareDir(), n), "utf8")) as SharedSessionsFile;
-      if (!f.host || f.host.toLowerCase() === me || !Array.isArray(f.sessions)) continue;
+      if (!f.host || f.host.toLowerCase() === me || !Array.isArray(f.sessions) || isRetired(retired, f.host)) continue;
       out.push(f);
     } catch {
       /* mid-sync partial file — next refresh */
