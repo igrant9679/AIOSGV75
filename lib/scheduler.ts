@@ -10,6 +10,7 @@ import { maybeRefreshProfile } from "./userProfile";
 import { syncApprovedMissions } from "./approvals";
 import { maybeRunHealth } from "./health";
 import { maybeShare } from "./sessionShare";
+import { bridgeTick } from "./bridge";
 
 async function refreshScaffold(): Promise<void> {
   const reg = await readRegistry().catch(() => null);
@@ -47,6 +48,7 @@ export function startScheduler(): void {
     maybeRescan().catch(() => {}); // throttled to every 4h internally
     syncExecuting().catch(() => {}); // advance pipeline items whose builds finished
     syncApprovedMissions().catch(() => {}); // launch approvals resolved on ANY machine
+    bridgeTick().catch(() => {}); // vault bridge for Claude Duet / OpenAI Dots (inbox, outbox, Status.md)
     maybeRefreshProfile().catch(() => {}); // throttled to weekly internally
     void refreshScaffold(); // no-op unless the day rolled over
   }, 30_000);

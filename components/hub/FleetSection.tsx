@@ -9,6 +9,7 @@ import type { SessionSummary, SubscriptionMeter } from "@/lib/sessions";
 import { useSort } from "./SortControl";
 import { SESSION_SORTS } from "./sorts";
 import SharingPanel from "./SharingPanel";
+import BridgePanel from "./BridgePanel";
 import { ConversationButton, ConversationView } from "./Conversation";
 import { useHub, SourcePill, HubError, IndexingNote, ago, fmtTokens, until } from "./common";
 
@@ -166,6 +167,7 @@ export default function FleetSection() {
       )}
 
       <SharingPanel onShared={reload} />
+      <BridgePanel />
     </div>
   );
 }

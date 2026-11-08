@@ -369,6 +369,30 @@ Chats are tagged with their machine automatically going forward; older exchanges
 - Every run writes a log (the path is printed at the top and bottom of the window).`,
   },
   {
+    id: "bridge",
+    title: "Bridge for Claude Duet & OpenAI Dots",
+    keywords: "bridge claude duet openai dots chatgpt dots proactive agent always-on onedrive sharepoint connector inbox outbox status.md task approval external agent integration",
+    body: `**Claude Duet** (Anthropic) and **OpenAI Dots** are always-on cloud agents with no public API, so Mission Control can't connect to them directly. The **bridge** connects them through your OneDrive vault instead — no ports, no keys:
+
+- **Agentic OS/Bridge/Status.md** — Mission Control writes it every 10 minutes: what needs you (approvals, waiting sessions, failures), sessions running on each machine, machine health, results from the last 24 hours, scheduled jobs and active projects.
+- **Agentic OS/Bridge/Inbox/** — the agent drops a task as a Markdown file (optional \`from:\` and \`title:\` at the top, then the request in plain language).
+- **Agentic OS/Bridge/Outbox/** — Mission Control writes the result under the same file name; its \`status\` moves through awaiting-approval → running → done (or failed / rejected / expired).
+- **Agentic OS/Bridge/README.md** — the instructions, written for the agent.
+
+**Setting it up**
+1. In Claude Duet / your Dot, connect the **OneDrive / SharePoint** connector (Microsoft 365) so it can read and write the vault.
+2. Fleet → **Bridge for Claude Duet & OpenAI Dots** → copy the sentence under "Tell Duet or your Dot" and send it to the agent.
+3. Try it: ask the agent for "a summary of what my AI tools are doing" (it reads Status.md), or to "have Mission Control draft X" (it drops a task).
+
+**Safety and limits**
+- Only the **master** machine (Legion7) processes the bridge, so a task runs exactly once. Tasks run as a normal Mission Control mission on your subscription (Claude by default, or the Auto router).
+- **Ask me before running a task** is on by default: each task becomes an approval (Command → Needs you, the approvals list on Overview, or Telegram). Turn it off only if you trust everything that can write to your vault.
+- A **daily limit** (default 20) protects your subscription; extra tasks are rejected with a note. Requests over 8,000 characters are rejected. Files starting with \`_\` are ignored (drafts).
+- Tasks are told not to send messages, pay, or delete anything.
+- Duet and Dots' own conversations stay in the Claude and ChatGPT apps — the bridge carries tasks and status, not their chat history.
+- Settings are shared by the whole machine group (Agentic OS/Cluster/bridge-settings.json); a task's state lives in its Outbox file, so the bridge keeps working if the master changes.`,
+  },
+  {
     id: "companions",
     title: "Installing Companions (Hermes & OpenClaw)",
     keywords: "install hermes openclaw talos telegram gateway companion agent setup npm venv approvals bot dashboard control room checklist full stack",

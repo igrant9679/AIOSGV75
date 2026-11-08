@@ -37,6 +37,12 @@ export interface Approval {
   launchedAt?: number;
   /** Host that raised it — useful when debugging a multi-machine queue. */
   origin?: string;
+  /**
+   * Who launches it once approved. Unset = syncApprovedMissions() below.
+   * "bridge" = lib/bridge.ts launches it itself so it can write the result
+   * back to the vault Outbox for the external agent that asked.
+   */
+  handler?: "bridge";
 }
 
 const LEGACY_FILE = path.join(process.cwd(), "data", "approvals.json");
@@ -103,7 +109,7 @@ export async function listApprovals(): Promise<Approval[]> {
 
 let seq = 0;
 
-export async function createApproval(input: { payload: string; source: string }): Promise<Approval> {
+export async function createApproval(input: { payload: string; source: string; handler?: "bridge" }): Promise<Approval> {
   const approvals = await load();
   const approval: Approval = {
     id: `ap-${Date.now().toString(36)}${seq++}`,
@@ -113,6 +119,7 @@ export async function createApproval(input: { payload: string; source: string })
     ts: Date.now(),
     status: "pending",
     origin: (await import("os")).hostname(),
+    ...(input.handler ? { handler: input.handler } : {}),
   };
   approvals.push(approval);
   await save(approvals);
@@ -156,6 +163,7 @@ export async function syncApprovedMissions(): Promise<void> {
     (a) =>
       a.status === "approved" &&
       !a.launchedAt &&
+      a.handler !== "bridge" && // the bridge launches its own (lib/bridge.ts)
       // Belt-and-braces against resurrection. Any future path that loses
       // `launchedAt` — a bad merge, a hand-edited vault file, a restored backup
       // — would otherwise make the master re-run every approval it ever
