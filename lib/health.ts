@@ -9,6 +9,7 @@ import { daemonStatus } from "./daemons";
 import { clusterStatus, isMasterNow } from "./cluster";
 import { vaultAvailable, vaultInfo } from "./vault";
 import { sendTelegram } from "./telegram";
+import { readRemoteSessions, readShareState } from "./sessionShare";
 
 /**
  * Health checks — the things that, when broken, make Mission Control quietly
@@ -284,6 +285,19 @@ async function checkCluster(): Promise<HealthCheck | null> {
   return { ...base, level: "ok", detail: `${others.length + 1} machines online; master is ${c.master}.` };
 }
 
+async function checkSharing(): Promise<HealthCheck | null> {
+  const c = await clusterStatus().catch(() => null);
+  if (!c?.config.enabled) return null;
+  const base = { id: "sharing", label: "Session sharing", impact: "Other machines stop seeing this machine's sessions, conversations and tool memory." };
+  const [last, remote] = await Promise.all([readShareState(), readRemoteSessions().catch(() => [])]);
+  const from = remote.length ? ` Receiving from ${remote.map((r) => r.label || r.host).join(", ")}.` : " No other machine shares yet.";
+  if (!last) return { ...base, level: "warn", detail: "This machine hasn't shared yet (it runs every 5 minutes after start-up)." + from };
+  if (Date.now() - last.at > 30 * 60_000) {
+    return { ...base, level: "warn", detail: `Last shared ${fmtAgo(last.at)}.${from}`, fix: "Check that the vault is reachable, or press Share now on the Fleet page." };
+  }
+  return { ...base, level: "ok", detail: `Shared ${fmtAgo(last.at)}.${from}` };
+}
+
 async function checkDisk(): Promise<HealthCheck> {
   const base = { id: "disk", label: "Free disk space", impact: "Session indexing, logs and builds start failing when the disk fills." };
   try {
@@ -332,6 +346,7 @@ export function runHealthChecks(): Promise<HealthReport> {
       checkDaemons(),
       checkWatchdog(),
       checkCluster(),
+      checkSharing(),
       checkDisk(),
     ]);
     const checks = results.flat().filter((c): c is HealthCheck => Boolean(c));

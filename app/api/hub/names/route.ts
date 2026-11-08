@@ -1,5 +1,12 @@
 import { sessionsSnapshot } from "@/lib/sessions";
+import { mergeRemoteSessions } from "@/lib/sessionShare";
 import { aiNameSessions, needsNaming, readNames, renameSessions } from "@/lib/sessionNaming";
+
+/** This machine's sessions plus the rest of the machine group's. */
+async function allSessions() {
+  const snap = await sessionsSnapshot();
+  return (await mergeRemoteSessions(snap.sessions).catch(() => ({ sessions: snap.sessions }))).sessions;
+}
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -7,8 +14,8 @@ export const maxDuration = 300;
 /** Naming status: how many sessions still need a name, and the last AI run. */
 export async function GET() {
   try {
-    const [snap, names] = await Promise.all([sessionsSnapshot(), readNames()]);
-    return Response.json({ needsNaming: snap.sessions.filter(needsNaming).length, lastAiRun: names.lastAiRun ?? null });
+    const [sessions, names] = await Promise.all([allSessions(), readNames()]);
+    return Response.json({ needsNaming: sessions.filter(needsNaming).length, lastAiRun: names.lastAiRun ?? null });
   } catch (e) {
     return Response.json({ error: (e as Error).message }, { status: 500 });
   }
@@ -38,8 +45,7 @@ export async function POST(req: Request) {
       return Response.json({ ok: true, renamed: keys.length });
     }
     if (body.action === "ai") {
-      const snap = await sessionsSnapshot();
-      const result = await aiNameSessions(snap.sessions);
+      const result = await aiNameSessions(await allSessions());
       return Response.json({ ok: !result.error, ...result }, { status: result.error && result.named === 0 ? 502 : 200 });
     }
     return Response.json({ error: "unknown action" }, { status: 400 });

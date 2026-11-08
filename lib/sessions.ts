@@ -254,6 +254,17 @@ const MC_PREAMBLE_END = "[OS verbs — include these tags";
 
 /** First line of a human prompt, with injected reminder/context blocks removed. */
 function cleanPrompt(text: string): string {
+  const stripped = cleanPromptText(text);
+  const first =
+    stripped
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .find((l) => l && !/^(#|---|\[.*\]$)/.test(l)) ?? "";
+  return first.replace(/^\*\*|\*\*$/g, "").slice(0, 140);
+}
+
+/** The whole human prompt with Mission Control's preamble and injected context blocks removed. */
+export function cleanPromptText(text: string): string {
   let body = text;
   // Runs launched by Mission Control carry profile/memory/vault context first;
   // the real request starts after the OS-verbs hint line.
@@ -276,15 +287,10 @@ function cleanPrompt(text: string): string {
     .filter((l) => !/^\s*<\/?[a-z][\w-]*[^>]*>\s*$/i.test(l))
     .join("\n")
     .trim();
-  const first =
-    stripped
-      .split(/\r?\n/)
-      .map((l) => l.trim())
-      .find((l) => l && !/^(#|---|\[.*\]$)/.test(l)) ?? "";
-  return first.replace(/^\*\*|\*\*$/g, "").slice(0, 140);
+  return stripped;
 }
 
-function textOf(content: unknown): string {
+export function textOf(content: unknown): string {
   if (typeof content === "string") return content;
   if (Array.isArray(content)) {
     return content
@@ -427,7 +433,7 @@ function compactSamples(samples: [number, number][]): [number, number][] {
 
 // ─── Codex parser ───
 
-async function readCodexText(file: string): Promise<string> {
+export async function readCodexText(file: string): Promise<string> {
   const buf = await fsp.readFile(file);
   if (file.endsWith(".zst")) {
     const z = zlib as unknown as { zstdDecompressSync?: (b: Buffer) => Buffer };
@@ -606,6 +612,13 @@ function claudeStatus(live: LiveClaude | undefined): SessionStatus {
 }
 
 // ─── public API ───
+
+/** Path of the session file on THIS machine for a session key (from the parse cache). */
+export async function findSessionFile(key: string): Promise<string | undefined> {
+  const cache = await readCache();
+  for (const [file, e] of Object.entries(cache.entries)) if (e.summary.key === key) return file;
+  return undefined;
+}
 
 export interface SessionsSnapshot {
   host: string;

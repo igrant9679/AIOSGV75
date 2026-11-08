@@ -9,6 +9,7 @@ import { clusterTick } from "./cluster";
 import { maybeRefreshProfile } from "./userProfile";
 import { syncApprovedMissions } from "./approvals";
 import { maybeRunHealth } from "./health";
+import { maybeShare } from "./sessionShare";
 
 async function refreshScaffold(): Promise<void> {
   const reg = await readRegistry().catch(() => null);
@@ -31,6 +32,9 @@ export function startScheduler(): void {
   // Health checks run on EVERY machine (a signed-out CLI on a backup node
   // matters the moment it becomes master). Throttled to every 10 min inside.
   setInterval(() => void maybeRunHealth().catch(() => {}), 60_000);
+  // Session summaries, conversation digests and tool memory → the vault, for
+  // the rest of the machine group (every machine; throttled to 5 min inside).
+  setInterval(() => void maybeShare().catch(() => {}), 60_000);
   setTimeout(() => void maybeRunHealth().catch(() => {}), 20_000);
   // Master-only duties are gated on holding the cluster lease. With clustering
   // off (default) clusterTick() returns true, so a lone machine runs as always.

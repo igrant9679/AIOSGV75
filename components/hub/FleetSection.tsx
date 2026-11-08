@@ -8,6 +8,8 @@ import { ACCENTS, type Accent } from "@/lib/accents";
 import type { SessionSummary, SubscriptionMeter } from "@/lib/sessions";
 import { useSort } from "./SortControl";
 import { SESSION_SORTS } from "./sorts";
+import SharingPanel from "./SharingPanel";
+import { ConversationButton, ConversationView } from "./Conversation";
 import { useHub, SourcePill, HubError, IndexingNote, ago, fmtTokens, until } from "./common";
 
 interface ClusterNode {
@@ -36,7 +38,8 @@ const TOOLS: SubscriptionMeter["tool"][] = ["claude", "codex", "kimi"];
  * session summaries are shared through the vault (roadmap phase 4).
  */
 export default function FleetSection() {
-  const { hub, error } = useHub();
+  const { hub, error, reload } = useHub();
+  const [reading, setReading] = useState<string | null>(null);
   const [cluster, setCluster] = useState<ClusterView | null>(null);
   const [pick, setPick] = useState<{ host: string; tool: SubscriptionMeter["tool"] } | null>(null);
   const [showAll, setShowAll] = useState(false);
@@ -62,11 +65,19 @@ export default function FleetSection() {
       if (n.self || n.host === self) continue;
       rows.push({ host: n.host, label: n.label, online: n.online, self: false, role: n.role, seen: n.ts, master: n.isMaster });
     }
-    return rows;
+    // machines that share sessions but aren't in this machine's node list (yet)
+    for (const r of hub?.machines ?? []) {
+      if (!rows.some((x) => x.host === r.host)) rows.push({ host: r.host, label: r.label, online: !r.stale, self: false, seen: r.publishedAt });
+    }
+    return rows.map((r) => {
+      const shared = hub?.machines.find((x) => x.host === r.host);
+      return { ...r, shares: r.self || Boolean(shared), publishedAt: shared?.publishedAt };
+    });
   }, [hub, cluster]);
 
   const cell = (host: string, tool: SubscriptionMeter["tool"]) => {
-    const meter = hub?.subscriptions.find((m) => m.tool === tool);
+    const meters = host === hub?.host ? hub?.subscriptions : hub?.machines.find((x) => x.host === host)?.subscriptions;
+    const meter = meters?.find((m) => m.tool === tool);
     const sessions = (hub?.sessions ?? []).filter((s) => s.host === host && s.tool === tool && !s.indexing);
     const open = sessions.filter((s) => s.status !== "ended");
     return { meter, sessions, open };
@@ -101,16 +112,17 @@ export default function FleetSection() {
               to see your other machines here.
             </p>
           )}
-          {cluster?.config.enabled && machines.length > 1 && (
+          {cluster?.config.enabled && machines.some((m) => !m.shares) && (
             <p className="pt-3 text-[11px] text-ink-faint">
-              Other machines show their heartbeat for now. Their sessions appear here once session summaries are shared through the vault.
+              Dashed cells: that machine runs an older Mission Control that doesn't share its sessions yet. Run update.cmd there and it
+              appears within 5 minutes.
             </p>
           )}
         </div>
       </Panel>
 
       {selected && detail && (
-        <Panel title={`${selected.host} · ${detail.meter?.label ?? selected.tool} · ${detail.sessions.length} sessions`} right={detail.sessions.length > 1 ? sessionSort.control : undefined}>
+        <Panel title={`${machines.find((m) => m.host === selected.host)?.label ?? selected.host} · ${detail.meter?.label ?? selected.tool} · ${detail.sessions.length} sessions`} right={detail.sessions.length > 1 ? sessionSort.control : undefined}>
           <div className="grid gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_260px]">
             <div className="flex flex-col">
               {detail.sessions.length === 0 && (
@@ -119,7 +131,8 @@ export default function FleetSection() {
                 </p>
               )}
               {(showAll ? sessionSort.apply(detail.sessions) : sessionSort.apply(detail.sessions).slice(0, 8)).map((s) => (
-                <div key={s.key} className="flex items-center gap-2 border-b border-line py-2 last:border-b-0">
+                <div key={s.key} className="border-b border-line last:border-b-0">
+                <div className="flex items-center gap-2 py-2">
                   <StatusOrb accent={s.status === "running" ? "amber" : s.status === "waiting" ? "rose" : s.status === "idle" ? "cyan" : "lime"} pulsing={s.status === "running"} size={7} />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-xs font-semibold text-ink">{s.title}</span>
@@ -127,6 +140,9 @@ export default function FleetSection() {
                       {s.project} · changed {ago(s.updatedAt)} ago{s.lastOpenedAt ? ` · opened ${ago(s.lastOpenedAt)} ago` : ""} · {s.userTurns} prompts · {fmtTokens(s.tokensIn + s.tokensOut)} tokens
                     </span>
                   </span>
+                  <ConversationButton open={reading === s.key} onClick={() => setReading(reading === s.key ? null : s.key)} />
+                </div>
+                {reading === s.key && <ConversationView sessionKey={s.key} />}
                 </div>
               ))}
               {detail.sessions.length > 8 && (
@@ -148,6 +164,8 @@ export default function FleetSection() {
           </div>
         </Panel>
       )}
+
+      <SharingPanel onShared={reload} />
     </div>
   );
 }
@@ -158,7 +176,7 @@ function FleetRow({
   selected,
   onPick,
 }: {
-  m: { host: string; label: string; online: boolean; self: boolean; role?: string; seen?: number; master?: boolean };
+  m: { host: string; label: string; online: boolean; self: boolean; role?: string; seen?: number; master?: boolean; shares: boolean; publishedAt?: number };
   cell: (host: string, tool: SubscriptionMeter["tool"]) => { meter?: SubscriptionMeter; sessions: unknown[]; open: unknown[] };
   selected: { host: string; tool: SubscriptionMeter["tool"] } | null;
   onPick: (p: { host: string; tool: SubscriptionMeter["tool"] }) => void;
@@ -173,16 +191,18 @@ function FleetRow({
             {m.self ? " (this PC)" : ""}
           </span>
           <span className="block truncate font-mono text-[10px] text-ink-faint">
-            {[m.role, m.master ? "master" : "", !m.self && m.seen ? `seen ${ago(m.seen)} ago` : ""].filter(Boolean).join(" · ") || "standalone"}
+            {[m.role, m.master ? "master" : "", !m.self && m.seen ? `seen ${ago(m.seen)} ago` : "", !m.self && m.publishedAt ? `shared ${ago(m.publishedAt)} ago` : ""]
+              .filter(Boolean)
+              .join(" · ") || "standalone"}
           </span>
         </span>
       </span>
       {TOOLS.map((t) => {
         const isSel = selected?.host === m.host && selected?.tool === t;
-        if (!m.self) {
+        if (!m.shares) {
           return (
             <div key={t} className="rounded-xl border border-dashed border-line px-3 py-2 text-center font-mono text-[10px] text-ink-faint">
-              {m.online ? "sessions not shared yet" : "offline"}
+              {m.online ? "not sharing yet — update Mission Control there" : "offline"}
             </div>
           );
         }

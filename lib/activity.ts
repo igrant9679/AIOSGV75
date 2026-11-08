@@ -1,5 +1,6 @@
 import { sessionsSnapshot, type SessionSummary, type SubscriptionMeter } from "./sessions";
 import { launchSurface, type LaunchSurface } from "./launchSurface";
+import { mergeRemoteSessions, type RemoteMachine } from "./sessionShare";
 import { listMissions } from "./missions";
 import { listOrchestrations, type Orchestration } from "./orchestrator";
 import { collectAttention, type AttentionItem } from "./attention";
@@ -54,6 +55,8 @@ export interface HubSnapshot {
   orchestrations: Orchestration[];
   memory: MemoryFact[];
   indexing: { done: number; total: number };
+  /** other machines in the group that publish their sessions through the vault */
+  machines: RemoteMachine[];
 }
 
 const MEMORY_LINE_RE = /^- \[(\d{4}-\d{2}-\d{2}) (\d{2}):(\d{2}) · (?:\[\[(?:[^|\]]*\|)?([^\]]+)\]\]|([^\]]+))\] (.+)$/;
@@ -94,8 +97,9 @@ export async function hubSnapshot(): Promise<HubSnapshot> {
   ]);
   const host = snap.host;
   const items: ActivityItem[] = [];
+  const merged = await soft(mergeRemoteSessions(snap.sessions), { sessions: snap.sessions, remote: [] as RemoteMachine[] });
 
-  for (const s of snap.sessions) {
+  for (const s of merged.sessions) {
     if (s.indexing) continue;
     items.push({
       id: s.key,
@@ -176,7 +180,8 @@ export async function hubSnapshot(): Promise<HubSnapshot> {
     host,
     generatedAt: Date.now(),
     items: items.slice(0, 600),
-    sessions: snap.sessions,
+    sessions: merged.sessions,
+    machines: merged.remote,
     subscriptions: snap.subscriptions,
     attention,
     orchestrations,

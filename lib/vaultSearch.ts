@@ -23,7 +23,8 @@ interface IndexedPassage {
 }
 
 const REBUILD_MS = 120_000;
-const MAX_FILES = 800;
+// Raised from 800 when session digests and tool memory joined the vault (v43.5).
+const MAX_FILES = 3000;
 const MAX_FILE_BYTES = 200_000;
 const MAX_PASSAGES = 6000;
 const PASSAGE_CHARS = 600;

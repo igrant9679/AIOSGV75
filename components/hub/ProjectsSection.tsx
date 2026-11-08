@@ -10,6 +10,7 @@ import { useHub, SourcePill, ViaTag, StatusDot, HubError, IndexingNote, ago, fmt
 import { launchSurface } from "@/lib/launchSurface";
 import { useSort, type SortOption } from "./SortControl";
 import { SESSION_SORTS } from "./sorts";
+import { ConversationButton, ConversationView } from "./Conversation";
 
 interface Passage {
   file: string;
@@ -141,6 +142,7 @@ export default function ProjectsSection() {
   const [aiBusy, setAiBusy] = useState(false);
   const [aiMsg, setAiMsg] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
+  const [reading, setReading] = useState<string | null>(null);
   const projectSort = useSort<ProjectGroup>("projects", PROJECT_SORTS);
   const sessionSort = useSort<SessionSummary>("project-sessions", SESSION_SORTS);
 
@@ -352,18 +354,23 @@ export default function ProjectsSection() {
               <Panel title="Sessions across tools" right={sessionSort.control}>
                 <div className="flex flex-col p-4">
                   {visible.map((s) => (
-                    <div key={s.key} className="flex items-center gap-2 border-b border-line py-2 last:border-b-0" title={timesTitle(s)}>
-                      <StatusDot status={s.status === "ended" ? "done" : s.status} />
-                      <span className="min-w-0 flex-1">
-                        <Renamable value={s.title} label="Rename this session" onSave={(t) => renameSession(s.key, t)} className="text-xs font-semibold text-ink" />
-                        <span className="block truncate font-mono text-[10px] text-ink-faint">{timesLine(s)}</span>
-                        <span className="block truncate font-mono text-[10px] text-ink-faint">
-                          {s.userTurns} prompts · {fmtTokens(s.tokensIn + s.tokensOut)} tokens
-                          {s.projectSource === "ai" ? " · grouped by AI" : ""}
+                    <div key={s.key} className="border-b border-line last:border-b-0">
+                      <div className="flex items-center gap-2 py-2" title={timesTitle(s)}>
+                        <StatusDot status={s.status === "ended" ? "done" : s.status} />
+                        <span className="min-w-0 flex-1">
+                          <Renamable value={s.title} label="Rename this session" onSave={(t) => renameSession(s.key, t)} className="text-xs font-semibold text-ink" />
+                          <span className="block truncate font-mono text-[10px] text-ink-faint">{timesLine(s)}</span>
+                          <span className="block truncate font-mono text-[10px] text-ink-faint">
+                            {s.userTurns} prompts · {fmtTokens(s.tokensIn + s.tokensOut)} tokens
+                            {s.host !== hub?.host ? ` · ${hub?.machines.find((m) => m.host === s.host)?.label ?? s.host}` : ""}
+                            {s.projectSource === "ai" ? " · grouped by AI" : ""}
+                          </span>
                         </span>
-                      </span>
-                      <ViaTag via={launchSurface(s.origin)} />
-                      <SourcePill source={s.tool} />
+                        <ConversationButton open={reading === s.key} onClick={() => setReading(reading === s.key ? null : s.key)} />
+                        <ViaTag via={launchSurface(s.origin)} />
+                        <SourcePill source={s.tool} />
+                      </div>
+                      {reading === s.key && <ConversationView sessionKey={s.key} />}
                     </div>
                   ))}
                   {current.sessions.length > 12 && (
