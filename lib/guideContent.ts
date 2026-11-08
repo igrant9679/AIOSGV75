@@ -53,6 +53,24 @@ export const GUIDE_SECTIONS: GuideSection[] = [
 **Signature widgets** (each described in its feature's section): Pipeline's **Flow funnel**, Journal's **12-week writing heatmap + streak**, Analytics' **month-end spend projection**, Auto's **Recent Routes**, Arena's **VS strip + podium**, and JARVIS's **arc-reactor + live mic equalizer**.`,
   },
   {
+    id: "appearance",
+    title: "Appearance — Theme, Colors, Fonts & Layout",
+    keywords: "appearance customize look feel theme dark light system palette colors ocean sunset forest pastel terminal monochrome font inter plex serif readable atkinson monospace size zoom scale density compact spacious sidebar icons right width corners rounded sharp panels glass solid outline flat glow shimmer animation motion reduced start page preset reset",
+    body: `**Appearance** (Workspace → Appearance, or Ctrl/⌘+K → "appearance") changes the whole deck live — no reload.
+
+**Presets** — one click: *Mission Control* (the original), *Calm*, *Terminal*, *Paper*, *Focus*, *Easy reading*. **Reset to default** undoes everything.
+
+**Look** — Theme (dark / light / match system) · Color palette (Neon, Ocean, Sunset, Forest, Pastel, Terminal, Monochrome — monochrome keeps amber/lime/rose so status still reads) · Background tone (cool blue, neutral gray, warm, pure black/white) · Text contrast · Panel style (glass, solid, outline, flat) · Panel accent stripe · Corners (sharp → extra round) · Background effects (full, subtle, plain) · Glow and shimmer.
+
+**Type** — Interface font (Space Grotesk, Inter, IBM Plex Sans, Atkinson Hyperlegible, Source Serif, Segoe UI, or monospace everywhere) · Code and data font (JetBrains Mono, IBM Plex Mono, Fira Code, Cascadia/Consolas) · Label style (SPACED CAPS or normal case) · Interface size (90–125%).
+
+**Layout** — Density (compact, comfortable, spacious) · Sidebar (full, compact, icons only — hover an icon for its name) · Sidebar position (left/right) · Content width (focused, standard, full width) · Footer ticker.
+
+**Behavior** — Animation (full; reduced stops looping effects; none) · Start page (Overview, Command, Timeline, Projects or Board — applied once per browser tab, so Overview stays reachable).
+
+Settings are stored in this browser (\`localStorage\`: \`mc-appearance\`, theme in \`mc-theme\`) and applied before first paint, so there's no flash. Each machine/browser keeps its own look.`,
+  },
+  {
     id: "second-brain",
     title: "Second Brain — Command, Timeline, Projects, Fleet, Board",
     keywords: "second brain hub command center timeline activity stream projects fleet board sessions claude code codex kimi subscriptions usage limits rate limits native sessions machines accounts manager worker reviewer roles",

@@ -47,6 +47,7 @@ const PAGES: Command[] = [
   { id: "journal", label: "Journal", hint: "one file per day", accent: "rose", href: "/journal" },
   { id: "memory", label: "Memory", hint: "shared brain", accent: "violet", href: "/memory" },
   { id: "settings", label: "Settings", hint: "LLMs · agents · spaces", accent: "cyan", href: "/settings" },
+  { id: "appearance", label: "Appearance", hint: "theme · colors · fonts · layout", accent: "magenta", href: "/appearance" },
   { id: "guide", label: "Guide", hint: "searchable manual", accent: "magenta", href: "/guide" },
 ];
 

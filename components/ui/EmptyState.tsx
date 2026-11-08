@@ -25,7 +25,7 @@ export default function EmptyState({
   if (compact) {
     return (
       <div className="flex flex-col items-center gap-1 py-5">
-        <p className="font-mono text-[10px] tracking-[0.22em] text-ink-faint">{title.toUpperCase()}</p>
+        <p className="label-caps font-mono text-[10px] tracking-[0.22em] text-ink-faint">{title}</p>
         {hint && <p className="text-[11px] text-ink-faint">{hint}</p>}
         {action}
       </div>
@@ -44,8 +44,8 @@ export default function EmptyState({
           </g>
         </svg>
       </div>
-      <p className="font-mono text-[11px] font-bold tracking-[0.22em]" style={{ color: c.base }}>
-        {title.toUpperCase()}
+      <p className="label-caps font-mono text-[11px] font-bold tracking-[0.22em]" style={{ color: c.base }}>
+        {title}
       </p>
       {hint && <p className="max-w-72 text-center text-[11px] leading-4 text-ink-faint">{hint}</p>}
       {action}

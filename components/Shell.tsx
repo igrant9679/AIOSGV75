@@ -2,6 +2,8 @@
 
 import type { CSSProperties, ReactNode } from "react";
 import { usePathname } from "next/navigation";
+import { MotionConfig } from "framer-motion";
+import { useAppearance } from "./useAppearance";
 import { ACCENTS, ROUTE_ACCENTS, type Accent } from "@/lib/accents";
 import { MissionProvider, useMission } from "./store";
 import Header from "./Header";
@@ -42,25 +44,27 @@ function DeckFrame({ children }: { children: ReactNode }) {
       {/* ambient layers — page-tint washes the accent in everywhere; on agent
           chat pages the multicolor nebula crossfades out and a monochrome
           accent nebula takes the whole sky */}
-      <div aria-hidden className="nebula pointer-events-none fixed inset-0" />
-      <div aria-hidden className="nebula-accent pointer-events-none fixed inset-0" />
-      <div aria-hidden className="page-tint pointer-events-none fixed inset-0" />
-      <div aria-hidden className="grid-bg pointer-events-none fixed inset-0" />
+      <div aria-hidden className="ambient">
+        <div className="nebula pointer-events-none fixed inset-0" />
+        <div className="nebula-accent pointer-events-none fixed inset-0" />
+        <div className="page-tint pointer-events-none fixed inset-0" />
+        <div className="grid-bg pointer-events-none fixed inset-0" />
+      </div>
 
       <CommandPalette />
       <ShortcutsOverlay />
       <Celebration />
-      <div className="relative mx-auto flex min-h-dvh w-full max-w-[1600px] flex-col gap-4 p-4 lg:p-5">
+      <div className="deck-frame relative mx-auto flex min-h-dvh w-full max-w-[1600px] flex-col gap-4 p-4 lg:p-5">
         <Header />
         <ApprovalsBar />
-        <div className="flex flex-1 flex-col gap-4 md:flex-row">
+        <div className="deck-row flex flex-1 flex-col gap-4 md:flex-row">
           <Sidebar />
           <main className="min-w-0 flex-1">
             <PageHero />
             {children}
           </main>
         </div>
-        <footer className="flex items-center justify-between gap-4 px-1 font-mono text-[10px] tracking-[0.2em] text-ink-faint">
+        <footer className="deck-footer flex items-center justify-between gap-4 px-1 font-mono text-[10px] tracking-[0.2em] text-ink-faint">
           <EventTicker />
           <span className="shrink-0">BRIDGE: claude -p · SSE RELAY</span>
         </footer>
@@ -70,9 +74,15 @@ function DeckFrame({ children }: { children: ReactNode }) {
 }
 
 export default function Shell({ children }: { children: ReactNode }) {
+  // Animation setting also governs framer-motion: "reduced"/"none" skip
+  // transform animations (fades remain), alongside the CSS rules in globals.css.
+  const { appearance } = useAppearance();
+  const reduce = appearance.motion !== "full";
   return (
-    <MissionProvider>
-      <DeckFrame>{children}</DeckFrame>
-    </MissionProvider>
+    <MotionConfig reducedMotion={reduce ? "always" : "user"}>
+      <MissionProvider>
+        <DeckFrame>{children}</DeckFrame>
+      </MissionProvider>
+    </MotionConfig>
   );
 }

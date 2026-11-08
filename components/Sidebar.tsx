@@ -59,6 +59,7 @@ const WORKSPACE_NAV: NavItem[] = [
   { href: "/journal", label: "Journal", sub: "One file per day", accent: "rose", icon: IconBook },
   { href: "/memory", label: "Memory", sub: "Shared by all agents", accent: "violet", icon: IconBrain },
   { href: "/settings", label: "Settings", sub: "LLMs · agents · spaces", accent: "cyan", icon: IconGear },
+  { href: "/appearance", label: "Appearance", sub: "Look · type · layout", accent: "magenta", icon: IconStudio },
   { href: "/guide", label: "Guide", sub: "Searchable manual", accent: "magenta", icon: IconHelp },
 ];
 
@@ -88,7 +89,7 @@ export default function Sidebar() {
     if (href === "/auto") return busy.auto ? "amber" : "lime";
     if (href === "/hermes-lab") { const h = agents.find((a) => a.id === "hermes"); return h?.available ? "lime" : "rose"; }
     if (href === "/watcher") return "lime";
-    if (href === "/command" || href === "/timeline" || href === "/projects" || href === "/fleet" || href === "/board") return "lime";
+    if (href === "/command" || href === "/timeline" || href === "/projects" || href === "/fleet" || href === "/board" || href === "/appearance") return "lime";
     if (href === "/" || href === "/settings" || href === "/missions" || href === "/arena" || href === "/analytics" || href === "/reports" || href === "/evals" || href === "/guide" || href === "/tasks" || href === "/schedule" || href === "/mastermind" || href === "/jarvis" || href === "/pipeline") return "lime";
     if (href === "/goals" || href === "/journal" || href === "/memory" || href === "/library" || href === "/graph" || href === "/builds" || href === "/studio" || href === "/content" || href === "/import" || href === "/conversations") return vaultOk ? "lime" : "rose";
     const id = href.replace("/agent/", "").replace("/", "");
@@ -109,7 +110,8 @@ export default function Sidebar() {
         key={item.href}
         href={item.href}
         aria-current={active ? "page" : undefined}
-        className="relative flex min-h-12 items-center gap-3 rounded-xl px-3 py-2.5 transition-colors hover:bg-white/[0.04]"
+        title={item.label}
+        className="sb-item relative flex min-h-12 items-center gap-3 rounded-xl px-3 py-2.5 transition-colors hover:bg-white/[0.04]"
         style={active ? { background: c.soft } : undefined}
       >
         {active && (
@@ -129,16 +131,18 @@ export default function Sidebar() {
             {Icon && <Icon width={15} height={15} />}
           </span>
         )}
-        <span className="min-w-0 flex-1">
+        <span className="sb-text min-w-0 flex-1">
           <span
             className="block truncate text-sm font-semibold tracking-wide"
             style={{ color: active ? c.base : "var(--color-ink)" }}
           >
             {item.label}
           </span>
-          <span className="block truncate text-[10px] text-ink-faint">{item.sub}</span>
+          <span className="sb-sub block truncate text-[10px] text-ink-faint">{item.sub}</span>
         </span>
-        <StatusOrb accent={statusFor(item.href)} pulsing={statusFor(item.href) === "amber"} size={7} />
+        <span className="sb-orb flex">
+          <StatusOrb accent={statusFor(item.href)} pulsing={statusFor(item.href) === "amber"} size={7} />
+        </span>
       </Link>
     );
   };
@@ -148,26 +152,27 @@ export default function Sidebar() {
       initial={{ opacity: 0, x: -18 }}
       animate={{ opacity: 1, x: 0 }}
       transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-      className="panel flex w-60 shrink-0 flex-col gap-1 overflow-hidden p-3"
+      className="mc-sidebar panel flex w-60 shrink-0 flex-col gap-1 overflow-hidden p-3"
       aria-label="Agents"
     >
-      <span className="panel-title px-2 pb-2 pt-1">Second brain</span>
+      <span className="sb-section panel-title px-2 pb-2 pt-1">Second brain</span>
       {BRAIN_NAV.map((item) => renderItem(item))}
 
-      <span className="panel-title px-2 pb-2 pt-4">Agents</span>
+      <span className="sb-section panel-title px-2 pb-2 pt-4">Agents</span>
       {AGENT_NAV.map((item) => renderItem(item))}
       {dynamicNav.map((item) => renderItem(item))}
       <Link
         href="/settings"
-        className="flex min-h-9 items-center gap-2 rounded-xl px-3 py-1.5 text-[11px] font-medium text-ink-faint transition-colors hover:bg-white/[0.04] hover:text-ink"
+        title="Add agent"
+        className="sb-add flex min-h-9 items-center gap-2 rounded-xl px-3 py-1.5 text-[11px] font-medium text-ink-faint transition-colors hover:bg-white/[0.04] hover:text-ink"
       >
-        <IconPlus width={13} height={13} /> Add agent
+        <IconPlus width={13} height={13} /> <span className="sb-add-label">Add agent</span>
       </Link>
 
-      <span className="panel-title px-2 pb-2 pt-4">Workspace</span>
+      <span className="sb-section panel-title px-2 pb-2 pt-4">Workspace</span>
       {WORKSPACE_NAV.map((item) => renderItem(item))}
 
-      <div className="mt-auto rounded-xl border border-line bg-white/[0.02] p-3">
+      <div className="sb-host mt-auto rounded-xl border border-line bg-white/[0.02] p-3">
         <p className="panel-title pb-1.5">Host</p>
         <p className="font-mono text-[11px] leading-5 text-ink-dim">
           {system?.hostname ?? "—"}

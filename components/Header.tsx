@@ -5,6 +5,7 @@ import { motion } from "framer-motion";
 import StatusOrb from "./ui/StatusOrb";
 import { IconSun, IconMoon } from "./icons";
 import { useMission } from "./store";
+import { APPEARANCE_EVENT } from "@/lib/appearance";
 
 export default function Header() {
   const { system, busy } = useMission();
@@ -13,7 +14,11 @@ export default function Header() {
   const [theme, setTheme] = useState("dark");
 
   useEffect(() => {
-    setTheme(document.documentElement.dataset.theme ?? "dark");
+    const sync = () => setTheme(document.documentElement.dataset.theme ?? "dark");
+    sync();
+    // the Appearance page (and "match system") can change the theme too
+    window.addEventListener(APPEARANCE_EVENT, sync);
+    return () => window.removeEventListener(APPEARANCE_EVENT, sync);
   }, []);
 
   const toggleTheme = () => {
@@ -25,6 +30,7 @@ export default function Header() {
     } catch {
       /* private mode */
     }
+    window.dispatchEvent(new Event(APPEARANCE_EVENT));
   };
 
   useEffect(() => {

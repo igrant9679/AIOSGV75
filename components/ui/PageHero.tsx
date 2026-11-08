@@ -26,13 +26,13 @@ export default function PageHero() {
     >
       <div className="flex items-baseline justify-between gap-3">
         <div className="flex min-w-0 items-baseline gap-3">
-          <h2 className="shrink-0 font-display text-xl font-bold tracking-[0.12em]" style={{ color: ACCENT }}>
-            {meta.title.toUpperCase()}
+          <h2 className="label-caps shrink-0 font-display text-xl font-bold tracking-[0.12em]" style={{ color: ACCENT }}>
+            {meta.title}
           </h2>
-          <p className="truncate font-mono text-[10px] tracking-[0.24em] text-ink-faint">{meta.tagline.toUpperCase()}</p>
+          <p className="label-caps truncate font-mono text-[10px] tracking-[0.24em] text-ink-faint">{meta.tagline}</p>
         </div>
-        <span className="hidden shrink-0 font-mono text-[10px] tracking-[0.24em] text-ink-faint sm:block">
-          DECK <span style={{ color: ACCENT }}>//</span> {meta.title.toUpperCase()}
+        <span className="label-caps hidden shrink-0 font-mono text-[10px] tracking-[0.24em] text-ink-faint sm:block">
+          Deck <span style={{ color: ACCENT }}>//</span> {meta.title}
         </span>
       </div>
       <div
