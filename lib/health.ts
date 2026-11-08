@@ -6,7 +6,7 @@ import path from "path";
 import { cleanEnv } from "./runners";
 import { listSchedules } from "./schedules";
 import { daemonStatus } from "./daemons";
-import { clusterStatus, isMasterNow } from "./cluster";
+import { clusterStatus, isMasterNow, readConfig } from "./cluster";
 import { vaultAvailable, vaultInfo } from "./vault";
 import { sendTelegram } from "./telegram";
 import { readRemoteSessions, readShareState } from "./sessionShare";
@@ -25,17 +25,20 @@ import { readRemoteSessions, readShareState } from "./sessionShare";
  * report sign-in state without spending quota; no login file is opened.
  */
 
-export type HealthLevel = "ok" | "warn" | "fail" | "skip";
+/** "info" = an optional install worth knowing about (not a problem; never alerts). */
+export type HealthLevel = "ok" | "info" | "warn" | "fail" | "skip";
 
 export interface HealthCheck {
   id: string;
   label: string;
   level: HealthLevel;
   detail: string;
-  /** what to do about it (shown for warn/fail) */
+  /** what to do about it (shown for warn/fail/info) */
   fix?: string;
   /** what stops working while this is broken */
   impact?: string;
+  /** docs / downloads */
+  links?: { label: string; url: string }[];
 }
 
 export interface HealthReport {
@@ -56,7 +59,7 @@ interface HealthFile {
 
 const FILE = path.join(process.cwd(), "data", "health.json");
 const STALE_MS = 10 * 60_000;
-const RANK: Record<HealthLevel, number> = { skip: 0, ok: 1, warn: 2, fail: 3 };
+const RANK: Record<HealthLevel, number> = { skip: 0, info: 0, ok: 1, warn: 2, fail: 3 };
 
 export async function readHealthFile(): Promise<HealthFile> {
   try {
@@ -236,7 +239,14 @@ async function checkDaemons(): Promise<HealthCheck[]> {
 
 async function checkWatchdog(): Promise<HealthCheck> {
   const base = { id: "watchdog", label: "Watchdog (auto-restart)", impact: "If the server stops, nothing brings it back until you log in again." };
-  if (process.platform !== "win32") return { ...base, level: "skip", detail: "Windows only." };
+  if (process.platform === "darwin") {
+    // macOS: install.sh sets up a LaunchAgent (RunAtLoad + KeepAlive) instead of a scheduled task
+    const uid = typeof process.getuid === "function" ? process.getuid() : 0;
+    const r = await run("launchctl", ["print", `gui/${uid}/ai.missioncontrol.server`], 10_000, false);
+    if (r.code === 0) return { ...base, label: "Start at login (LaunchAgent)", level: "ok", detail: "Loaded - starts at login and restarts Mission Control if it stops." };
+    return { ...base, label: "Start at login (LaunchAgent)", level: "warn", detail: "Not set up - Mission Control won't start by itself after a restart.", fix: "Run the installer again (bash install.sh) -> Modify -> Auto-start." };
+  }
+  if (process.platform !== "win32") return { ...base, level: "skip", detail: "Windows and macOS only." };
   try {
     const pause = await fsp.stat(path.join(process.cwd(), "data", "watchdog.pause")).catch(() => null);
     if (pause && Date.now() - pause.mtimeMs < 2 * 3_600_000) {
@@ -329,6 +339,76 @@ function checkAlertsTransport(enabled: boolean): HealthCheck {
   return { ...base, level: "warn", detail: "On, but this machine has no way to send: no TELEGRAM_BOT_TOKEN and no openclaw command.", fix: "Set TELEGRAM_BOT_TOKEN in Mission Control's environment." };
 }
 
+// ─── companions: optional installs, with instructions + links ───
+
+const HERMES_LINKS = [
+  { label: "Hermes install guide", url: "https://hermes-agent.nousresearch.com/docs/getting-started/installation" },
+  { label: "Hermes on GitHub", url: "https://github.com/NousResearch/hermes-agent" },
+];
+const OPENCLAW_LINKS = [
+  { label: "OpenClaw install guide", url: "https://docs.openclaw.ai/install" },
+  { label: "Getting started", url: "https://docs.openclaw.ai/start/getting-started" },
+  { label: "OpenClaw on GitHub", url: "https://github.com/openclaw/openclaw" },
+];
+
+async function checkCompanions(): Promise<HealthCheck[]> {
+  const win = process.platform === "win32";
+  const out: HealthCheck[] = [];
+
+  // Hermes (Nous Research): goal mode + Control Room. Wired up via HERMES_BIN; its dashboard auto-starts.
+  const hermesBin = process.env.HERMES_BIN;
+  if (hermesBin && fs.existsSync(hermesBin)) {
+    out.push({ id: "hermes", label: "Hermes (companion)", level: "ok", detail: "Installed - its dashboard starts with Mission Control." });
+  } else {
+    out.push({
+      id: "hermes",
+      label: "Hermes (companion)",
+      level: "info",
+      detail: hermesBin
+        ? `HERMES_BIN points at ${hermesBin}, which doesn't exist on this machine.`
+        : "Not installed (optional) - adds goal mode, Hermes Lab and the Control Room dashboard.",
+      fix: win
+        ? "In PowerShell run `iex (irm https://hermes-agent.nousresearch.com/install.ps1)`, then run the Mission Control installer again and choose Modify -> Companions to wire it up."
+        : "In Terminal run `curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash`, then run `bash install.sh` again and choose Modify -> Companions.",
+      links: HERMES_LINKS,
+    });
+  }
+
+  // OpenClaw: Telegram gateway + approvals. Primary machine only - two gateways steal each other's messages.
+  const cfg = await readConfig().catch(() => null);
+  const isPrimary = !cfg?.enabled || cfg.role === "primary";
+  const probe = await run("openclaw", ["--version"], 15_000);
+  const installed = !probe.missing && probe.code === 0;
+  if (installed) {
+    out.push(
+      isPrimary
+        ? { id: "openclaw", label: "OpenClaw (companion)", level: "ok", detail: "Installed - this machine runs the Telegram gateway." }
+        : {
+            id: "openclaw",
+            label: "OpenClaw (companion)",
+            level: "info",
+            detail: "Installed on a machine that isn't the primary. Only one machine may run the Telegram gateway.",
+            fix: "Keep the gateway off here: `openclaw gateway stop`.",
+            links: OPENCLAW_LINKS,
+          },
+    );
+  } else if (isPrimary) {
+    out.push({
+      id: "openclaw",
+      label: "OpenClaw (companion)",
+      level: "info",
+      detail: "Not installed (optional) - chat with your agents and approve missions from Telegram on your phone.",
+      fix: win
+        ? "In PowerShell run `iwr -useb https://openclaw.ai/install.ps1 | iex` and follow its wizard, then `openclaw onboard --install-daemon` so the gateway starts automatically. Then run the Mission Control installer again -> Modify -> Companions."
+        : "In Terminal run `curl -fsSL https://openclaw.ai/install.sh | bash` and follow its wizard, then `openclaw onboard --install-daemon`. Then run `bash install.sh` again -> Modify -> Companions.",
+      links: OPENCLAW_LINKS,
+    });
+  } else {
+    out.push({ id: "openclaw", label: "OpenClaw (companion)", level: "skip", detail: "Not needed here - only the primary machine runs the Telegram gateway." });
+  }
+  return out;
+}
+
 // ─── run + alert ───
 
 let running: Promise<HealthReport> | null = null;
@@ -348,6 +428,7 @@ export function runHealthChecks(): Promise<HealthReport> {
       checkCluster(),
       checkSharing(),
       checkDisk(),
+      checkCompanions(),
     ]);
     const checks = results.flat().filter((c): c is HealthCheck => Boolean(c));
     checks.push(checkAlertsTransport(settings.telegram));

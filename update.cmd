@@ -8,12 +8,13 @@ echo ============================================
 echo.
 
 echo [1/4] Pulling latest code...
-git pull
+rem Self-healing pull (install.ps1 -RepairOnly): links the branch to GitHub,
+rem switches to main, and moves aside hand-copied files that block the update.
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0install.ps1" -RepairOnly -Yes
 if errorlevel 1 (
   echo.
-  echo git pull failed. If it mentions local changes, note that data\ and
-  echo .env.local are per-machine and git-ignored, so a normal install should
-  echo pull cleanly. Resolve the message above and re-run.
+  echo Updating the code failed - see the message above, or run install.cmd
+  echo and choose "Update / repair".
   pause
   exit /b 1
 )

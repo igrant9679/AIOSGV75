@@ -42,3 +42,6 @@ next-env.d.ts
 
 # local registry (holds API keys)
 data/
+
+# installer builds (installeruild-installer.cmd)
+/dist

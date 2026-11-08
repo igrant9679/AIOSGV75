@@ -8,24 +8,38 @@ sync), the app itself, and verification.
 
 ## Quick install (recommended)
 
-One script installs the prerequisites (Git, Node.js LTS, Ollama), the app
-(clone + build), the local models, Claude Code + optional Codex, a starter
-`.env.local`, and the auto-start service. It's idempotent — safe to re-run.
+One installer does everything - install, update / repair, modify, reinstall,
+uninstall - on Windows and Mac. Run it again any time; on a machine that already
+has Mission Control it asks which of those you want. The in-app **Guide ->
+"Install, update & uninstall"** has the full walkthrough and troubleshooting.
 
-**Fresh machine** (the repo is public), in PowerShell:
+**Windows** - double-click **`MissionControlSetup.exe`** (built by
+`installer\build-installer.cmd`; "Windows protected your PC" -> More info -> Run
+anyway, because it isn't code-signed). Or in PowerShell (the repo is public):
 
 ```powershell
 irm https://raw.githubusercontent.com/igrant9679/AIOSGV75/main/install.ps1 -OutFile "$env:TEMP\mc-install.ps1"; powershell -ExecutionPolicy Bypass -File "$env:TEMP\mc-install.ps1"
 ```
 
-**Already have a clone**: double-click **`install.cmd`** in the repo (or
-`powershell -ExecutionPolicy Bypass -File install.ps1`). Add `-DryRun` to see
-what it would do without changing anything; `-Yes` to accept defaults.
+**Mac** - in Terminal (or double-click `installer/MissionControlSetup.command`,
+right-click -> Open the first time):
 
-It **can't** automate three things (it tells you at the end): `claude` → `/login`,
-pointing `VAULT_DIR` at your synced OneDrive vault, and entering Studio/WordPress
-keys in Settings. The manual walkthrough below covers each in depth and the
-desktop-only companions (Hermes, OpenClaw).
+```bash
+curl -fsSL https://raw.githubusercontent.com/igrant9679/AIOSGV75/main/install.sh -o /tmp/mc-install.sh && bash /tmp/mc-install.sh
+```
+
+It installs the tools (winget/Homebrew, Git, Node.js 22.15+), Ollama + local
+models, the app (or repairs an existing clone), Claude Code + Codex, finds and
+pins the OneDrive vault, writes `.env.local`, joins the machine group (name +
+role), offers the official Hermes / OpenClaw installers, opens the Claude /
+Codex browser sign-ins, sets everything to start at login (Windows: Startup +
+watchdog; Mac: LaunchAgent), then starts it and runs the health check.
+Add `-DryRun` / `--dry-run` to see what it would do without changing anything.
+
+The parts that stay manual: Studio/WordPress keys in Settings, OpenClaw's own
+onboarding wizard (Telegram bot pairing), and Finder's "Always Keep on This
+Device" for the vault on a Mac. The manual walkthrough below covers each in
+depth.
 
 ---
 

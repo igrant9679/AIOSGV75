@@ -19,6 +19,7 @@ const LEVEL: Record<HealthLevel, { accent: Accent; label: string }> = {
   fail: { accent: "rose", label: "Broken" },
   warn: { accent: "amber", label: "Check" },
   ok: { accent: "lime", label: "OK" },
+  info: { accent: "violet", label: "Optional" },
   skip: { accent: "cyan", label: "—" },
 };
 
@@ -44,6 +45,7 @@ function CheckRow({ c }: { c: HealthCheck }) {
   const m = LEVEL[c.level];
   const tone = ACCENTS[m.accent];
   const problem = c.level === "fail" || c.level === "warn";
+  const actionable = problem || c.level === "info";
   return (
     <div className="flex gap-3 border-b border-line py-2.5 last:border-b-0">
       <span className="pt-1">
@@ -52,22 +54,31 @@ function CheckRow({ c }: { c: HealthCheck }) {
       <div className="min-w-0 flex-1">
         <p className="flex flex-wrap items-center gap-2 text-xs font-semibold text-ink">
           {c.label}
-          {problem && (
+          {actionable && (
             <span className="rounded px-1.5 py-0.5 font-mono text-[9px] font-bold tracking-wide" style={{ background: tone.soft, color: tone.base }}>
               {m.label.toUpperCase()}
             </span>
           )}
         </p>
         <p className="pt-0.5 text-[11px] leading-4 text-ink-dim">{c.detail}</p>
-        {problem && c.fix && (
+        {actionable && c.fix && (
           <p className="pt-1 text-[11px] leading-4 text-ink">
             <span className="font-semibold" style={{ color: tone.base }}>
-              Fix:{" "}
+              {c.level === "info" ? "What to do: " : "Fix: "}
             </span>
             <Rich text={c.fix} />
           </p>
         )}
         {problem && c.impact && <p className="pt-0.5 text-[10px] leading-4 text-ink-faint">While broken: {c.impact}</p>}
+        {actionable && c.links && c.links.length > 0 && (
+          <p className="flex flex-wrap gap-x-3 gap-y-1 pt-1">
+            {c.links.map((l) => (
+              <a key={l.url} href={l.url} target="_blank" rel="noreferrer" className="font-mono text-[10px] underline decoration-dotted underline-offset-2" style={{ color: tone.base }}>
+                {l.label} ↗
+              </a>
+            ))}
+          </p>
+        )}
       </div>
     </div>
   );
@@ -82,6 +93,7 @@ export default function HealthPanel() {
   const [view, setView] = useState<HealthView | null>(null);
   const [busy, setBusy] = useState(false);
   const [showAll, setShowAll] = useState(false);
+  const [showOptional, setShowOptional] = useState(false);
 
   const load = useCallback(async (init?: RequestInit) => {
     try {
@@ -117,6 +129,7 @@ export default function HealthPanel() {
   const { report, settings, machines } = view;
   const problems = report.checks.filter((c) => c.level === "fail" || c.level === "warn");
   const fails = problems.filter((c) => c.level === "fail").length;
+  const optional = report.checks.filter((c) => c.level === "info");
   const otherTrouble = machines.filter((m) => !m.self && m.report && (m.report.worst === "fail" || m.report.worst === "warn"));
   const shown = showAll ? report.checks : problems.sort((a, b) => (a.level === "fail" ? -1 : 0) - (b.level === "fail" ? -1 : 0));
   const headAccent: Accent = fails ? "rose" : problems.length ? "amber" : "lime";
@@ -152,12 +165,23 @@ export default function HealthPanel() {
   );
 
   // All clear (here and on every machine that reports) → one quiet line.
-  if (problems.length === 0 && otherTrouble.length === 0 && !showAll) {
+  if (problems.length === 0 && otherTrouble.length === 0 && !showAll && !showOptional) {
     return (
       <div className="panel flex flex-wrap items-center justify-between gap-2 px-4 py-2.5">
-        <span className="flex items-center gap-2 text-xs text-ink-dim">
+        <span className="flex flex-wrap items-center gap-2 text-xs text-ink-dim">
           <StatusOrb accent="lime" size={7} /> All health checks passing on {machineName}
           {machines.length > 1 ? ` · ${machines.filter((m) => m.report).length} of ${machines.length} machines reporting` : ""}
+          {optional.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowOptional(true)}
+              className="cursor-pointer rounded-md border px-2 py-0.5 font-mono text-[10px] transition-colors hover:bg-white/[0.06]"
+              style={{ borderColor: ACCENTS.violet.border, color: ACCENTS.violet.base }}
+              title={optional.map((c) => c.label).join(", ")}
+            >
+              {optional.length} optional install{optional.length === 1 ? "" : "s"} available
+            </button>
+          )}
         </span>
         {actions}
       </div>
@@ -181,6 +205,24 @@ export default function HealthPanel() {
             <CheckRow key={c.id} c={c} />
           ))}
         </div>
+
+        {!showAll && optional.length > 0 && (
+          <div className="flex flex-col gap-1">
+            <p className="panel-title flex items-center justify-between">
+              <span>Optional installs</span>
+              {showOptional && problems.length === 0 && (
+                <button type="button" onClick={() => setShowOptional(false)} className="cursor-pointer font-mono text-[10px] normal-case tracking-normal text-ink-faint hover:text-ink">
+                  hide
+                </button>
+              )}
+            </p>
+            <div className="flex flex-col rounded-xl border px-3" style={{ borderColor: ACCENTS.violet.border }}>
+              {optional.map((c) => (
+                <CheckRow key={c.id} c={c} />
+              ))}
+            </div>
+          </div>
+        )}
 
         {machines.length > 1 && (
           <div className="flex flex-wrap items-center gap-1.5">

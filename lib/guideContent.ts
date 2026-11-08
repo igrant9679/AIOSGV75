@@ -326,22 +326,67 @@ The mission prompt can use \`{{event}}\` for what happened. Results ping your **
 Chats are tagged with their machine automatically going forward; older exchanges from before this feature show as "unknown" machine but are still fully searchable.`,
   },
   {
+    id: "install",
+    title: "Install, update & uninstall (Windows and Mac)",
+    keywords: "install installer setup exe windows mac macbook macos uninstall reinstall modify update repair new machine computer brew homebrew launchagent watchdog autostart start at login vault onedrive role primary backup workstation hermes openclaw codex ollama troubleshooting not recognized tracking information untracked",
+    body: `One installer does everything on a machine: **install**, **update / repair**, **modify**, **reinstall** and **uninstall**. Run it again any time — on a machine that already has Mission Control it asks which of those you want.
+
+**Windows**
+- **MissionControlSetup.exe** — double-click. Windows may say "Windows protected your PC" because the file isn't code-signed: choose **More info → Run anyway**. It always fetches the newest installer from GitHub (or uses the copy inside it when offline).
+- Or in PowerShell: \`irm https://raw.githubusercontent.com/igrant9679/AIOSGV75/main/install.ps1 -OutFile "$env:TEMP\\mc-install.ps1"; powershell -ExecutionPolicy Bypass -File "$env:TEMP\\mc-install.ps1"\`
+- On a machine that already has it: double-click \`install.cmd\` in the Mission Control folder.
+
+**Mac**
+- In Terminal: \`curl -fsSL https://raw.githubusercontent.com/igrant9679/AIOSGV75/main/install.sh -o /tmp/mc-install.sh && bash /tmp/mc-install.sh\`
+- Or double-click **MissionControlSetup.command** (the first time: right-click → **Open** → **Open**, because it was downloaded).
+- On a Mac that already has it: \`bash ~/Documents/mission-control/install.sh\`
+
+**What a full install does** (each step checks first, so re-running is safe)
+1. **Tools:** Windows — winget, Git, Node.js 22.15+; Mac — Homebrew (asks for your Mac password), Git, Node.js.
+2. **Ollama** + the local models (llama3.2, nomic-embed-text for vault search) — optional, recommended. Set to start at login (Windows: Startup entry; Mac: \`brew services\`).
+3. **The app** — clones from GitHub, or repairs an existing copy: re-links the branch to GitHub, switches to main, and moves hand-copied files that block the update into a \`mc-untracked-backup-…\` folder. Then \`npm install\` + build.
+4. **Claude Code** (required) and **Codex** (optional) CLIs.
+5. **The vault** — finds the OneDrive folder that contains \`Agentic OS\`, offers to pin it to the device (Windows; on Mac use Finder → "Always Keep on This Device"), and writes \`VAULT_DIR\` into \`.env.local\`.
+6. **Machine group** — display name and role. **Workstation** (shares + works, never runs scheduled jobs) is the default; **Backup** also takes over jobs while the primary is down; only ONE **Primary** (Legion7 today).
+7. **Companions** — offers the official **Hermes** and (on the primary) **OpenClaw** installers, with links; wires them into \`.env.local\`. See *Installing Companions*.
+8. **Sign-ins** — opens the official \`claude auth login\` / \`codex login\` browser flows if signed out. The installer never sees a password.
+9. **Starts automatically** — Windows: a hidden Startup launcher + the 5-minute watchdog task; Mac: a LaunchAgent that starts it at login and restarts it if it stops. Mission Control itself then starts Ollama and Hermes's dashboard when it boots.
+10. **Starts it now**, runs the **Health** check and opens Command. The summary lists anything left for you, plus optional next steps with links.
+
+**The modes**
+- **Update / repair** — newest code, fix git problems, rebuild, re-check everything. Same as \`update.cmd\` (Windows) or \`update.sh\` (Mac), which now repair the git link themselves.
+- **Modify** — pick what to change: machine name/role, vault folder, tools (Codex, Ollama, models), companions (Hermes, OpenClaw), sign-ins, auto-start on/off, or update the code too. Everything else is left alone; Mission Control restarts so the change applies.
+- **Reinstall** — moves the current folder aside (\`mission-control.old-…\`), installs a fresh copy, and carries over \`data\\\` and \`.env.local\` (your settings and keys). Delete the old folder once everything works.
+- **Uninstall** — type UNINSTALL to confirm. Stops Mission Control, removes auto-start (and the watchdog on Windows), offers to take the machine out of the machine group (and optionally delete its shared conversations / tool memory from the vault), offers a **backup of data\\ and .env.local** (it contains API keys — keep it private), deletes the app folder, and optionally removes Codex / Ollama. Your vault, Claude Code, Git and Node are left alone.
+
+**Flags** (Windows \`-Name\`, Mac \`--name\`): Mode install/update/modify/reinstall/uninstall · DryRun (show what would happen, change nothing) · Yes (accept defaults) · Label · Role · Vault · RepoDir · SkipModels · SkipOllama · InstallCodex / NoCodex · InstallHermes · InstallOpenClaw · NoCompanions · NoLogin · NoStart · RepairOnly (fix and update the code only).
+
+**Troubleshooting**
+- *"update.cmd is not recognized"* in PowerShell → run \`.\\update.cmd\` (PowerShell needs the \`.\\\`), or double-click it.
+- *"'git' / 'npm' is not recognized"* → close the window, open a new one (so it sees newly installed tools), run the installer again.
+- *"There is no tracking information for the current branch"* or *"untracked working tree files would be overwritten"* → run the installer and choose **Update / repair**; it fixes both.
+- Pages say **Vault offline** → \`VAULT_DIR\` doesn't point at the folder containing \`Agentic OS\`; run the installer → **Modify → Vault**.
+- Every run writes a log (the path is printed at the top and bottom of the window).`,
+  },
+  {
     id: "companions",
     title: "Installing Companions (Hermes & OpenClaw)",
     keywords: "install hermes openclaw talos telegram gateway companion agent setup npm venv approvals bot dashboard control room checklist full stack",
     body: `To run the full stack on a machine — Hermes (goal mode + Control Room) and OpenClaw/Talos (Telegram gateway + approvals) — install these two companions. They're optional: without them Claude, your API LLMs, and Ollama still work everywhere. Install them on **each** machine you want to run them (the group role doesn't install anything).
 
-**OpenClaw (Talos) — Telegram gateway + approvals**
-1. Install: \`npm install -g openclaw\` (Node is already set up by the installer).
-2. Run OpenClaw's own onboarding to configure its model/keys and main agent. Optionally name it Talos in \`~/.openclaw/workspace/IDENTITY.md\`.
+**Easiest way:** run the Mission Control installer again and choose **Modify → Companions**. It runs each project's official installer for you and wires the result into \`.env.local\`, so Mission Control starts Hermes's dashboard automatically. The **Health** panel on Command also lists any companion that's missing under **Optional installs**, with the exact command and links. Manual steps follow.
+
+**OpenClaw (Talos) — Telegram gateway + approvals** · [install guide](https://docs.openclaw.ai/install) · [getting started](https://docs.openclaw.ai/start/getting-started) · [GitHub](https://github.com/openclaw/openclaw)
+1. Install with the official installer — Windows PowerShell: \`iwr -useb https://openclaw.ai/install.ps1 | iex\` · Mac: \`curl -fsSL https://openclaw.ai/install.sh | bash\`. It provisions its own Node.js and starts the onboarding wizard. (Already managing Node 24.16+? \`npm install -g openclaw@latest --allow-scripts=openclaw\`, then \`openclaw onboard --install-daemon\`.)
+2. Finish OpenClaw's onboarding (model/keys and main agent). \`openclaw onboard --install-daemon\` makes the gateway start automatically. Optionally name it Talos in \`~/.openclaw/workspace/IDENTITY.md\`.
 3. Pair your Telegram bot with the gateway (bot token + your owner id).
 4. In Mission Control's \`.env.local\`, uncomment: \`OPENCLAW_CMD=openclaw agent --agent main --message {input}\`
 5. Teach it the approval protocol — add the "Mission Control" section to \`~/.openclaw/workspace/TOOLS.md\` (curl PATCH to \`127.0.0.1:3000/api/approvals\`) so you can approve missions from Telegram.
 6. Start the gateway (\`openclaw gateway start\`, or its scheduled task). **Only ONE machine may run the Telegram gateway at a time** — two polling the same bot steal each other's updates.
 7. Rebuild + restart Mission Control → the OpenClaw orb turns green.
 
-**Hermes (Nous Research agent) — goal mode + Control Room**
-1. Install the Nous Hermes Agent per Nous Research's instructions (git-based install). It lands at \`%LOCALAPPDATA%\\hermes\\hermes-agent\\\` with a Python venv; its binary is \`…\\venv\\Scripts\\hermes.exe\`.
+**Hermes (Nous Research agent) — goal mode + Control Room** · [install guide](https://hermes-agent.nousresearch.com/docs/getting-started/installation) · [GitHub](https://github.com/NousResearch/hermes-agent)
+1. Install with the official installer — Windows PowerShell: \`iex (irm https://hermes-agent.nousresearch.com/install.ps1)\` · Mac: \`curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash\`. On Windows it lands at \`%LOCALAPPDATA%\\hermes\\hermes-agent\\\` with a Python venv; its binary is \`…\\venv\\Scripts\\hermes.exe\`. (Antivirus sometimes flags its bundled \`uv.exe\` — see the install guide.)
 2. In \`.env.local\`, set both (write the **full path** in each — this file does no variable expansion; adjust the username):
    \`HERMES_BIN=C:\\Users\\<you>\\AppData\\Local\\hermes\\hermes-agent\\venv\\Scripts\\hermes.exe\`
    \`HERMES_CMD=C:\\Users\\<you>\\AppData\\Local\\hermes\\hermes-agent\\venv\\Scripts\\hermes.exe -z {input}\`
