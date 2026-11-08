@@ -84,7 +84,14 @@ Settings are stored in this browser (\`localStorage\`: \`mc-appearance\`, theme 
 - Session history can be gigabytes, so summaries are cached in \`data/sessions-cache.json\` (per machine, safe to delete — it rebuilds). The first visit indexes newest-first for a few seconds per refresh; older sessions fill in over the next refreshes.
 
 **The five pages**
-- **Command** — status first: running now, waiting on you, done today, memories saved today; Needs you, Live now, and subscription meters.
+- **Command** — status first: the **Health** panel, then running now, waiting on you, done today, memories saved today; Needs you, Live now, and subscription meters.
+
+**Health** (top of Command) — checks the things that make Mission Control quietly stop working, every 10 minutes on every machine:
+- **Claude Code CLI login** (claude auth status) — the CLI's own login, separate from the desktop app's. When it's signed out, agents, missions, scheduled jobs, Board and Group with AI all fail. Fix: run claude in a terminal and type /login.
+- **Codex CLI login** (codex login status), **Scheduled jobs** (last run failed — the reason is now saved, not just "mission failed"; on a machine that isn't master these are shown as history), **Scheduler** (jobs overdue), **Obsidian vault**, **companion daemons** (Hermes, Ollama), **Watchdog** task, **Machine group** (offline machines, no master) and **Free disk space**.
+- All clear collapses to one line; problems open the panel with the fix and what stops working meanwhile. **Re-check** runs it now; **All checks** shows the passing ones too.
+- **Machines** — each machine publishes its report to the vault (Agentic OS/Cluster/health), so you see the whole group's health from any machine. A machine shows "no report" until it runs this version.
+- **Telegram alerts** (off by default) — one message when a check starts failing and one when it recovers, never repeats. Turning it on reports anything already failing once. Results live in data/health.json.
 - **Timeline** — every action from every tool in one stream, filterable by tool, machine, project and **Started in** (Desktop app, Terminal, IDE, or Background — headless claude -p / codex exec runs, which is where Mission Control's own agents and schedules show up), with search. Session rows on Command, Timeline and Projects carry the same tag.
 - **Projects** — the brain by project: every session in it from any tool, with created / last changed / last opened times, memories that mention it, and a vault search scoped to it.
 

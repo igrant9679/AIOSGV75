@@ -9,6 +9,7 @@ import { ACCENTS } from "@/lib/accents";
 import { useHub, SourcePill, ViaTag, StatusDot, MeterRow, HubError, IndexingNote, ago } from "./common";
 import type { ActivityItem } from "@/lib/activity";
 import { useSort } from "./SortControl";
+import HealthPanel from "./HealthPanel";
 import { ACTIVITY_SORTS } from "./sorts";
 
 /**
@@ -46,6 +47,7 @@ export default function CommandSection() {
     <div className="flex flex-col gap-4">
       <HubError error={error} />
       <IndexingNote hub={hub} />
+      <HealthPanel />
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <GlowTile accent="amber" label="Running now" value={view ? view.running : "—"} />

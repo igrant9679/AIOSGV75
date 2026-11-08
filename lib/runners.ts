@@ -25,7 +25,8 @@ export interface RunResult {
 const CLI_TIMEOUT_MS = 300_000;
 const LLM_TIMEOUT_MS = 180_000;
 
-function cleanEnv(): NodeJS.ProcessEnv {
+/** The env Mission Control runs agent CLIs with: no inherited Claude session vars, so they use their own login. */
+export function cleanEnv(): NodeJS.ProcessEnv {
   const env = { ...process.env };
   for (const key of Object.keys(env)) {
     if (key === "ANTHROPIC_API_KEY") continue;

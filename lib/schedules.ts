@@ -192,7 +192,9 @@ async function executeSchedule(s: Schedule): Promise<void> {
 
     let lastStatus: string;
     if (mission.status !== "done" || !finalText) {
-      lastStatus = "mission failed";
+      // keep the reason — "mission failed" alone hid an expired CLI login for days
+      const why = mission.synthesisError ?? mission.results.find((r) => r.error)?.error;
+      lastStatus = why ? `mission failed: ${why.replace(/\s+/g, " ").slice(0, 140)}` : "mission failed";
     } else if (s.deliver === "telegram") {
       const header = `🛰 Scheduled mission: ${s.title}\n\n`;
       const body = finalText.length > 3500 ? finalText.slice(0, 3500) + "\n…(full result in your vault)" : finalText;
