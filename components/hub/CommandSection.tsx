@@ -7,6 +7,9 @@ import GlowTile from "../ui/GlowTile";
 import EmptyState from "../ui/EmptyState";
 import { ACCENTS } from "@/lib/accents";
 import { useHub, SourcePill, ViaTag, StatusDot, MeterRow, HubError, IndexingNote, ago } from "./common";
+import type { ActivityItem } from "@/lib/activity";
+import { useSort } from "./SortControl";
+import { ACTIVITY_SORTS } from "./sorts";
 
 /**
  * Command — the status-first home of the second brain: what's running, what's
@@ -14,6 +17,7 @@ import { useHub, SourcePill, ViaTag, StatusDot, MeterRow, HubError, IndexingNote
  */
 export default function CommandSection() {
   const { hub, error } = useHub();
+  const liveSort = useSort<ActivityItem>("command-live", ACTIVITY_SORTS);
 
   const view = useMemo(() => {
     if (!hub) return null;
@@ -71,10 +75,21 @@ export default function CommandSection() {
           </div>
         </Panel>
 
-        <Panel title="Live now" delay={0.1} right={<Link href="/timeline" className="font-mono text-[10px] text-ink-faint hover:text-ink">Timeline →</Link>}>
+        <Panel
+          title="Live now"
+          delay={0.1}
+          right={
+            <span className="flex items-center gap-2">
+              {(view?.live.length ?? 0) > 1 && liveSort.control}
+              <Link href="/timeline" className="font-mono text-[10px] text-ink-faint hover:text-ink">
+                Timeline →
+              </Link>
+            </span>
+          }
+        >
           <div className="flex flex-col p-4">
             {view && view.live.length === 0 && <EmptyState accent="cyan" title="All quiet" hint="No sessions or missions are open right now." compact />}
-            {view?.live.slice(0, 10).map((i) => (
+            {liveSort.apply(view?.live ?? []).slice(0, 10).map((i) => (
               <div key={i.id} className="flex items-center gap-2 border-b border-line py-2 last:border-b-0">
                 <StatusDot status={i.status} />
                 <span className="min-w-0 flex-1">

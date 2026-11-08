@@ -5,7 +5,9 @@ import { useEffect, useMemo, useState } from "react";
 import Panel from "../ui/Panel";
 import StatusOrb from "../ui/StatusOrb";
 import { ACCENTS, type Accent } from "@/lib/accents";
-import type { SubscriptionMeter } from "@/lib/sessions";
+import type { SessionSummary, SubscriptionMeter } from "@/lib/sessions";
+import { useSort } from "./SortControl";
+import { SESSION_SORTS } from "./sorts";
 import { useHub, SourcePill, HubError, IndexingNote, ago, fmtTokens, until } from "./common";
 
 interface ClusterNode {
@@ -37,6 +39,8 @@ export default function FleetSection() {
   const { hub, error } = useHub();
   const [cluster, setCluster] = useState<ClusterView | null>(null);
   const [pick, setPick] = useState<{ host: string; tool: SubscriptionMeter["tool"] } | null>(null);
+  const [showAll, setShowAll] = useState(false);
+  const sessionSort = useSort<SessionSummary>("fleet-sessions", SESSION_SORTS);
 
   useEffect(() => {
     const load = () =>
@@ -106,7 +110,7 @@ export default function FleetSection() {
       </Panel>
 
       {selected && detail && (
-        <Panel title={`${selected.host} · ${detail.meter?.label ?? selected.tool}`}>
+        <Panel title={`${selected.host} · ${detail.meter?.label ?? selected.tool} · ${detail.sessions.length} sessions`} right={detail.sessions.length > 1 ? sessionSort.control : undefined}>
           <div className="grid gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_260px]">
             <div className="flex flex-col">
               {detail.sessions.length === 0 && (
@@ -114,17 +118,22 @@ export default function FleetSection() {
                   {detail.meter?.status === "not_set_up" ? detail.meter.note : "No sessions from this tool on this machine yet."}
                 </p>
               )}
-              {detail.sessions.slice(0, 8).map((s) => (
+              {(showAll ? sessionSort.apply(detail.sessions) : sessionSort.apply(detail.sessions).slice(0, 8)).map((s) => (
                 <div key={s.key} className="flex items-center gap-2 border-b border-line py-2 last:border-b-0">
                   <StatusOrb accent={s.status === "running" ? "amber" : s.status === "waiting" ? "rose" : s.status === "idle" ? "cyan" : "lime"} pulsing={s.status === "running"} size={7} />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-xs font-semibold text-ink">{s.title}</span>
                     <span className="block truncate font-mono text-[10px] text-ink-faint">
-                      {s.project} · {ago(s.updatedAt)} ago · {fmtTokens(s.tokensIn + s.tokensOut)} tokens
+                      {s.project} · changed {ago(s.updatedAt)} ago{s.lastOpenedAt ? ` · opened ${ago(s.lastOpenedAt)} ago` : ""} · {s.userTurns} prompts · {fmtTokens(s.tokensIn + s.tokensOut)} tokens
                     </span>
                   </span>
                 </div>
               ))}
+              {detail.sessions.length > 8 && (
+                <button type="button" onClick={() => setShowAll((v) => !v)} className="cursor-pointer pt-2 text-center font-mono text-[10px] text-ink-faint hover:text-ink">
+                  {showAll ? "Show fewer" : `Show all ${detail.sessions.length}`}
+                </button>
+              )}
             </div>
             <div className="flex flex-col gap-2 rounded-xl border border-line p-3">
               <p className="panel-title">Send work here</p>

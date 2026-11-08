@@ -8,6 +8,8 @@ import type { SessionSummary } from "@/lib/sessions";
 import type { ProjectSource } from "@/lib/projectNames";
 import { useHub, SourcePill, ViaTag, StatusDot, HubError, IndexingNote, ago, fmtTokens, stamp, timesLine, timesTitle } from "./common";
 import { launchSurface } from "@/lib/launchSurface";
+import { useSort, type SortOption } from "./SortControl";
+import { SESSION_SORTS } from "./sorts";
 
 interface Passage {
   file: string;
@@ -30,6 +32,15 @@ interface NamingStatus {
   needsNaming: number;
   lastAiRun: { at: number; named: number; error?: string } | null;
 }
+
+const PROJECT_SORTS: SortOption<ProjectGroup>[] = [
+  { id: "changed", label: "Last changed", get: (p) => p.updatedAt, dir: "desc", time: true },
+  { id: "opened", label: "Last opened", get: (p) => p.lastOpenedAt || undefined, dir: "desc", time: true },
+  { id: "first", label: "First session", get: (p) => (p.startedAt === Infinity ? undefined : p.startedAt), dir: "desc", time: true },
+  { id: "name", label: "Name", get: (p) => p.name, dir: "asc" },
+  { id: "sessions", label: "Sessions", get: (p) => p.sessions.length, dir: "desc" },
+  { id: "tokens", label: "Tokens", get: (p) => p.tokens, dir: "desc" },
+];
 
 const SOURCE_LABEL: Record<ProjectSource, string> = {
   user: "named by you",
@@ -130,6 +141,8 @@ export default function ProjectsSection() {
   const [aiBusy, setAiBusy] = useState(false);
   const [aiMsg, setAiMsg] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
+  const projectSort = useSort<ProjectGroup>("projects", PROJECT_SORTS);
+  const sessionSort = useSort<SessionSummary>("project-sessions", SESSION_SORTS);
 
   const loadNaming = useCallback(async () => {
     try {
@@ -167,8 +180,10 @@ export default function ProjectsSection() {
       map.set(s.project, g);
     }
     // Unsorted always sinks to the bottom so real projects lead
-    return [...map.values()].sort((a, b) => Number(a.name === "Unsorted") - Number(b.name === "Unsorted") || b.updatedAt - a.updatedAt);
-  }, [hub]);
+    const sorted = projectSort.apply([...map.values()]);
+    return [...sorted.filter((p) => p.name !== "Unsorted"), ...sorted.filter((p) => p.name === "Unsorted")];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hub, projectSort.option.id, projectSort.dir]);
 
   const current = projects.find((p) => p.name === selected) ?? projects[0];
   const currentSource = current ? projectSourceOf(current) : "unsorted";
@@ -229,14 +244,19 @@ export default function ProjectsSection() {
     await reload();
   };
 
-  const visible = current ? (showAll ? current.sessions : current.sessions.slice(0, 12)) : [];
+  const orderedSessions = useMemo(
+    () => (current ? sessionSort.apply(current.sessions) : []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [current, sessionSort.option.id, sessionSort.dir],
+  );
+  const visible = showAll ? orderedSessions : orderedSessions.slice(0, 12);
 
   return (
     <div className="flex flex-col gap-4">
       <HubError error={error} />
       <IndexingNote hub={hub} />
       <div className="grid gap-4 lg:grid-cols-[260px_minmax(0,1fr)]">
-        <Panel title={`Projects · ${projects.length}`}>
+        <Panel title={`Projects · ${projects.length}`} right={projectSort.control}>
           <div className="flex flex-col gap-2 border-b border-line p-3">
             <button
               type="button"
@@ -274,7 +294,17 @@ export default function ProjectsSection() {
                     >
                       {p.name}
                     </span>
-                    <span className="block font-mono text-[10px] text-ink-faint">changed {ago(p.updatedAt)} ago</span>
+                    <span className="block font-mono text-[10px] text-ink-faint">
+                      {projectSort.option.id === "opened"
+                        ? p.lastOpenedAt
+                          ? `opened ${ago(p.lastOpenedAt)} ago`
+                          : "never opened in the app"
+                        : projectSort.option.id === "first"
+                          ? `since ${stamp(p.startedAt === Infinity ? 0 : p.startedAt)}`
+                          : projectSort.option.id === "tokens"
+                            ? `${fmtTokens(p.tokens)} tokens`
+                            : `changed ${ago(p.updatedAt)} ago`}
+                    </span>
                   </span>
                   <span className="font-mono text-[10px] text-ink-faint">{p.sessions.length}</span>
                 </button>
@@ -319,7 +349,7 @@ export default function ProjectsSection() {
             </div>
 
             <div className="grid gap-4 xl:grid-cols-2">
-              <Panel title="Sessions across tools">
+              <Panel title="Sessions across tools" right={sessionSort.control}>
                 <div className="flex flex-col p-4">
                   {visible.map((s) => (
                     <div key={s.key} className="flex items-center gap-2 border-b border-line py-2 last:border-b-0" title={timesTitle(s)}>

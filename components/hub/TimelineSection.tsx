@@ -4,9 +4,12 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import Panel from "../ui/Panel";
 import EmptyState from "../ui/EmptyState";
-import type { ActivitySource } from "@/lib/activity";
+import type { ActivitySource, ActivityItem } from "@/lib/activity";
+import { useSort } from "./SortControl";
+import { ACTIVITY_SORTS } from "./sorts";
 import { LAUNCH_SURFACE_META, LAUNCH_SURFACE_ORDER, type LaunchSurface } from "@/lib/launchSurface";
 import { useHub, SourcePill, StatusDot, ViaTag, HubError, IndexingNote, Chip, SOURCE_META, ago, clockTime, dayLabel, stamp, timesTitle } from "./common";
+
 
 /** Timeline — one stream of every AI action, filterable by tool, machine and project. */
 export default function TimelineSection() {
@@ -48,15 +51,23 @@ export default function TimelineSection() {
     );
   }, [hub, q, source, host, project, via]);
 
+  const sort = useSort<ActivityItem>("timeline", ACTIVITY_SORTS);
+  const timeOf = (i: ActivityItem) => (sort.option.time ? Number(sort.option.get(i)) || 0 : 0);
+
   const groups = useMemo(() => {
+    const sorted = sort.apply(filtered).slice(0, 300);
+    // Time sorts keep the day headings (by that time); other sorts are one flat list.
+    if (!sort.option.time) return [{ day: `Sorted by ${sort.option.label.toLowerCase()}`, items: sorted }];
     const out: { day: string; items: typeof filtered }[] = [];
-    for (const i of filtered.slice(0, 300)) {
-      const day = dayLabel(i.ts);
+    for (const i of sorted) {
+      const t = Number(sort.option.get(i)) || 0;
+      const day = t ? dayLabel(t) : "No date";
       if (out.at(-1)?.day !== day) out.push({ day, items: [] });
       out.at(-1)!.items.push(i);
     }
     return out;
-  }, [filtered]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filtered, sort.option.id, sort.dir]);
 
   const waiting = (hub?.items ?? []).filter((i) => i.status === "waiting" || i.status === "running");
   const today = (hub?.items ?? []).filter((i) => dayLabel(i.ts) === "Today");
@@ -108,7 +119,7 @@ export default function TimelineSection() {
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-        <Panel title={`Activity · ${filtered.length}`}>
+        <Panel title={`Activity · ${filtered.length}`} right={sort.control}>
           <div className="flex flex-col p-4">
             {hub && filtered.length === 0 && <EmptyState accent="cyan" title="No matches" hint="Try clearing a filter or the search box." />}
             {groups.map((g) => (
@@ -117,7 +128,9 @@ export default function TimelineSection() {
                 {g.items.map((i) => {
                   const row = (
                     <span className="flex items-center gap-3 border-b border-line py-2" title={i.startedAt ? timesTitle({ startedAt: i.startedAt, updatedAt: i.ts, lastOpenedAt: i.lastOpenedAt }) : undefined}>
-                      <span className="w-10 shrink-0 font-mono text-[10px] text-ink-faint">{clockTime(i.ts)}</span>
+                      <span className="w-12 shrink-0 font-mono text-[10px] text-ink-faint">
+                        {sort.option.time ? (timeOf(i) ? clockTime(timeOf(i)) : "—") : new Date(i.ts).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+                      </span>
                       <SourcePill source={i.source} />
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-xs font-semibold text-ink">{i.title}</span>
