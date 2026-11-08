@@ -28,6 +28,15 @@ const AGENT_NAV: NavItem[] = [
   { href: "/hermes-lab", label: "Hermes Lab", sub: "Goal Mode · Control Room", accent: "amber", icon: IconTarget },
 ];
 
+/** The second-brain hub: one place for every AI activity, across tools and machines. */
+const BRAIN_NAV: NavItem[] = [
+  { href: "/command", label: "Command", sub: "What needs you", accent: "cyan", icon: IconGrid },
+  { href: "/timeline", label: "Timeline", sub: "Every AI action", accent: "violet", icon: IconPulse },
+  { href: "/projects", label: "Projects", sub: "Brain by project", accent: "magenta", icon: IconBrain },
+  { href: "/fleet", label: "Fleet", sub: "Machines × subscriptions", accent: "lime", icon: IconTerminal },
+  { href: "/board", label: "Board", sub: "Manager · workers · reviewer", accent: "amber", icon: IconRocket },
+];
+
 const WORKSPACE_NAV: NavItem[] = [
   { href: "/mastermind", label: "Mastermind", sub: "All agents, one room", accent: "cyan", icon: IconWing },
   { href: "/jarvis", label: "JARVIS", sub: "Voice command center", accent: "cyan", icon: IconMic },
@@ -79,6 +88,7 @@ export default function Sidebar() {
     if (href === "/auto") return busy.auto ? "amber" : "lime";
     if (href === "/hermes-lab") { const h = agents.find((a) => a.id === "hermes"); return h?.available ? "lime" : "rose"; }
     if (href === "/watcher") return "lime";
+    if (href === "/command" || href === "/timeline" || href === "/projects" || href === "/fleet" || href === "/board") return "lime";
     if (href === "/" || href === "/settings" || href === "/missions" || href === "/arena" || href === "/analytics" || href === "/reports" || href === "/evals" || href === "/guide" || href === "/tasks" || href === "/schedule" || href === "/mastermind" || href === "/jarvis" || href === "/pipeline") return "lime";
     if (href === "/goals" || href === "/journal" || href === "/memory" || href === "/library" || href === "/graph" || href === "/builds" || href === "/studio" || href === "/content" || href === "/import" || href === "/conversations") return vaultOk ? "lime" : "rose";
     const id = href.replace("/agent/", "").replace("/", "");
@@ -141,7 +151,10 @@ export default function Sidebar() {
       className="panel flex w-60 shrink-0 flex-col gap-1 overflow-hidden p-3"
       aria-label="Agents"
     >
-      <span className="panel-title px-2 pb-2 pt-1">Agents</span>
+      <span className="panel-title px-2 pb-2 pt-1">Second brain</span>
+      {BRAIN_NAV.map((item) => renderItem(item))}
+
+      <span className="panel-title px-2 pb-2 pt-4">Agents</span>
       {AGENT_NAV.map((item) => renderItem(item))}
       {dynamicNav.map((item) => renderItem(item))}
       <Link

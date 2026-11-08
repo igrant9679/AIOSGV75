@@ -3,6 +3,11 @@ export type Accent = "cyan" | "magenta" | "amber" | "lime" | "violet" | "rose";
 /** Per-page accent — each route gets its own color identity (matches the sidebar). */
 export const ROUTE_ACCENTS: Record<string, Accent> = {
   "/": "cyan",
+  "/command": "cyan",
+  "/timeline": "violet",
+  "/projects": "magenta",
+  "/fleet": "lime",
+  "/board": "amber",
   "/auto": "cyan",
   "/claude": "violet",
   "/openclaw": "magenta",
@@ -39,6 +44,11 @@ export function accentForPath(pathname: string): Accent {
 /** Page identity shown in the hero strip above every page's content. */
 export const ROUTE_META: Record<string, { title: string; tagline: string }> = {
   "/": { title: "Overview", tagline: "Fleet & vitals" },
+  "/command": { title: "Command", tagline: "Second brain · what needs you" },
+  "/timeline": { title: "Timeline", tagline: "Every AI action, one stream" },
+  "/projects": { title: "Projects", tagline: "The brain, by project" },
+  "/fleet": { title: "Fleet", tagline: "Machines × subscriptions" },
+  "/board": { title: "Board", tagline: "Manager · workers · reviewer" },
   "/auto": { title: "Auto", tagline: "Smart router" },
   "/claude": { title: "Claude", tagline: "Primary operator · CLI bridge" },
   "/openclaw": { title: "OpenClaw", tagline: "Assistant gateway" },

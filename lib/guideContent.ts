@@ -53,6 +53,28 @@ export const GUIDE_SECTIONS: GuideSection[] = [
 **Signature widgets** (each described in its feature's section): Pipeline's **Flow funnel**, Journal's **12-week writing heatmap + streak**, Analytics' **month-end spend projection**, Auto's **Recent Routes**, Arena's **VS strip + podium**, and JARVIS's **arc-reactor + live mic equalizer**.`,
   },
   {
+    id: "second-brain",
+    title: "Second Brain — Command, Timeline, Projects, Fleet, Board",
+    keywords: "second brain hub command center timeline activity stream projects fleet board sessions claude code codex kimi subscriptions usage limits rate limits native sessions machines accounts manager worker reviewer roles",
+    body: `The **Second brain** group at the top of the sidebar is one place for *all* your AI activity — not just what runs through Mission Control, but the Claude Code and Codex sessions you run anywhere on this machine (terminal, desktop app, IDE).
+
+**Where the data comes from (read-only)**
+- **Claude Code** — \`~/.claude/projects/**/*.jsonl\` (one file per session) and \`~/.claude/sessions/*.json\` (which sessions are open right now, busy or idle).
+- **Codex** — \`~/.codex/sessions/**/rollout-*.jsonl.zst\` plus \`session_index.jsonl\` for thread titles. Codex also records your ChatGPT plan's **usage limits**, which power its subscription meter.
+- **Mission Control** — chats, missions, orchestrations, approvals, Needs Attention, and \`Memory.md\`.
+- Login files are never opened: not \`~/.claude/.credentials.json\`, not \`~/.codex/auth.json\`, not the \`.key\` files in \`~/.claude/sessions\`.
+- Session history can be gigabytes, so summaries are cached in \`data/sessions-cache.json\` (per machine, safe to delete — it rebuilds). The first visit indexes newest-first for a few seconds per refresh; older sessions fill in over the next refreshes.
+
+**The five pages**
+- **Command** — status first: running now, waiting on you, done today, memories saved today; Needs you, Live now, and subscription meters.
+- **Timeline** — every action from every tool in one stream, filterable by tool, machine and project, with search.
+- **Projects** — the brain by project (a project = a working folder): every session in it from any tool, memories that mention it, and a vault search scoped to it.
+- **Fleet** — machines × subscriptions. This machine's cells are live; other machines in the machine group show their heartbeat until session summaries are shared through the vault.
+- **Board** — give the fleet a goal; the manager (Claude) splits it into subtasks, workers run them (Auto router or pinned agents), the reviewer (Claude) passes them or sends them back. Same engine as the Orchestrator on Tasks.
+
+**Subscription meters** — ChatGPT/Codex shows real % used, window and reset time. Claude Code doesn't write its limits to disk, so its meter shows tokens used in the last 5 hours / 7 days instead. Kimi shows "not set up" until its CLI is installed.`,
+  },
+  {
     id: "agents",
     title: "The Agent Fleet",
     keywords: "agents fleet status orb online offline claude openclaw hermes deepseek llm sidebar",
