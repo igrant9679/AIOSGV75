@@ -10,9 +10,9 @@ interface SharingView {
   host: string;
   label: string;
   clusterOn: boolean;
-  settings: { conversations: boolean; toolMemory: boolean };
+  settings: { conversations: boolean; toolMemory: boolean; remoteReplies: "off" | "answer" | "edit" };
   last: { on: boolean; summaries: string; digests: number; memoryFiles: number; at: number } | null;
-  remote: { host: string; label: string; publishedAt: number; sessions: number }[];
+  remote: { host: string; label: string; publishedAt: number; sessions: number; acceptsReplies?: "off" | "answer" | "edit" }[];
   memory: { machine: string; claude: number; codex: number }[];
   error?: string;
 }
@@ -122,6 +122,37 @@ export default function SharingPanel({ onShared }: { onShared?: () => void }) {
             onClick={() => post({ action: "settings", toolMemory: !view.settings.toolMemory })}
             disabled={busy}
           />
+          <div className="flex flex-col gap-1.5 rounded-xl border px-3 py-2" style={{ borderColor: view.settings.remoteReplies !== "off" ? ACCENTS.amber.border : "var(--color-line)" }}>
+            <span className="text-xs font-semibold text-ink">Replies from my other machines</span>
+            <span className="text-[10px] leading-4 text-ink-faint">
+              Lets Mission Control on your other machines reply to {view.label}'s sessions, start new ones in its project folders, and read their full threads
+              (Projects page). Requests travel through the vault, so anyone who can write to it could use this - leave it off unless you need it.
+            </span>
+            <span className="flex flex-wrap gap-1.5 pt-0.5">
+              {(
+                [
+                  ["off", "Off"],
+                  ["answer", "Answers only"],
+                  ["edit", "Answers + file edits"],
+                ] as const
+              ).map(([v, label]) => {
+                const on = view.settings.remoteReplies === v;
+                return (
+                  <button
+                    key={v}
+                    type="button"
+                    disabled={busy}
+                    aria-pressed={on}
+                    onClick={() => post({ action: "settings", remoteReplies: v })}
+                    className="cursor-pointer rounded-md border px-2 py-0.5 font-mono text-[10px] transition-colors hover:bg-white/[0.06] disabled:opacity-50"
+                    style={on ? { borderColor: ACCENTS.amber.border, color: ACCENTS.amber.base } : { borderColor: "var(--color-line)", color: "var(--color-ink-dim)" }}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </span>
+          </div>
           <p className="text-[10px] leading-4 text-ink-faint">
             Already shared by the vault itself: Memory.md, your profile, journal, goals and Mission Control chat logs.
           </p>
@@ -142,7 +173,8 @@ export default function SharingPanel({ onShared }: { onShared?: () => void }) {
                 <span className="min-w-0 flex-1">
                   <span className="block text-xs font-semibold text-ink">{r.label}</span>
                   <span className="block font-mono text-[10px] text-ink-faint">
-                    {r.sessions} sessions · published {ago(r.publishedAt)} ago{mem ? ` · ${mem.claude + mem.codex} memory files` : ""}
+                    {r.sessions} sessions · published {ago(r.publishedAt)} ago{mem ? ` · ${mem.claude + mem.codex} memory files` : ""} · replies{" "}
+                    {r.acceptsReplies === "edit" ? "with edits" : r.acceptsReplies === "answer" ? "answers only" : "off"}
                   </span>
                 </span>
               </div>

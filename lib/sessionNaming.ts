@@ -13,6 +13,8 @@ import type { SessionSummary } from "./sessions";
 export interface NameOverride {
   title?: string;
   project?: string;
+  /** hidden from the Projects page */
+  hidden?: boolean;
   by: "user" | "ai";
   at: number;
 }
@@ -57,8 +59,24 @@ export async function renameSessions(keys: string[], change: { title?: string; p
       const next: NameOverride = { ...cur, by: "user", at: Date.now() };
       if (change.title !== undefined) next.title = clean(change.title, 120) || undefined;
       if (change.project !== undefined) next.project = clean(change.project, 80) || undefined;
-      if (!next.title && !next.project) delete f.sessions[key];
+      if (!next.title && !next.project && !next.hidden) delete f.sessions[key];
       else f.sessions[key] = next;
+    }
+  });
+}
+
+/** Hide sessions from the Projects page, or show them again. Names are kept. */
+export async function setHidden(keys: string[], hidden: boolean): Promise<void> {
+  await writeNames((f) => {
+    for (const key of keys) {
+      const cur = f.sessions[key];
+      if (hidden) f.sessions[key] = { ...(cur ?? { by: "user" as const, at: Date.now() }), hidden: true };
+      else if (cur) {
+        const next = { ...cur };
+        delete next.hidden;
+        if (!next.title && !next.project) delete f.sessions[key];
+        else f.sessions[key] = next;
+      }
     }
   });
 }

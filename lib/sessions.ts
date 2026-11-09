@@ -75,6 +75,8 @@ export interface SessionSummary {
   folder?: string;
   /** desktop app only: when you last had this session open */
   lastOpenedAt?: number;
+  /** hidden from the Projects page by you (data/session-names.json) */
+  hidden?: boolean;
   status: SessionStatus;
   indexing?: boolean; // true = stub, full parse still pending
 }
@@ -725,7 +727,8 @@ export async function sessionsSnapshot(): Promise<SessionsSnapshot> {
     const { touchedDirs: _dirs, ...rest } = s;
     void _dirs;
     const lastOpenedAt = s.tool === "claude" ? appTitles.get(s.id)?.lastOpenedAt : undefined;
-    sessions.push({ ...rest, ...named, lastOpenedAt, host, status });
+    const hidden = names.sessions[s.key]?.hidden || undefined;
+    sessions.push({ ...rest, ...named, lastOpenedAt, hidden, host, status });
   }
 
   sessions.sort((a, b) => b.updatedAt - a.updatedAt);

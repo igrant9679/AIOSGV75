@@ -10,7 +10,7 @@ import { useHub, SourcePill, ViaTag, StatusDot, HubError, IndexingNote, ago, fmt
 import { launchSurface } from "@/lib/launchSurface";
 import { useSort, type SortOption } from "./SortControl";
 import { SESSION_SORTS } from "./sorts";
-import { ConversationButton, ConversationView } from "./Conversation";
+import { NewSessionPanel, SessionDetail, SmallButton, machineInfo, sessionsPost, useSessionJobs } from "./SessionPanel";
 
 interface Passage {
   file: string;
@@ -87,6 +87,9 @@ function Renamable({
     return (
       <form
         className="flex min-w-0 flex-1 items-center gap-1.5"
+        // inside a clickable session row: typing / clicking here must not toggle the row
+        onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => e.stopPropagation()}
         onSubmit={async (e) => {
           e.preventDefault();
           setSaving(true);
@@ -115,7 +118,10 @@ function Renamable({
       <span className={`truncate ${className ?? ""}`}>{value}</span>
       <button
         type="button"
-        onClick={() => setEditing(true)}
+        onClick={(e) => {
+          e.stopPropagation();
+          setEditing(true);
+        }}
         aria-label={label}
         title={label}
         className="shrink-0 cursor-pointer rounded px-1 font-mono text-[11px] text-ink-faint opacity-60 transition-opacity hover:text-ink group-hover:opacity-100"
@@ -142,7 +148,11 @@ export default function ProjectsSection() {
   const [aiBusy, setAiBusy] = useState(false);
   const [aiMsg, setAiMsg] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
-  const [reading, setReading] = useState<string | null>(null);
+  const [openKey, setOpenKey] = useState<string | null>(null);
+  const [showHidden, setShowHidden] = useState(false);
+  const [composing, setComposing] = useState(false);
+  const [projMsg, setProjMsg] = useState<string | null>(null);
+  const { jobs, reloadJobs } = useSessionJobs();
   const projectSort = useSort<ProjectGroup>("projects", PROJECT_SORTS);
   const sessionSort = useSort<SessionSummary>("project-sessions", SESSION_SORTS);
 
@@ -161,7 +171,7 @@ export default function ProjectsSection() {
   const projects = useMemo<ProjectGroup[]>(() => {
     const map = new Map<string, ProjectGroup>();
     for (const s of hub?.sessions ?? []) {
-      if (s.indexing) continue;
+      if (s.indexing || (s.hidden && !showHidden)) continue;
       const g = map.get(s.project) ?? {
         name: s.project,
         sessions: [],
@@ -185,17 +195,39 @@ export default function ProjectsSection() {
     const sorted = projectSort.apply([...map.values()]);
     return [...sorted.filter((p) => p.name !== "Unsorted"), ...sorted.filter((p) => p.name === "Unsorted")];
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hub, projectSort.option.id, projectSort.dir]);
+  }, [hub, projectSort.option.id, projectSort.dir, showHidden]);
 
   const current = projects.find((p) => p.name === selected) ?? projects[0];
   const currentSource = current ? projectSourceOf(current) : "unsorted";
-  const currentFolder = current?.sessions.find((s) => s.folder)?.folder;
+  // the project's folder, preferring a copy on this machine (that's where Open / New session act)
+  const folderSession = current?.sessions.find((s) => s.folder && s.host === hub?.host) ?? current?.sessions.find((s) => s.folder);
+  const currentFolder = folderSession?.folder;
+  const folderHost = machineInfo(hub, folderSession?.host ?? hub?.host ?? "");
+  const hiddenCount = useMemo(() => (hub?.sessions ?? []).filter((s) => s.hidden && !s.indexing).length, [hub]);
 
   useEffect(() => {
     setHits(null);
     setQ("");
     setShowAll(false);
+    setComposing(false);
+    setProjMsg(null);
   }, [current?.name]);
+
+  /** Jump to a session (e.g. one a reply forked into): select its project and open it. */
+  const openSession = (key: string) => {
+    const s = hub?.sessions.find((x) => x.key === key);
+    if (!s) return;
+    setSelected(s.project);
+    setShowAll(true);
+    setOpenKey(key);
+    setTimeout(() => document.getElementById("session-" + key)?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
+  };
+
+  const projectAction = async (what: "terminal" | "folder" | "editor") => {
+    setProjMsg("…");
+    const r = await sessionsPost({ action: "open", what, folder: currentFolder });
+    setProjMsg(r.error ?? r.message ?? "Done.");
+  };
 
   const memories = useMemo(() => {
     if (!current || !hub) return [];
@@ -347,32 +379,111 @@ export default function ProjectsSection() {
               <p className="pt-1 font-mono text-[11px] text-ink-faint">
                 {[...current.hosts].join(", ")} · {current.sessions.length} sessions · {fmtTokens(current.tokens)} tokens · {SOURCE_LABEL[currentSource]}
               </p>
-              {currentFolder && <p className="truncate pt-0.5 font-mono text-[10px] text-ink-faint">{currentFolder}</p>}
+              {currentFolder && (
+                <p className="truncate pt-0.5 font-mono text-[10px] text-ink-faint">
+                  {currentFolder}
+                  {!folderHost.local ? " (on " + folderHost.label + ")" : ""}
+                </p>
+              )}
+              <div className="flex flex-wrap items-center gap-1.5 pt-3">
+                <SmallButton
+                  accent
+                  onClick={() => setComposing((v) => !v)}
+                  disabled={!currentFolder}
+                  title={currentFolder ? "Start a new Claude Code or Codex session in " + currentFolder : "This project has no folder, so there's nowhere to start a session"}
+                >
+                  {composing ? "Close new session" : "+ New session"}
+                </SmallButton>
+                {currentFolder && folderHost.local && (
+                  <>
+                    <SmallButton onClick={() => projectAction("terminal")} title={"Opens a terminal in " + currentFolder + " running claude"}>
+                      Terminal
+                    </SmallButton>
+                    <SmallButton onClick={() => projectAction("folder")}>Open folder</SmallButton>
+                    <SmallButton onClick={() => projectAction("editor")}>VS Code</SmallButton>
+                  </>
+                )}
+                {projMsg && <span className="font-mono text-[10px] text-ink-faint">{projMsg}</span>}
+              </div>
+              {composing && currentFolder && folderSession && (
+                <div className="pt-3">
+                  <NewSessionPanel
+                    project={current.name}
+                    folder={currentFolder}
+                    host={folderSession.host}
+                    hub={hub}
+                    jobs={jobs}
+                    reloadJobs={reloadJobs}
+                    onOpenSession={openSession}
+                  />
+                </div>
+              )}
             </div>
 
-            <div className="grid gap-4 xl:grid-cols-2">
-              <Panel title="Sessions across tools" right={sessionSort.control}>
+            <Panel
+              title="Sessions across tools"
+              right={
+                <span className="flex items-center gap-2">
+                  {hiddenCount > 0 && (
+                    <label className="flex cursor-pointer items-center gap-1 font-mono text-[10px] text-ink-faint">
+                      <input type="checkbox" checked={showHidden} onChange={(e) => setShowHidden(e.target.checked)} /> show {hiddenCount} hidden
+                    </label>
+                  )}
+                  {sessionSort.control}
+                </span>
+              }
+            >
                 <div className="flex flex-col p-4">
-                  {visible.map((s) => (
-                    <div key={s.key} className="border-b border-line last:border-b-0">
-                      <div className="flex items-center gap-2 py-2" title={timesTitle(s)}>
+                  <p className="pb-2 font-mono text-[10px] text-ink-faint">Click a session to open it: full thread, reply, open in a terminal or its folder, move or hide.</p>
+                  {visible.map((s) => {
+                    const open = openKey === s.key;
+                    return (
+                    <div key={s.key} id={"session-" + s.key} className="border-b border-line last:border-b-0">
+                      <div
+                        role="button"
+                        tabIndex={0}
+                        aria-expanded={open}
+                        onClick={() => setOpenKey(open ? null : s.key)}
+                        onKeyDown={(e) => {
+                          if ((e.key === "Enter" || e.key === " ") && e.target === e.currentTarget) {
+                            e.preventDefault();
+                            setOpenKey(open ? null : s.key);
+                          }
+                        }}
+                        className="-mx-2 flex cursor-pointer items-center gap-2 rounded-lg px-2 py-2 transition-colors hover:bg-white/[0.03]"
+                        style={open ? { background: "color-mix(in srgb, var(--page-accent) 8%, transparent)" } : undefined}
+                        title={timesTitle(s)}
+                      >
+                        <span className="w-3 shrink-0 font-mono text-[11px] text-ink-faint">{open ? "▾" : "▸"}</span>
                         <StatusDot status={s.status === "ended" ? "done" : s.status} />
-                        <span className="min-w-0 flex-1">
+                        <span className="min-w-0 flex-1" style={s.hidden ? { opacity: 0.55 } : undefined}>
                           <Renamable value={s.title} label="Rename this session" onSave={(t) => renameSession(s.key, t)} className="text-xs font-semibold text-ink" />
                           <span className="block truncate font-mono text-[10px] text-ink-faint">{timesLine(s)}</span>
                           <span className="block truncate font-mono text-[10px] text-ink-faint">
                             {s.userTurns} prompts · {fmtTokens(s.tokensIn + s.tokensOut)} tokens
                             {s.host !== hub?.host ? ` · ${hub?.machines.find((m) => m.host === s.host)?.label ?? s.host}` : ""}
                             {s.projectSource === "ai" ? " · grouped by AI" : ""}
+                            {s.hidden ? " · hidden" : ""}
+                            {jobs.some((j) => j.key === s.key && ["queued", "sent", "running"].includes(j.status)) ? " · reply in progress" : ""}
                           </span>
                         </span>
-                        <ConversationButton open={reading === s.key} onClick={() => setReading(reading === s.key ? null : s.key)} />
                         <ViaTag via={launchSurface(s.origin)} />
                         <SourcePill source={s.tool} />
                       </div>
-                      {reading === s.key && <ConversationView sessionKey={s.key} />}
+                      {open && (
+                        <SessionDetail
+                          s={s}
+                          hub={hub}
+                          jobs={jobs}
+                          reloadJobs={reloadJobs}
+                          reloadHub={reload}
+                          projectNames={projects.map((p) => p.name).filter((n) => n !== "Unsorted")}
+                          onOpenSession={openSession}
+                        />
+                      )}
                     </div>
-                  ))}
+                    );
+                  })}
                   {current.sessions.length > 12 && (
                     <button
                       type="button"
@@ -385,6 +496,7 @@ export default function ProjectsSection() {
                 </div>
               </Panel>
 
+            <div className="grid gap-4 xl:grid-cols-2">
               <Panel title="Memory and decisions">
                 <div className="flex flex-col p-4">
                   {memories.length === 0 && (
@@ -405,7 +517,6 @@ export default function ProjectsSection() {
                   ))}
                 </div>
               </Panel>
-            </div>
 
             <Panel title="Ask the vault about this project">
               <div className="flex flex-col gap-3 p-4">
@@ -442,6 +553,7 @@ export default function ProjectsSection() {
                 ))}
               </div>
             </Panel>
+            </div>
           </div>
         ) : (
           <Panel>

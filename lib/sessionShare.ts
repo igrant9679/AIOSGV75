@@ -34,6 +34,8 @@ export interface SharedSessionsFile {
   publishedAt: number;
   sessions: SessionSummary[];
   subscriptions: SubscriptionMeter[];
+  /** what this machine lets the others do with its sessions (Projects → reply / new session) */
+  acceptsReplies?: RemoteReplies;
 }
 
 export interface RemoteMachine {
@@ -43,6 +45,7 @@ export interface RemoteMachine {
   stale: boolean;
   sessions: number;
   subscriptions: SubscriptionMeter[];
+  acceptsReplies: RemoteReplies;
 }
 
 const PUBLISH_EVERY_MS = 5 * 60_000;
@@ -93,10 +96,18 @@ export interface ShareSettings {
   conversations: boolean;
   /** read-only mirror of Claude/Codex memory files (Agentic OS/Tool Memory/<machine>/) */
   toolMemory: boolean;
+  /**
+   * Replies and new sessions requested by your OTHER machines (Projects page),
+   * delivered through the vault. "off" by default: anything that can write to
+   * the vault could otherwise start AI runs here.
+   */
+  remoteReplies: RemoteReplies;
 }
 
+export type RemoteReplies = "off" | "answer" | "edit";
+
 const SETTINGS_FILE = path.join(process.cwd(), "data", "share-settings.json");
-const DEFAULT_SETTINGS: ShareSettings = { conversations: true, toolMemory: true };
+const DEFAULT_SETTINGS: ShareSettings = { conversations: true, toolMemory: true, remoteReplies: "off" };
 
 export async function readShareSettings(): Promise<ShareSettings> {
   try {
@@ -152,7 +163,7 @@ export function shareNow(): Promise<ShareResult> {
     const local = snap.sessions.filter((s) => !s.indexing);
 
     const file = fileFor(os.hostname());
-    const body = { sessions: local.slice(0, MAX_SESSIONS).map(slim), subscriptions: snap.subscriptions };
+    const body = { sessions: local.slice(0, MAX_SESSIONS).map(slim), subscriptions: snap.subscriptions, acceptsReplies: settings.remoteReplies };
     const hash = crypto.createHash("sha1").update(JSON.stringify(body)).digest("hex");
     const prev = await fsp.readFile(file, "utf8").then((t) => JSON.parse(t) as SharedSessionsFile & { hash?: string }).catch(() => null);
     let summaries: ShareResult["summaries"] = "unchanged";
@@ -231,12 +242,21 @@ export async function mergeRemoteSessions(local: SessionSummary[]): Promise<Merg
   for (const f of files) {
     // offline per the 30s cluster heartbeat, or not publishing for 2h (old version / sharing off)
     const stale = online.get(f.host.toLowerCase()) === false || now - f.publishedAt > 2 * 60 * 60_000;
-    remote.push({ host: f.host, label: f.label || f.host, publishedAt: f.publishedAt, stale, sessions: f.sessions.length, subscriptions: f.subscriptions ?? [] });
+    remote.push({
+      host: f.host,
+      label: f.label || f.host,
+      publishedAt: f.publishedAt,
+      stale,
+      sessions: f.sessions.length,
+      subscriptions: f.subscriptions ?? [],
+      acceptsReplies: f.acceptsReplies ?? "off",
+    });
     for (const raw of f.sessions) {
       const s: SessionSummary = { ...raw, host: f.host };
       // a stale machine's "running" claims can't be trusted
       if (stale && s.status !== "ended") s.status = "ended";
       const o = names.sessions[s.key];
+      if (o?.hidden) s.hidden = true;
       if (o?.by === "user") {
         if (o.title) [s.title, s.titleSource] = [o.title, "user"];
         if (o.project) [s.project, s.projectSource] = [o.project, "user"];

@@ -11,6 +11,7 @@ import { syncApprovedMissions } from "./approvals";
 import { maybeRunHealth } from "./health";
 import { maybeShare } from "./sessionShare";
 import { bridgeTick } from "./bridge";
+import { sessionJobsTick } from "./sessionActions";
 
 async function refreshScaffold(): Promise<void> {
   const reg = await readRegistry().catch(() => null);
@@ -36,6 +37,9 @@ export function startScheduler(): void {
   // Session summaries, conversation digests and tool memory → the vault, for
   // the rest of the machine group (every machine; throttled to 5 min inside).
   setInterval(() => void maybeShare().catch(() => {}), 60_000);
+  // Projects page: replies / new sessions / threads asked for by your other
+  // machines (through the vault), and results of the ones this machine sent.
+  setInterval(() => void sessionJobsTick().catch(() => {}), 15_000);
   setTimeout(() => void maybeRunHealth().catch(() => {}), 20_000);
   // Master-only duties are gated on holding the cluster lease. With clustering
   // off (default) clusterTick() returns true, so a lone machine runs as always.
