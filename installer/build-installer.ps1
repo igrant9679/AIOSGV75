@@ -1,7 +1,8 @@
 <#
   Builds dist\MissionControlSetup.exe with IExpress (built into Windows - no downloads).
-  The .exe carries setup.cmd + install.ps1; setup.cmd fetches the newest install.ps1 from
-  GitHub at run time and falls back to the bundled copy when offline.
+  The .exe carries setup.cmd + pick-installer.ps1 + install.ps1; at run time it uses the
+  newer of GitHub's install.ps1 and the bundled one (MC-INSTALLER-VERSION), or the bundled
+  one when offline.
   Also copies the logo + icon to dist\. Run:  installer\build-installer.cmd
 #>
 $ErrorActionPreference = "Stop"
@@ -11,6 +12,7 @@ $out = Join-Path $root "dist"
 if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
 New-Item -ItemType Directory -Force $stage, $out | Out-Null
 Copy-Item (Join-Path $PSScriptRoot "setup.cmd") $stage
+Copy-Item (Join-Path $PSScriptRoot "pick-installer.ps1") $stage
 Copy-Item (Join-Path $root "install.ps1") $stage
 $exe = Join-Path $out "MissionControlSetup.exe"
 if (Test-Path $exe) { Remove-Item $exe -Force }
@@ -50,11 +52,13 @@ AdminQuietInstCmd=
 UserQuietInstCmd=
 FILE0="setup.cmd"
 FILE1="install.ps1"
+FILE2="pick-installer.ps1"
 [SourceFiles]
 SourceFiles0=$stage\
 [SourceFiles0]
 %FILE0%=
 %FILE1%=
+%FILE2%=
 "@
 $sedFile = Join-Path $stage "setup.sed"
 Set-Content -Path $sedFile -Value $sed -Encoding Ascii

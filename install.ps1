@@ -1,5 +1,6 @@
 <#
   Mission Control - Windows installer, updater, modifier and uninstaller.
+  MC-INSTALLER-VERSION: 2026.11.09.1   (bump on every change; setup.exe runs the newer of its bundled copy and GitHub's)
 
   Run it any time. On a machine without Mission Control it installs everything;
   on a machine that has it, it asks what you want:
@@ -156,11 +157,23 @@ function Set-PeerFirewall {
   if ($DryRun) { Warn "would allow TCP 3101 in Windows Firewall (private/domain networks) for the LAN link"; return }
   if (Get-NetFirewallRule -DisplayName $PeerRule -ErrorAction SilentlyContinue) { Ok "LAN link: firewall rule present"; return }
   $admin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-  if (-not $admin) { Todo "LAN link: run the installer as administrator once (Modify -> Auto-start) so other machines can reach this one on port 3101"; return }
+  $add = "New-NetFirewallRule -DisplayName '$PeerRule' -Direction Inbound -Protocol TCP -LocalPort 3101 -Action Allow -Profile Domain,Private"
+  if ($admin) {
+    try {
+      New-NetFirewallRule -DisplayName $PeerRule -Direction Inbound -Protocol TCP -LocalPort 3101 -Action Allow -Profile Domain,Private -ErrorAction Stop | Out-Null
+      Done "LAN link: allowed TCP 3101 on private/work networks"
+    } catch { Todo "LAN link: couldn't add the firewall rule ($($_.Exception.Message))" }
+    return
+  }
+  # Not elevated (the normal case): only this one step needs administrator rights, so ask Windows
+  # for them just for the firewall rule. Everything else keeps running as you, in your profile.
+  Info "LAN link: other machines on your network reach this one on port 3101 - Windows will ask for permission to allow it"
+  if (-not (YesNo "Add the Windows Firewall rule now?" $true)) { Todo "LAN link: allow TCP 3101 later - run this installer again (Modify -> Auto-start)"; return }
   try {
-    New-NetFirewallRule -DisplayName $PeerRule -Direction Inbound -Protocol TCP -LocalPort 3101 -Action Allow -Profile Domain,Private -ErrorAction Stop | Out-Null
-    Done "LAN link: allowed TCP 3101 on private/work networks"
-  } catch { Todo "LAN link: couldn't add the firewall rule ($($_.Exception.Message))" }
+    $p = Start-Process -FilePath "powershell.exe" -Verb RunAs -Wait -PassThru -WindowStyle Hidden -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", $add)
+  } catch { $p = $null }
+  if (Get-NetFirewallRule -DisplayName $PeerRule -ErrorAction SilentlyContinue) { Done "LAN link: allowed TCP 3101 on private/work networks" }
+  else { Todo "LAN link: the firewall rule wasn't added (permission declined?). Later, in an administrator PowerShell: $add" }
 }
 function Read-EnvValue($key) {
   if (-not (Test-Path $envFile)) { return $null }

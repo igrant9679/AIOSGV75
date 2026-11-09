@@ -1,15 +1,13 @@
 @echo off
 title Mission Control Setup
-rem Bootstrap packed inside MissionControlSetup.exe. Gets the newest installer
-rem from GitHub (so an old .exe still installs the latest version); falls back
-rem to the copy bundled in the .exe when offline.
+rem Bootstrap packed inside MissionControlSetup.exe. Fetches the installer from GitHub and
+rem runs whichever copy is newer - GitHub's or the one bundled in this .exe - going by the
+rem MC-INSTALLER-VERSION line. Offline, it uses the bundled copy.
 set "MC_PS1=%TEMP%\mc-install-latest.ps1"
+set "MC_WEB=%TEMP%\mc-install-web.ps1"
+set "MC_BUNDLED=%~dp0install.ps1"
 echo Getting the latest Mission Control installer...
-powershell -NoProfile -ExecutionPolicy Bypass -Command "try { Invoke-WebRequest -UseBasicParsing 'https://raw.githubusercontent.com/igrant9679/AIOSGV75/main/install.ps1' -OutFile $env:MC_PS1; exit 0 } catch { exit 1 }"
-if errorlevel 1 (
-  echo Offline - using the installer bundled in this setup.
-  copy /y "%~dp0install.ps1" "%MC_PS1%" >nul
-)
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0pick-installer.ps1"
 cd /d "%TEMP%"
 powershell -NoProfile -ExecutionPolicy Bypass -File "%MC_PS1%" %*
 echo.

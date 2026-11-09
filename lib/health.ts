@@ -292,7 +292,7 @@ async function checkLan(): Promise<HealthCheck | null> {
         ...base,
         level: "warn",
         detail: `Windows Firewall has no rule for the LAN link (port ${PEER_PORT}), so other machines may not reach this one directly.`,
-        fix: `Run the installer as administrator -> Modify -> Auto-start, or in an administrator PowerShell: New-NetFirewallRule -DisplayName 'Mission Control LAN link' -Direction Inbound -Protocol TCP -LocalPort ${PEER_PORT} -Action Allow -Profile Domain,Private`,
+        fix: `Run the installer (MissionControlSetup.exe) -> Modify -> 6 Auto-start and click Yes when Windows asks, or in an administrator PowerShell: New-NetFirewallRule -DisplayName 'Mission Control LAN link' -Direction Inbound -Protocol TCP -LocalPort ${PEER_PORT} -Action Allow -Profile Domain,Private`,
       };
     }
   }
