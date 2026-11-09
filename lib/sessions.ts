@@ -567,6 +567,10 @@ interface LiveClaude {
   status: string;
   updatedAt: number;
   name?: string;
+  pid: number;
+  /** "interactive" (desktop app / terminal) or a headless run */
+  kind?: string;
+  entrypoint?: string;
 }
 
 function pidAlive(pid: number): boolean {
@@ -595,14 +599,24 @@ async function liveClaude(): Promise<Map<string, LiveClaude>> {
         status?: string;
         updatedAt?: number;
         name?: string;
+        kind?: string;
+        entrypoint?: string;
+        pidDomain?: string;
       };
+      // a record copied from another computer: its pid means nothing here (and must never be killed)
+      if (o.pidDomain && o.pidDomain.toLowerCase() !== `${process.platform}:${os.hostname().toLowerCase()}`) continue;
       if (!o.sessionId || !o.pid || !pidAlive(o.pid)) continue;
-      out.set(o.sessionId, { status: o.status ?? "idle", updatedAt: o.updatedAt ?? 0, name: o.name });
+      out.set(o.sessionId, { status: o.status ?? "idle", updatedAt: o.updatedAt ?? 0, name: o.name, pid: o.pid, kind: o.kind, entrypoint: o.entrypoint });
     } catch {
       /* partial write — skip */
     }
   }
   return out;
+}
+
+/** Running Claude Code processes on this machine, by session id (for Stop and the live view). */
+export async function liveClaudeProcesses(): Promise<Map<string, LiveClaude>> {
+  return liveClaude();
 }
 
 function claudeStatus(live: LiveClaude | undefined): SessionStatus {
@@ -616,6 +630,13 @@ function claudeStatus(live: LiveClaude | undefined): SessionStatus {
 // ─── public API ───
 
 /** Path of the session file on THIS machine for a session key (from the parse cache). */
+export async function localSessionFiles(): Promise<{ file: string; key: string; tool: SessionTool; updatedAt: number }[]> {
+  const cache = await readCache();
+  return Object.entries(cache.entries)
+    .map(([file, e]) => ({ file, key: e.summary.key, tool: e.summary.tool, updatedAt: e.summary.updatedAt }))
+    .sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
 export async function findSessionFile(key: string): Promise<string | undefined> {
   const cache = await readCache();
   for (const [file, e] of Object.entries(cache.entries)) if (e.summary.key === key) return file;

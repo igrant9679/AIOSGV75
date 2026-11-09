@@ -11,6 +11,8 @@ import { launchSurface } from "@/lib/launchSurface";
 import { useSort, type SortOption } from "./SortControl";
 import { SESSION_SORTS } from "./sorts";
 import { NewSessionPanel, SessionDetail, SmallButton, machineInfo, sessionsPost, useSessionJobs } from "./SessionPanel";
+import { BulkBar, FleetSearch, useSessionFilter } from "./ProjectTools";
+import { Sparkbars, perWeek } from "./Charts";
 
 interface Passage {
   file: string;
@@ -155,6 +157,15 @@ export default function ProjectsSection() {
   const { jobs, reloadJobs } = useSessionJobs();
   const projectSort = useSort<ProjectGroup>("projects", PROJECT_SORTS);
   const sessionSort = useSort<SessionSummary>("project-sessions", SESSION_SORTS);
+  const sf = useSessionFilter(hub);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [pendingOpen, setPendingOpen] = useState<string | null>(null);
+
+  // /projects?session=<key> (links from Command, alerts, notifications): open that session
+  useEffect(() => {
+    const k = new URLSearchParams(window.location.search).get("session");
+    if (k) setPendingOpen(k);
+  }, []);
 
   const loadNaming = useCallback(async () => {
     try {
@@ -170,7 +181,7 @@ export default function ProjectsSection() {
 
   const projects = useMemo<ProjectGroup[]>(() => {
     const map = new Map<string, ProjectGroup>();
-    for (const s of hub?.sessions ?? []) {
+    for (const s of sf.apply(hub?.sessions ?? [])) {
       if (s.indexing || (s.hidden && !showHidden)) continue;
       const g = map.get(s.project) ?? {
         name: s.project,
@@ -195,7 +206,7 @@ export default function ProjectsSection() {
     const sorted = projectSort.apply([...map.values()]);
     return [...sorted.filter((p) => p.name !== "Unsorted"), ...sorted.filter((p) => p.name === "Unsorted")];
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hub, projectSort.option.id, projectSort.dir, showHidden]);
+  }, [hub, projectSort.option.id, projectSort.dir, showHidden, sf.filter]);
 
   const current = projects.find((p) => p.name === selected) ?? projects[0];
   const currentSource = current ? projectSourceOf(current) : "unsorted";
@@ -216,12 +227,19 @@ export default function ProjectsSection() {
   /** Jump to a session (e.g. one a reply forked into): select its project and open it. */
   const openSession = (key: string) => {
     const s = hub?.sessions.find((x) => x.key === key);
-    if (!s) return;
+    if (!s) return false;
+    if (s.hidden) setShowHidden(true);
+    if (sf.active && !sf.apply([s]).length) sf.clear();
     setSelected(s.project);
-    setShowAll(true);
     setOpenKey(key);
-    setTimeout(() => document.getElementById("session-" + key)?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
+    setTimeout(() => document.getElementById("session-" + key)?.scrollIntoView({ behavior: "smooth", block: "start" }), 150);
+    return true;
   };
+
+  useEffect(() => {
+    if (pendingOpen && hub && openSession(pendingOpen)) setPendingOpen(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingOpen, hub]);
 
   const projectAction = async (what: "terminal" | "folder" | "editor") => {
     setProjMsg("…");
@@ -283,12 +301,26 @@ export default function ProjectsSection() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [current, sessionSort.option.id, sessionSort.dir],
   );
-  const visible = showAll ? orderedSessions : orderedSessions.slice(0, 12);
+  const firstTwelve = orderedSessions.slice(0, 12);
+  // the session you opened stays visible even when it's past the first 12
+  const visible = showAll ? orderedSessions : [...firstTwelve, ...orderedSessions.filter((s) => s.key === openKey && !firstTwelve.includes(s))];
+  const togglePick = (key: string) =>
+    setPicked((p) => {
+      const n = new Set(p);
+      if (n.has(key)) n.delete(key);
+      else n.add(key);
+      return n;
+    });
 
   return (
     <div className="flex flex-col gap-4">
       <HubError error={error} />
       <IndexingNote hub={hub} />
+      <FleetSearch onOpen={(k) => openSession(k)} />
+      <div className="flex flex-col gap-2">
+        {sf.bar}
+        <BulkBar keys={[...picked]} projectNames={projects.map((p) => p.name).filter((n) => n !== "Unsorted")} onDone={reload} onClear={() => setPicked(new Set())} />
+      </div>
       <div className="grid gap-4 lg:grid-cols-[260px_minmax(0,1fr)]">
         <Panel title={`Projects · ${projects.length}`} right={projectSort.control}>
           <div className="flex flex-col gap-2 border-b border-line p-3">
@@ -340,7 +372,15 @@ export default function ProjectsSection() {
                             : `changed ${ago(p.updatedAt)} ago`}
                     </span>
                   </span>
-                  <span className="font-mono text-[10px] text-ink-faint">{p.sessions.length}</span>
+                  <span className="flex shrink-0 items-center gap-2">
+                    <Sparkbars
+                      values={perWeek(p.sessions.map((s) => s.updatedAt))}
+                      label={`${p.name}: sessions by the week they were last active, last 8 weeks (newest on the right)`}
+                      width={44}
+                      height={14}
+                    />
+                    <span className="w-6 text-right font-mono text-[10px] text-ink-faint">{p.sessions.length}</span>
+                  </span>
                 </button>
               );
             })}
@@ -454,6 +494,15 @@ export default function ProjectsSection() {
                         style={open ? { background: "color-mix(in srgb, var(--page-accent) 8%, transparent)" } : undefined}
                         title={timesTitle(s)}
                       >
+                        <input
+                          type="checkbox"
+                          checked={picked.has(s.key)}
+                          onClick={(e) => e.stopPropagation()}
+                          onChange={() => togglePick(s.key)}
+                          aria-label={`Select ${s.title}`}
+                          title="Select for bulk actions"
+                          className="shrink-0 cursor-pointer"
+                        />
                         <span className="w-3 shrink-0 font-mono text-[11px] text-ink-faint">{open ? "▾" : "▸"}</span>
                         <StatusDot status={s.status === "ended" ? "done" : s.status} />
                         <span className="min-w-0 flex-1" style={s.hidden ? { opacity: 0.55 } : undefined}>

@@ -38,7 +38,7 @@ function clip(text: string, max: number): string {
 const tidy = (s: string, max: number) => clip(redactSecrets(s), max);
 
 /** One-line description of a tool call, e.g. `Bash: npm run build` or `Edit: lib/foo.ts`. */
-function summarize(name: string, input: unknown): string {
+export function summarize(name: string, input: unknown): string {
   const i = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
   const pick = (...ks: string[]) => {
     for (const k of ks) if (typeof i[k] === "string" && (i[k] as string).trim()) return (i[k] as string).trim();

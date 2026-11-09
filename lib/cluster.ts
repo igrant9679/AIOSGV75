@@ -2,6 +2,7 @@ import fs from "fs/promises";
 import path from "path";
 import os from "os";
 import { vaultInfo, vaultAvailable } from "./vault";
+import { lanAddresses, PEER_PORT } from "./netAddrs";
 
 /**
  * Cluster coordination across machines that share ONE vault (via OneDrive) but
@@ -44,6 +45,9 @@ interface NodeInfo {
   platform: string;
   ts: number;
   isMaster: boolean;
+  /** LAN IPv4 addresses + port of the peer listener (lib/peer.ts) */
+  lanAddrs?: string[];
+  peerPort?: number;
 }
 
 const CONFIG_FILE = path.join(process.cwd(), "data", "cluster.json");
@@ -168,6 +172,8 @@ async function writeHeartbeat(cfg: ClusterConfig, isMaster: boolean): Promise<vo
     platform: process.platform,
     ts: Date.now(),
     isMaster,
+    lanAddrs: lanAddresses(),
+    peerPort: PEER_PORT,
   };
   await fs.mkdir(nodesDir(), { recursive: true });
   await fs.writeFile(nodeFile(nodeId()), JSON.stringify(info, null, 2), "utf8");

@@ -11,6 +11,8 @@ import type { ActivityItem } from "@/lib/activity";
 import { useSort } from "./SortControl";
 import HealthPanel from "./HealthPanel";
 import { ACTIVITY_SORTS } from "./sorts";
+import { LiveSessionsPanel, RunSomewherePanel, useSessionAlerts } from "./LivePanels";
+import { ActivityChart, MiniBars, perDay } from "./Charts";
 
 /**
  * Command — the status-first home of the second brain: what's running, what's
@@ -19,6 +21,7 @@ import { ACTIVITY_SORTS } from "./sorts";
 export default function CommandSection() {
   const { hub, error } = useHub();
   const liveSort = useSort<ActivityItem>("command-live", ACTIVITY_SORTS);
+  const alerts = useSessionAlerts();
 
   const view = useMemo(() => {
     if (!hub) return null;
@@ -29,8 +32,13 @@ export default function CommandSection() {
     const waitingSessions = hub.items.filter((i) => i.status === "waiting");
     const doneToday = hub.items.filter((i) => i.status === "done" && i.ts >= sod && i.source !== "memory").length;
     const memToday = hub.memory.filter((m) => m.ts >= sod).length;
-    const needs = [
-      ...waitingSessions.map((i) => ({ key: i.id, label: `${i.agent} is waiting for you`, detail: i.title, ts: i.ts, href: "/timeline", accent: "amber" as const })),
+    // sessions the hook reported as waiting already appear as alerts (with the machine and the ask)
+    const alerted = new Set(alerts.items.map((a) => a.href));
+    const needs: { key: string; label: string; detail: string; ts: number; href: string; accent: "amber" | "rose" | "lime"; eventIds?: string[] }[] = [
+      ...alerts.items,
+      ...waitingSessions
+        .filter((i) => !alerted.has(`/projects?session=${encodeURIComponent(i.id)}`))
+        .map((i) => ({ key: i.id, label: `${i.agent} is waiting for you`, detail: i.title, ts: i.ts, href: "/timeline", accent: "amber" as const })),
       ...hub.attention.map((a) => ({
         key: `${a.kind}:${a.id}`,
         label: a.label,
@@ -41,7 +49,7 @@ export default function CommandSection() {
       })),
     ].sort((a, b) => b.ts - a.ts);
     return { live, needs, doneToday, memToday, running: live.filter((i) => i.status === "running").length };
-  }, [hub]);
+  }, [hub, alerts.items]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -52,27 +60,50 @@ export default function CommandSection() {
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <GlowTile accent="amber" label="Running now" value={view ? view.running : "—"} />
         <GlowTile accent="rose" label="Waiting on you" value={view ? view.needs.length : "—"} />
-        <GlowTile accent="lime" label="Done today" value={view ? view.doneToday : "—"} />
-        <GlowTile accent="violet" label="Memories saved today" value={view ? view.memToday : "—"} />
+        <GlowTile accent="lime" label="Done today" value={view ? view.doneToday : "—"}>
+          {hub && (
+            <MiniBars
+              values={perDay(hub.items.filter((i) => i.status === "done" && i.source !== "memory").map((i) => i.ts))}
+              color={ACCENTS.lime.base}
+              label="Done per day, last 7 days (today on the right)"
+            />
+          )}
+        </GlowTile>
+        <GlowTile accent="violet" label="Memories saved today" value={view ? view.memToday : "—"}>
+          {hub && <MiniBars values={perDay(hub.memory.map((m) => m.ts))} color={ACCENTS.violet.base} label="Memories saved per day, last 7 days (today on the right)" />}
+        </GlowTile>
       </div>
+
+      <ActivityChart hub={hub} />
 
       <div className="grid gap-4 xl:grid-cols-3">
         <Panel title="Needs you" delay={0.05}>
           <div className="flex flex-col gap-2 p-4">
             {view && view.needs.length === 0 && <EmptyState accent="lime" title="Nothing blocked" hint="No approvals, failures or sessions waiting on you." compact />}
-            {view?.needs.slice(0, 8).map((n) => (
-              <Link
-                key={n.key}
-                href={n.href}
-                className="block rounded-xl border border-line px-3 py-2 transition-colors hover:border-line-bright"
-                style={{ borderLeft: `3px solid ${ACCENTS[n.accent].base}` }}
-              >
-                <span className="flex items-center justify-between gap-2">
-                  <span className="truncate text-xs font-semibold text-ink">{n.label}</span>
-                  <span className="shrink-0 font-mono text-[10px] text-ink-faint">{ago(n.ts)}</span>
-                </span>
-                <span className="block truncate pt-0.5 text-[11px] text-ink-faint">{n.detail}</span>
-              </Link>
+            {view?.needs.slice(0, 10).map((n) => (
+              <div key={n.key} className="flex items-stretch gap-1">
+                <Link
+                  href={n.href}
+                  className="block min-w-0 flex-1 rounded-xl border border-line px-3 py-2 transition-colors hover:border-line-bright"
+                  style={{ borderLeft: `3px solid ${ACCENTS[n.accent].base}` }}
+                >
+                  <span className="flex items-center justify-between gap-2">
+                    <span className="truncate text-xs font-semibold text-ink">{n.label}</span>
+                    <span className="shrink-0 font-mono text-[10px] text-ink-faint">{ago(n.ts)}</span>
+                  </span>
+                  <span className="block truncate pt-0.5 text-[11px] text-ink-faint">{n.detail}</span>
+                </Link>
+                {n.eventIds && (
+                  <button
+                    type="button"
+                    onClick={() => alerts.dismiss(n.eventIds!)}
+                    title="Dismiss"
+                    className="shrink-0 cursor-pointer rounded-lg px-1.5 font-mono text-[11px] text-ink-faint hover:bg-white/[0.06] hover:text-ink"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
             ))}
           </div>
         </Panel>
@@ -117,6 +148,10 @@ export default function CommandSection() {
           </div>
         </Panel>
       </div>
+
+      <LiveSessionsPanel />
+
+      <RunSomewherePanel hub={hub} />
 
       <Panel title="Latest across everything" delay={0.2}>
         <div className="flex flex-col p-4">

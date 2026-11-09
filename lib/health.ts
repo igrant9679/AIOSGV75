@@ -275,6 +275,56 @@ async function checkWatchdog(): Promise<HealthCheck> {
   }
 }
 
+/** LAN link (lib/peer.ts): the listener is up, Windows Firewall lets it through, and which LAN machines answer. */
+async function checkLan(): Promise<HealthCheck | null> {
+  const c = await clusterStatus().catch(() => null);
+  if (!c || !c.config.enabled) return null;
+  const base = { id: "lan", label: "LAN link", impact: "Machines fall back to OneDrive (1-2 minutes) instead of talking directly in seconds." };
+  const { peerListening, probePeer, readNetwork, modeOf } = await import("./peer");
+  const { PEER_PORT } = await import("./netAddrs");
+  if (!(await peerListening())) {
+    return { ...base, level: "warn", detail: `This machine's LAN listener isn't running on port ${PEER_PORT}.`, fix: "Restart Mission Control (stop.cmd, then it restarts within 5 minutes). If another program uses the port, set MC_PEER_PORT=3102 in .env.local." };
+  }
+  if (process.platform === "win32") {
+    const r = await run("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", "if (Get-NetFirewallRule -DisplayName 'Mission Control LAN link' -ErrorAction SilentlyContinue) { 'yes' } else { 'no' }"], 15_000, false);
+    if (r.out.trim().endsWith("no")) {
+      return {
+        ...base,
+        level: "warn",
+        detail: `Windows Firewall has no rule for the LAN link (port ${PEER_PORT}), so other machines may not reach this one directly.`,
+        fix: `Run the installer as administrator -> Modify -> Auto-start, or in an administrator PowerShell: New-NetFirewallRule -DisplayName 'Mission Control LAN link' -Direction Inbound -Protocol TCP -LocalPort ${PEER_PORT} -Action Allow -Profile Domain,Private`,
+      };
+    }
+  }
+  const net = await readNetwork();
+  const lan = c.nodes.filter((n) => !n.self && n.online && modeOf(net, n.host) !== "offlan");
+  const probes = await Promise.all(lan.map(async (n) => ({ n, p: await probePeer(n.host) })));
+  const down = probes.filter((x) => !x.p.ok);
+  const offlan = c.nodes.filter((n) => !n.self && modeOf(net, n.host) === "offlan").map((n) => n.label);
+  const tail = offlan.length ? ` Off-LAN (OneDrive only): ${offlan.join(", ")}.` : "";
+  if (down.length) {
+    return {
+      ...base,
+      level: "info",
+      detail: `Not reachable over the LAN: ${down.map((x) => x.n.label).join(", ")} - using OneDrive for ${down.length > 1 ? "them" : "it"}.${tail}`,
+      fix: "Update Mission Control there (update.cmd) and allow port 3101 in its firewall; or mark it Off-LAN on Fleet → Network if it's away from this network.",
+    };
+  }
+  return { ...base, level: "ok", detail: `Listening on port ${PEER_PORT}.${lan.length ? ` Direct link to ${lan.map((n) => n.label).join(", ")}.` : ""}${tail}` };
+}
+
+/** The session-alert hook in Claude Code (lib/hooks.ts). */
+async function checkHook(): Promise<HealthCheck | null> {
+  const { readAlertSettings } = await import("./sessionEvents");
+  const { hookStatus } = await import("./hooks");
+  const [s, h] = await Promise.all([readAlertSettings(), hookStatus()]);
+  const base = { id: "hook", label: "Session alerts hook", impact: "Sessions on this machine can't tell Command → Needs you when they wait for you or finish." };
+  if (!s.hooks) return { ...base, level: "skip", detail: "Turned off (Fleet → Session alerts)." };
+  if (h.claude === "no-claude") return { ...base, level: "skip", detail: "Claude Code isn't on this machine." };
+  if (h.claude === "installed") return { ...base, level: "ok", detail: `Installed in Claude Code${h.codex === "installed" ? " and Codex" : ""}.` };
+  return { ...base, level: "info", detail: "Not installed yet in Claude Code - Mission Control adds it within 10 minutes.", fix: "Or now: Fleet → Session alerts → install now." };
+}
+
 async function checkCluster(): Promise<HealthCheck | null> {
   const c = await clusterStatus().catch(() => null);
   if (!c || !c.config.enabled) return null;
@@ -429,6 +479,8 @@ export function runHealthChecks(): Promise<HealthReport> {
       checkSharing(),
       checkDisk(),
       checkCompanions(),
+      checkLan(),
+      checkHook(),
     ]);
     const checks = results.flat().filter((c): c is HealthCheck => Boolean(c));
     checks.push(checkAlertsTransport(settings.telegram));

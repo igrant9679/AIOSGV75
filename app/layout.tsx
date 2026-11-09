@@ -8,10 +8,14 @@ import {
   Atkinson_Hyperlegible,
   Source_Serif_4,
   Fira_Code,
+  Plus_Jakarta_Sans,
 } from "next/font/google";
 import Shell from "@/components/Shell";
 import { appearanceBootScript } from "@/lib/appearance";
 import "./globals.css";
+
+// The default interface face (MissionCommand look).
+const jakarta = Plus_Jakarta_Sans({ variable: "--font-jakarta", subsets: ["latin"], weight: ["400", "500", "600", "700", "800"] });
 
 const spaceGrotesk = Space_Grotesk({
   variable: "--font-space-grotesk",
@@ -32,7 +36,7 @@ const atkinson = Atkinson_Hyperlegible({ variable: "--font-atkinson", subsets: [
 const sourceSerif = Source_Serif_4({ variable: "--font-source-serif", subsets: ["latin"], preload: false });
 const firaCode = Fira_Code({ variable: "--font-fira-code", subsets: ["latin"], preload: false });
 
-const FONT_VARS = [spaceGrotesk, jetbrains, inter, plexSans, plexMono, atkinson, sourceSerif, firaCode].map((f) => f.variable).join(" ");
+const FONT_VARS = [jakarta, spaceGrotesk, jetbrains, inter, plexSans, plexMono, atkinson, sourceSerif, firaCode].map((f) => f.variable).join(" ");
 
 export const metadata: Metadata = {
   title: "MISSION CONTROL // AI Operations",

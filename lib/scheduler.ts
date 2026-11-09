@@ -12,6 +12,12 @@ import { maybeRunHealth } from "./health";
 import { maybeShare } from "./sessionShare";
 import { bridgeTick } from "./bridge";
 import { sessionJobsTick } from "./sessionActions";
+import { startPeerServer } from "./peer";
+import { alertsTick, drainSpool, maintainHooks } from "./sessionEvents";
+import { publishLive } from "./fleetLive";
+import { maybeDailySummary } from "./dailySummary";
+import { sessionsSnapshot } from "./sessions";
+import { mergeRemoteSessions } from "./sessionShare";
 
 async function refreshScaffold(): Promise<void> {
   const reg = await readRegistry().catch(() => null);
@@ -41,6 +47,16 @@ export function startScheduler(): void {
   // machines (through the vault), and results of the ones this machine sent.
   setInterval(() => void sessionJobsTick().catch(() => {}), 15_000);
   setTimeout(() => void maybeRunHealth().catch(() => {}), 20_000);
+  // LAN link to the other machines (peer endpoints only, on :3101)
+  startPeerServer();
+  // Session alerts: events the hook spooled while the server was down, keep the
+  // hook installed per the shared setting, live state → vault for Off-LAN machines
+  setTimeout(() => void maintainHooks(true).catch(() => {}), 15_000);
+  setInterval(() => {
+    void drainSpool().catch(() => {});
+    void maintainHooks().catch(() => {});
+    void publishLive().catch(() => {});
+  }, 60_000);
   // Master-only duties are gated on holding the cluster lease. With clustering
   // off (default) clusterTick() returns true, so a lone machine runs as always.
   setInterval(async () => {
@@ -55,6 +71,11 @@ export function startScheduler(): void {
     bridgeTick().catch(() => {}); // vault bridge for Claude Duet / OpenAI Dots (inbox, outbox, Status.md)
     maybeRefreshProfile().catch(() => {}); // throttled to weekly internally
     void refreshScaffold(); // no-op unless the day rolled over
+    void sessionsSnapshot()
+      .then((snap) => mergeRemoteSessions(snap.sessions))
+      .then((m) => alertsTick(m.sessions)) // Telegram pings for session alerts, when turned on
+      .catch(() => {});
+    maybeDailySummary().catch(() => {}); // yesterday's machines note, once after 6 AM
   }, 30_000);
   // catch anything already due shortly after boot
   setTimeout(async () => {

@@ -55,14 +55,16 @@ export const GUIDE_SECTIONS: GuideSection[] = [
   {
     id: "appearance",
     title: "Appearance — Theme, Colors, Fonts & Layout",
-    keywords: "appearance customize look feel theme dark light system palette colors ocean sunset forest pastel terminal monochrome font inter plex serif readable atkinson monospace size zoom scale density compact spacious sidebar icons right width corners rounded sharp panels glass solid outline flat glow shimmer animation motion reduced start page preset reset",
+    keywords: "appearance customize look feel theme dark light system palette colors missioncommand teal maroon plus jakarta sans neon deck ocean sunset forest pastel terminal monochrome font inter plex serif readable atkinson monospace size zoom scale density compact spacious sidebar icons right width corners rounded sharp panels glass solid outline flat glow shimmer animation motion reduced start page preset reset",
     body: `**Appearance** (Workspace → Appearance, or Ctrl/⌘+K → "appearance") changes the whole deck live — no reload.
 
-**Presets** — one click: *Mission Control* (the original), *Calm*, *Terminal*, *Paper*, *Focus*, *Easy reading*. **Reset to default** undoes everything.
+**Default look: MissionCommand** — deep teal, maroon, gold, navy and green on light grey with white cards and a dark teal title band, set in **Plus Jakarta Sans** (numbers too; code and tool output stay monospace). Light mode by default; the same colors work in dark mode. Every browser was switched to it once; pick *Neon deck* to go back to the original. Each page's title band takes that page's own color. Charts: **Command** shows new sessions per day stacked by machine (last 14 days; hover a day for the breakdown, **Table** for the numbers) and 7-day mini bars in the Done today / Memories tiles; each **Projects** row has an 8-week strip of when its sessions were last active.
 
-**Look** — Theme (dark / light / match system) · Color palette (Neon, Ocean, Sunset, Forest, Pastel, Terminal, Monochrome — monochrome keeps amber/lime/rose so status still reads) · Background tone (cool blue, neutral gray, warm, pure black/white) · Text contrast · Panel style (glass, solid, outline, flat) · Panel accent stripe · Corners (sharp → extra round) · Background effects (full, subtle, plain) · Glow and shimmer.
+**Presets** — one click: *MissionCommand* (the default), *Neon deck* (the original dark neon look), *Calm*, *Terminal*, *Paper*, *Focus*, *Easy reading*. **Reset to default** undoes everything.
 
-**Type** — Interface font (Space Grotesk, Inter, IBM Plex Sans, Atkinson Hyperlegible, Source Serif, Segoe UI, or monospace everywhere) · Code and data font (JetBrains Mono, IBM Plex Mono, Fira Code, Cascadia/Consolas) · Label style (SPACED CAPS or normal case) · Interface size (90–125%).
+**Look** — Theme (dark / light / match system) · Color palette (MissionCommand, Neon, Ocean, Sunset, Forest, Pastel, Terminal, Monochrome — monochrome keeps amber/lime/rose so status still reads) · Background tone (MissionCommand teal, cool blue, neutral gray, warm, pure black/white) · Text contrast · Panel style (glass, solid, outline, flat) · Panel accent stripe · Corners (sharp → extra round) · Background effects (full, subtle, plain) · Glow and shimmer.
+
+**Type** — Interface font (Plus Jakarta Sans, Space Grotesk, Inter, IBM Plex Sans, Atkinson Hyperlegible, Source Serif, Segoe UI, or monospace everywhere) · Code and data font (same as the interface — code stays monospace —, JetBrains Mono, IBM Plex Mono, Fira Code, Cascadia/Consolas) · Label style (SPACED CAPS or normal case) · Interface size (90–125%).
 
 **Layout** — Density (compact, comfortable, spacious) · Sidebar (full, compact, icons only — hover an icon for its name) · Sidebar position (left/right) · Content width (focused, standard, full width) · Footer ticker.
 
@@ -120,6 +122,37 @@ Settings are stored in this browser (\`localStorage\`: \`mc-appearance\`, theme 
 - **Board** — give the fleet a goal; the manager (Claude) splits it into subtasks, workers run them (Auto router or pinned agents), the reviewer (Claude) passes them or sends them back. Same engine as the Orchestrator on Tasks.
 
 **Subscription meters** — ChatGPT/Codex shows real % used, window and reset time. Claude Code doesn't write its limits to disk, so its meter shows tokens used in the last 5 hours / 7 days instead. Kimi shows "not set up" until its CLI is installed.`,
+  },
+  {
+    id: "fleet-control",
+    title: "Run every machine's sessions from here — live view, alerts, LAN link",
+    keywords: "live sessions stuck looping stop session needs you waiting permission alerts hook notification telegram browser notification long run finished lan off-lan network firewall 3101 peer direct onedrive fallback hand off move session another machine bring here run somewhere dispatch pick machine search all sessions saved filters bulk select hide move daily summary",
+    body: `Everything below works across your machines. Machines on the same local network talk to each other **directly** (seconds); the rest go through OneDrive (1-2 minutes).
+
+**Network — LAN and Off-LAN** (Fleet → Network)
+- Each Mission Control runs a small listener on **port 3101** that only answers other Mission Controls (they share a key kept in the vault, Agentic OS/Cluster/peer-key.txt). The app itself stays on 127.0.0.1:3000, unreachable from the network.
+- Per machine choose **LAN** (direct, falls back to OneDrive when it can't be reached), **Off-LAN** (OneDrive only — a laptop away from home) or **Auto** (same as LAN). Machines report their own LAN addresses; you can also set a fixed address. The setting is shared by all machines.
+- Windows: the installer allows TCP 3101 in Windows Firewall on private/work networks (needs administrator — run the installer as admin → Modify → Auto-start once). Health shows **LAN link**: whether the listener is up, the firewall rule exists, and which machines answer.
+
+**Command → Needs you, from every machine** (session alerts)
+- A tiny hook (scripts/mc-hook.mjs) in Claude Code's settings tells Mission Control when a session **waits for you** (a permission prompt or a question), **finishes a turn**, or closes. Mission Control installs it on every machine and keeps your own hooks (Fleet → Session alerts → "Install the hook on every machine"; turn it off to remove it everywhere). Codex reports finished turns too, unless Codex already uses its notify setting for something else (the Codex app does on some machines).
+- Needs you lists waiting sessions (until they move on, you dismiss them, or 6 hours pass) and **long runs** that finished (default 5+ minutes, with files changed). Click one to open the session; ✕ dismisses it.
+- **Browser notifications** (per computer) and **Telegram** pings (sent by the master for every machine; off by default) are on Fleet → Session alerts.
+
+**Command → Live sessions** — every open session on every machine: its current step ("Running Bash: npm run build"), the latest lines of its reply, how long this turn has run and its tokens. Flags: **Stuck?** (says it's working but nothing changed for 10+ minutes) and **Looping?** (the same tool call failed 3+ times this turn). **Stop** ends a session or a Mission Control run — it asks first when the session is open in the Claude app, a terminal or Codex (Codex app sessions must be stopped in the app).
+
+**Command → Run somewhere** — describe a task, optionally pick a project and the tool; Mission Control ranks the machines (online, accepts work, has the project's folder, subscription not at its limit, fewest busy sessions; LAN machines and this one preferred) and runs it on your pick. The result appears below and as a normal session in the project.
+
+**Projects**
+- **Search every session on every machine** — messages, replies, commands, file names, errors. LAN machines search their full threads; Off-LAN ones their shared conversations.
+- **Filters** — open/closed, machine, tool, where it was started; **Save filter** keeps one as a chip ("Open sessions on IdrisLegion7").
+- **Select** sessions with their checkboxes to hide, unhide or move them to a project together.
+- **Move to another machine…** (a Claude Code session on this machine) / **Bring to this machine…** (one on another machine) — copies the whole conversation into Claude Code there, with folder paths changed to where the project lives on that machine, optionally opens it in a terminal there, and hides the original. The project files aren't copied: the folder must exist there.
+- Links like /projects?session=<id> (from alerts and notifications) open that session directly.
+
+**What the other machine must allow** — replies, new sessions, full threads, Stop and moving sessions all need **Replies from my other machines** turned on on the machine that has the session (Fleet → Sharing): **Answers only** or **Answers + file edits**. Each machine only acts on its own sessions and folders and never grants more than its setting.
+
+**Daily summary** — each morning the master writes what every machine did yesterday to Agentic OS/Daily Summaries/<date> Machines.md (sessions per machine, projects, long runs, times sessions waited on you, runs started here). Preview it on Fleet → Session alerts; Telegram copy optional.`,
   },
   {
     id: "agents",

@@ -10,6 +10,7 @@ import { useSort } from "./SortControl";
 import { SESSION_SORTS } from "./sorts";
 import SharingPanel from "./SharingPanel";
 import BridgePanel from "./BridgePanel";
+import { AlertsPanel, NetworkPanel } from "./NetworkPanels";
 import { ConversationButton, ConversationView } from "./Conversation";
 import { useHub, SourcePill, HubError, IndexingNote, ago, fmtTokens, until } from "./common";
 
@@ -166,7 +167,9 @@ export default function FleetSection() {
         </Panel>
       )}
 
+      <NetworkPanel />
       <SharingPanel onShared={reload} />
+      <AlertsPanel />
       <BridgePanel />
     </div>
   );

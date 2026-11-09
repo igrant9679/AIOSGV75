@@ -3,7 +3,7 @@ import { sessionsSnapshot } from "@/lib/sessions";
 import { readThread } from "@/lib/sessionThread";
 import { readShareSettings } from "@/lib/sessionShare";
 import { renameSessions, setHidden } from "@/lib/sessionNaming";
-import { dismissJob, listJobs, openLocal, readJobThread, sessionJobsTick, startJob, type JobAccess, type JobMode, type OpenWhat } from "@/lib/sessionActions";
+import { dismissJob, listJobs, openLocal, readJobThread, refreshLanJobs, sessionJobsTick, startJob, type JobAccess, type JobMode, type OpenWhat } from "@/lib/sessionActions";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -35,6 +35,7 @@ export async function GET(req: Request) {
       const t = await readJobThread(jobThread);
       return t ? Response.json(t) : Response.json({ error: "not fetched yet" }, { status: 404 });
     }
+    await refreshLanJobs().catch(() => {}); // in-flight jobs on LAN machines: fresh progress
     const [jobs, settings] = await Promise.all([listJobs(), readShareSettings()]);
     return Response.json({ host: os.hostname(), jobs, remoteReplies: settings.remoteReplies });
   } catch (e) {
@@ -51,6 +52,9 @@ export async function GET(req: Request) {
  * { action: "move", keys, project }             ("" = automatic project)
  * { action: "dismiss", id }
  * { action: "sync" }                            (exchange with other machines now)
+ * { action: "stop", key | jobId }               (asks first in the UI for interactive sessions)
+ * { action: "import", key, host, folder, openTerminal?, hideSource? }   move a session here → there
+ * { action: "export", key, folder, openTerminal?, hideSource? }         move a session there → here
  */
 export async function POST(req: Request) {
   let b: {
@@ -67,6 +71,10 @@ export async function POST(req: Request) {
     what?: string;
     hidden?: boolean;
     id?: string;
+    jobId?: string;
+    openTerminal?: boolean;
+    hideSource?: boolean;
+    dispatch?: string;
   };
   try {
     b = await req.json();
@@ -78,8 +86,12 @@ export async function POST(req: Request) {
     switch (b.action) {
       case "reply":
       case "new":
-      case "thread": {
-        if (b.action !== "new" && (!b.key || !KEY_RE.test(b.key))) return Response.json({ error: "bad key" }, { status: 400 });
+      case "thread":
+      case "stop":
+      case "import":
+      case "export": {
+        const needsKey = b.action !== "new" && !(b.action === "stop" && b.jobId);
+        if (needsKey && (!b.key || !KEY_RE.test(b.key))) return Response.json({ error: "bad key" }, { status: 400 });
         const job = await startJob({
           mode: b.action as JobMode,
           key: b.key,
@@ -90,7 +102,12 @@ export async function POST(req: Request) {
           folder: b.folder,
           tool: b.tool === "codex" ? "codex" : "claude",
           project: typeof b.project === "string" ? b.project.slice(0, 80) : undefined,
+          jobId: typeof b.jobId === "string" ? b.jobId : undefined,
+          openTerminal: b.openTerminal === true,
+          hideSource: b.hideSource !== false,
+          dispatch: typeof b.dispatch === "string" ? b.dispatch.slice(0, 300) : undefined,
         });
+        if ((b.action === "stop" || b.action === "export") && job.status === "error") return Response.json({ error: job.error, job }, { status: 400 });
         return Response.json({ job });
       }
       case "open": {

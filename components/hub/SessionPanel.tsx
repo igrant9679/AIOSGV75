@@ -329,7 +329,18 @@ export function JobBubble({ job, onOpenSession, knownKeys }: { job: SessionJob; 
           </button>
         )}
       </div>
-      <p className="whitespace-pre-wrap text-xs text-ink">{job.prompt}</p>
+      <p className="whitespace-pre-wrap text-xs text-ink">
+        {job.prompt ||
+          (job.mode === "import"
+            ? `Move "${job.title ?? "this session"}" to ${job.hostLabel}`
+            : job.mode === "export"
+              ? `Bring "${job.title ?? "this session"}" here from ${job.hostLabel}`
+              : job.mode === "stop"
+                ? `Stop "${job.title ?? "this session"}" on ${job.hostLabel}`
+                : job.mode === "thread"
+                  ? `Load the full thread from ${job.hostLabel}`
+                  : "")}
+      </p>
       {status && (
         <p className="flex items-center gap-2 font-mono text-[10px]" style={{ color: ACCENTS.cyan.base }}>
           <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full" style={{ background: ACCENTS.cyan.base }} /> {status}
@@ -472,6 +483,89 @@ function Composer({
   );
 }
 
+// ─── move a session to another machine ───
+
+function HandoffForm({ s, hub, onSent }: { s: SessionSummary; hub: HubSnapshot | null; onSent: () => void }) {
+  const m = machineInfo(hub, s.host);
+  const targets = (hub?.machines ?? []).filter((x) => x.host !== s.host);
+  const [target, setTarget] = useState(targets.find((t) => t.acceptsReplies !== "off")?.host ?? targets[0]?.host ?? "");
+  // where the project lives on the receiving machine, if a session there knows it
+  const folderOn = (host: string | undefined) => hub?.sessions.find((x) => x.host === host && x.project === s.project && x.folder)?.folder ?? s.cwd;
+  const [folder, setFolder] = useState(m.local ? folderOn(target) : folderOn(hub?.host));
+  const [openIt, setOpenIt] = useState(true);
+  const [hide, setHide] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => {
+    if (m.local) setFolder(folderOn(target));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [target]);
+  const t = targets.find((x) => x.host === target);
+  const blocked = m.local ? (!t ? "No other machine in the group." : t.acceptsReplies === "off" ? `${t.label} doesn't accept requests from other machines (Fleet → Sharing there).` : null) : m.level === "off" ? `${m.label} doesn't accept requests from other machines (Fleet → Sharing there).` : null;
+
+  const send = async () => {
+    setBusy(true);
+    setErr(null);
+    const r = await sessionsPost(
+      m.local
+        ? { action: "import", key: s.key, host: target, folder: folder.trim(), openTerminal: openIt, hideSource: hide }
+        : { action: "export", key: s.key, folder: folder.trim(), openTerminal: openIt, hideSource: hide },
+    );
+    setBusy(false);
+    if (r.error) setErr(r.error);
+    else onSent();
+  };
+
+  return (
+    <div className="flex flex-col gap-2 rounded-xl border border-line p-3 text-[11px] text-ink-dim">
+      <p className="font-semibold text-ink">{m.local ? "Move this session to another machine" : `Bring this session here from ${m.label}`}</p>
+      <p className="text-[10px] leading-4 text-ink-faint">
+        Copies the whole conversation into Claude Code on the {m.local ? "other" : "this"} machine, with folder paths changed to where the project lives there, so you
+        can keep going with claude --resume. The project&apos;s files themselves aren&apos;t copied - the folder must already exist there (a clone, or the same
+        OneDrive folder).
+      </p>
+      <div className="flex flex-wrap items-center gap-2 font-mono text-[10px]">
+        {m.local && (
+          <select value={target} onChange={(e) => setTarget(e.target.value)} aria-label="Machine" className="rounded-md border border-line bg-transparent px-1.5 py-1 text-[10px] text-ink">
+            {targets.map((x) => (
+              <option key={x.host} value={x.host} style={{ background: "var(--color-panel)" }}>
+                {x.label}
+                {x.acceptsReplies === "off" ? " (not accepting)" : ""}
+              </option>
+            ))}
+          </select>
+        )}
+        <span>folder there:</span>
+        <input
+          value={folder}
+          onChange={(e) => setFolder(e.target.value)}
+          aria-label="Folder on the receiving machine"
+          className="min-w-[260px] flex-1 rounded-md border border-line bg-transparent px-2 py-1 text-[10px] text-ink outline-none"
+        />
+      </div>
+      <div className="flex flex-wrap items-center gap-3 font-mono text-[10px]">
+        <label className="flex cursor-pointer items-center gap-1">
+          <input type="checkbox" checked={openIt} onChange={(e) => setOpenIt(e.target.checked)} /> open it in a terminal {m.local ? "there" : "here"}
+        </label>
+        <label className="flex cursor-pointer items-center gap-1">
+          <input type="checkbox" checked={hide} onChange={(e) => setHide(e.target.checked)} /> hide the {m.local ? "original" : "other machine's copy"} from Projects
+        </label>
+        <span className="flex-1" />
+        <button
+          type="button"
+          onClick={send}
+          disabled={busy || Boolean(blocked) || !folder.trim()}
+          className="cursor-pointer rounded-md border px-3 py-1 font-mono text-[11px] font-semibold transition-colors hover:bg-white/[0.06] disabled:cursor-default disabled:opacity-40"
+          style={{ borderColor: "var(--page-accent)", color: "var(--page-accent)" }}
+        >
+          {busy ? "Moving…" : m.local ? `Move to ${t?.label ?? "…"}` : "Bring it here"}
+        </button>
+      </div>
+      {(blocked || err) && <p style={{ color: ACCENTS.rose.base }}>{err ?? blocked}</p>}
+    </div>
+  );
+}
+
 // ─── one session, opened ───
 
 export function SessionDetail({
@@ -498,14 +592,29 @@ export function SessionDetail({
   const resume = s.tool === "claude" ? `claude --resume ${s.id}` : `codex resume ${s.id}`;
   const copyCmd = `cd "${s.cwd}" && ${resume}`;
 
+  const [stopAsk, setStopAsk] = useState(false);
+  const [handoff, setHandoff] = useState(false);
+  const interactive = !/^sdk|exec/i.test(s.origin ?? "");
+
   const mine = useMemo(
-    () => jobs.filter((j) => j.mode === "reply" && (j.key === s.key || j.resultKey === s.key)).sort((a, b) => a.createdAt - b.createdAt),
+    () =>
+      jobs
+        .filter((j) => (j.mode === "reply" || j.mode === "import" || j.mode === "export" || j.mode === "stop") && (j.key === s.key || j.resultKey === s.key))
+        .sort((a, b) => a.createdAt - b.createdAt),
     [jobs, s.key],
   );
   // a finished in-place reply is part of the thread itself - refetch it then
-  const refresh = mine.filter((j) => j.status === "done").length;
+  const refresh = mine.filter((j) => j.mode === "reply" && j.status === "done").length;
   const knownKeys = useMemo(() => new Set(hub?.sessions.map((x) => x.key)), [hub]);
-  const showJobs = mine.filter((j) => ACTIVE.includes(j.status) || j.status !== "done" || !m.local || (j.resultKey && j.resultKey !== s.key));
+  const showJobs = mine.filter((j) => j.mode !== "reply" || ACTIVE.includes(j.status) || j.status !== "done" || !m.local || (j.resultKey && j.resultKey !== s.key));
+
+  const stop = async () => {
+    setStopAsk(false);
+    const r = await act({ action: "stop", key: s.key });
+    if (!r.error && r.job) setMsg(r.job.reply ?? (r.job.status === "sent" ? `Sent to ${m.label}.` : "Stopped."));
+    reloadJobs();
+    reloadHub();
+  };
 
   const act = async (body: object) => {
     setMsg("…");
@@ -552,8 +661,27 @@ export function SessionDetail({
         >
           {s.hidden ? "Unhide" : "Hide"}
         </SmallButton>
+        {s.tool === "claude" && (
+          <SmallButton onClick={() => setHandoff((v) => !v)} title="Continue this session on a different machine">
+            {m.local ? "Move to another machine…" : "Bring to this machine…"}
+          </SmallButton>
+        )}
+        {busy &&
+          (stopAsk ? (
+            <span className="flex flex-wrap items-center gap-1.5 font-mono text-[10px]" style={{ color: ACCENTS.rose.base }}>
+              {interactive ? `It's open in ${s.tool === "claude" ? "the Claude app or a terminal" : "Codex"} on ${m.label} - stopping ends it there.` : "Stop this run?"}
+              <SmallButton onClick={stop}>Stop it</SmallButton>
+              <SmallButton onClick={() => setStopAsk(false)}>Cancel</SmallButton>
+            </span>
+          ) : (
+            <SmallButton onClick={() => (interactive ? setStopAsk(true) : stop())} title="Stop this session (asks first when it's open in an app or terminal)">
+              Stop
+            </SmallButton>
+          ))}
         {msg && <span className="font-mono text-[10px] text-ink-faint">{msg}</span>}
       </div>
+
+      {handoff && <HandoffForm s={s} hub={hub} onSent={() => (reloadJobs(), setHandoff(false))} />}
 
       {moving && (
         <form

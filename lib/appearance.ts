@@ -55,6 +55,7 @@ export const APPEARANCE_OPTIONS: AppearanceOption[] = [
     label: "Color palette",
     hint: "The six accent colors used for pages, agents and status.",
     choices: [
+      { value: "mission", label: "MissionCommand" },
       { value: "neon", label: "Neon" },
       { value: "ocean", label: "Ocean" },
       { value: "sunset", label: "Sunset" },
@@ -71,6 +72,7 @@ export const APPEARANCE_OPTIONS: AppearanceOption[] = [
     label: "Background tone",
     hint: "The base color behind and inside panels.",
     choices: [
+      { value: "mission", label: "MissionCommand (teal)" },
       { value: "cool", label: "Cool blue" },
       { value: "neutral", label: "Neutral gray" },
       { value: "warm", label: "Warm" },
@@ -156,6 +158,7 @@ export const APPEARANCE_OPTIONS: AppearanceOption[] = [
     label: "Interface font",
     hint: "Used for headings, labels and body text.",
     choices: [
+      { value: "jakarta", label: "Plus Jakarta Sans" },
       { value: "grotesk", label: "Space Grotesk" },
       { value: "inter", label: "Inter" },
       { value: "plex", label: "IBM Plex Sans" },
@@ -172,6 +175,7 @@ export const APPEARANCE_OPTIONS: AppearanceOption[] = [
     label: "Code and data font",
     hint: "Used for numbers, timestamps, labels and code.",
     choices: [
+      { value: "jakarta", label: "Same as interface (code stays monospace)" },
       { value: "jetbrains", label: "JetBrains Mono" },
       { value: "plexmono", label: "IBM Plex Mono" },
       { value: "fira", label: "Fira Code" },
@@ -291,16 +295,16 @@ export const APPEARANCE_OPTIONS: AppearanceOption[] = [
 ];
 
 export const APPEARANCE_DEFAULTS: Appearance = {
-  palette: "neon",
-  surface: "cool",
+  palette: "mission",
+  surface: "mission",
   contrast: "standard",
   panels: "glass",
   stripe: "on",
   corners: "round",
   bg: "full",
   glow: "on",
-  font: "grotesk",
-  mono: "jetbrains",
+  font: "jakarta",
+  mono: "jakarta",
   labels: "caps",
   scale: "100",
   density: "comfortable",
@@ -322,7 +326,14 @@ export interface AppearancePreset {
 
 /** One-click looks. Anything a preset doesn't name falls back to the default. */
 export const APPEARANCE_PRESETS: AppearancePreset[] = [
-  { id: "default", name: "Mission Control", blurb: "The original neon deck.", values: {} },
+  { id: "default", name: "MissionCommand", blurb: "Teal, maroon and gold on light grey, Plus Jakarta Sans (the default).", theme: "light", values: {} },
+  {
+    id: "neon",
+    name: "Neon deck",
+    blurb: "The original dark neon look with Space Grotesk.",
+    theme: "dark",
+    values: { palette: "neon", surface: "cool", font: "grotesk", mono: "jetbrains" },
+  },
   {
     id: "calm",
     name: "Calm",
@@ -358,6 +369,9 @@ export const APPEARANCE_PRESETS: AppearancePreset[] = [
 ];
 
 export const APPEARANCE_STORAGE_KEY = "mc-appearance";
+/** Bumped when the default look changes: browsers on an older version are moved to the new look once. */
+export const LOOK_VERSION_KEY = "mc-look-version";
+export const LOOK_VERSION = "2";
 export const THEME_STORAGE_KEY = "mc-theme";
 /** Fired on window whenever appearance or theme changes, so open components can resync. */
 export const APPEARANCE_EVENT = "mc-appearance";
@@ -380,5 +394,5 @@ export function sanitizeAppearance(raw: unknown): Appearance {
  */
 export function appearanceBootScript(): string {
   const spec = APPEARANCE_OPTIONS.map((o) => [o.key, o.attr, o.choices.map((c) => c.value), APPEARANCE_DEFAULTS[o.key]]);
-  return `try{var d=document.documentElement,t=localStorage.getItem("${THEME_STORAGE_KEY}")||"dark";if(t==="system"){t=window.matchMedia("(prefers-color-scheme: light)").matches?"light":"dark"}d.dataset.theme=t==="light"?"light":"dark";var a={};try{a=JSON.parse(localStorage.getItem("${APPEARANCE_STORAGE_KEY}")||"{}")||{}}catch(e){}var s=${JSON.stringify(spec)};for(var i=0;i<s.length;i++){var v=a[s[i][0]];d.setAttribute("data-"+s[i][1],s[i][2].indexOf(v)>=0?v:s[i][3])}}catch(e){}`;
+  return `try{if(localStorage.getItem("${LOOK_VERSION_KEY}")!=="${LOOK_VERSION}"){var o={};try{o=JSON.parse(localStorage.getItem("${APPEARANCE_STORAGE_KEY}")||"{}")||{}}catch(e){}o.palette="mission";o.surface="mission";o.font="jakarta";o.mono="jakarta";localStorage.setItem("${APPEARANCE_STORAGE_KEY}",JSON.stringify(o));localStorage.setItem("${THEME_STORAGE_KEY}","light");localStorage.setItem("${LOOK_VERSION_KEY}","${LOOK_VERSION}")}}catch(e){}try{var d=document.documentElement,t=localStorage.getItem("${THEME_STORAGE_KEY}")||"light";if(t==="system"){t=window.matchMedia("(prefers-color-scheme: light)").matches?"light":"dark"}d.dataset.theme=t==="light"?"light":"dark";var a={};try{a=JSON.parse(localStorage.getItem("${APPEARANCE_STORAGE_KEY}")||"{}")||{}}catch(e){}var s=${JSON.stringify(spec)};for(var i=0;i<s.length;i++){var v=a[s[i][0]];d.setAttribute("data-"+s[i][1],s[i][2].indexOf(v)>=0?v:s[i][3])}}catch(e){}`;
 }

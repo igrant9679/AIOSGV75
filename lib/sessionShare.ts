@@ -9,6 +9,9 @@ import { readNames } from "./sessionNaming";
 import { looksLikeJunkTitle } from "./projectNames";
 import { publishDigests } from "./sessionDigest";
 import { mirrorToolMemory } from "./toolMemory";
+import { peerFetch } from "./peer";
+import type { LiveSession } from "./sessionLive";
+import type { SessionEvent } from "./sessionEvents";
 
 /**
  * Session sharing across the machine group — the same channel as cluster
@@ -36,9 +39,15 @@ export interface SharedSessionsFile {
   subscriptions: SubscriptionMeter[];
   /** what this machine lets the others do with its sessions (Projects → reply / new session) */
   acceptsReplies?: RemoteReplies;
+  /** "lan" when fetched directly from the machine (fresh), else read from the vault */
+  via?: "lan" | "vault";
+  /** LAN summaries only: what its open sessions are doing, and recent session events */
+  live?: LiveSession[];
+  events?: SessionEvent[];
 }
 
 export interface RemoteMachine {
+  via: "lan" | "vault";
   host: string;
   label: string;
   publishedAt: number;
@@ -198,16 +207,65 @@ export async function maybeShare(): Promise<void> {
   await shareNow();
 }
 
-/** Other machines' published files (never this machine's own). */
+let summaryCache: { at: number; data: SharedSessionsFile } | null = null;
+
+/**
+ * What this machine shares, right now - served to LAN peers (/peer/summary),
+ * so machines on the same network see each other within seconds instead of
+ * waiting for the 5-minute vault file + OneDrive. Includes live session state
+ * and recent session events. Cached 10 s.
+ */
+export async function localSummary(): Promise<SharedSessionsFile> {
+  if (summaryCache && Date.now() - summaryCache.at < 10_000) return summaryCache.data;
+  const [snap, cfg, settings] = await Promise.all([sessionsSnapshot(), readConfig(), readShareSettings()]);
+  const { liveSnapshot } = await import("./sessionLive");
+  const { ownEvents } = await import("./sessionEvents");
+  const data: SharedSessionsFile = {
+    v: 1,
+    host: os.hostname(),
+    label: cfg.label || os.hostname(),
+    publishedAt: Date.now(),
+    sessions: snap.sessions.filter((s) => !s.indexing).slice(0, MAX_SESSIONS).map(slim),
+    subscriptions: snap.subscriptions,
+    acceptsReplies: settings.remoteReplies,
+    via: "lan",
+    live: await liveSnapshot().catch(() => []),
+    events: await ownEvents(80).catch(() => []),
+  };
+  summaryCache = { at: Date.now(), data };
+  return data;
+}
+
+const lanCache = new Map<string, { at: number; f: SharedSessionsFile }>();
+
+/** A LAN peer's live summary (cached 15 s; a recent copy is reused for 2 min if it drops off). */
+async function lanSummary(host: string): Promise<SharedSessionsFile | null> {
+  const c = lanCache.get(host);
+  if (c && Date.now() - c.at < 15_000) return c.f;
+  try {
+    const f = await peerFetch<SharedSessionsFile>(host, "/peer/summary", { timeoutMs: 4_000 });
+    if (!f?.host || !Array.isArray(f.sessions)) return null;
+    f.via = "lan";
+    lanCache.set(host, { at: Date.now(), f });
+    return f;
+  } catch {
+    return c && Date.now() - c.at < 2 * 60_000 ? c.f : null;
+  }
+}
+
+/** Other machines' published files (never this machine's own) - over the LAN when possible, else from the vault. */
 export async function readRemoteSessions(): Promise<SharedSessionsFile[]> {
   if (!(await sharingOn())) return [];
   const me = os.hostname().toLowerCase();
   const retired = await readRetired().catch(() => ({}));
+  const st = await clusterStatus().catch(() => null);
+  const lanHosts = (st?.nodes ?? []).filter((n) => !n.self && !isRetired(retired, n.host)).map((n) => n.host);
+  const lanPromise = Promise.all(lanHosts.map((h) => lanSummary(h)));
   let names: string[] = [];
   try {
     names = await fsp.readdir(shareDir());
   } catch {
-    return [];
+    names = [];
   }
   const out: SharedSessionsFile[] = [];
   for (const n of names) {
@@ -219,6 +277,13 @@ export async function readRemoteSessions(): Promise<SharedSessionsFile[]> {
     } catch {
       /* mid-sync partial file — next refresh */
     }
+  }
+  // a LAN answer is fresher than the vault file
+  for (const f of await lanPromise) {
+    if (!f || f.host.toLowerCase() === me) continue;
+    const i = out.findIndex((x) => x.host.toLowerCase() === f.host.toLowerCase());
+    if (i >= 0) out[i] = f;
+    else out.push(f);
   }
   return out;
 }
@@ -241,8 +306,9 @@ export async function mergeRemoteSessions(local: SessionSummary[]): Promise<Merg
   const now = Date.now();
   for (const f of files) {
     // offline per the 30s cluster heartbeat, or not publishing for 2h (old version / sharing off)
-    const stale = online.get(f.host.toLowerCase()) === false || now - f.publishedAt > 2 * 60 * 60_000;
+    const stale = f.via === "lan" ? false : online.get(f.host.toLowerCase()) === false || now - f.publishedAt > 2 * 60 * 60_000;
     remote.push({
+      via: f.via === "lan" ? "lan" : "vault",
       host: f.host,
       label: f.label || f.host,
       publishedAt: f.publishedAt,

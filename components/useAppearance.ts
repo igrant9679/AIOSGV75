@@ -25,9 +25,9 @@ export function readAppearance(): Appearance {
 export function readThemeChoice(): ThemeChoice {
   try {
     const t = localStorage.getItem(THEME_STORAGE_KEY);
-    return t === "light" || t === "system" ? t : "dark";
+    return t === "dark" || t === "system" ? t : "light";
   } catch {
-    return "dark";
+    return "light";
   }
 }
 
@@ -59,7 +59,7 @@ export function saveAppearance(a: Appearance, theme?: ThemeChoice): void {
 /** Live appearance state; re-reads whenever any component (or another tab) changes it. */
 export function useAppearance() {
   const [appearance, setAppearance] = useState<Appearance>(APPEARANCE_DEFAULTS);
-  const [theme, setThemeState] = useState<ThemeChoice>("dark");
+  const [theme, setThemeState] = useState<ThemeChoice>("light");
 
   useEffect(() => {
     const sync = () => {

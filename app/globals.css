@@ -688,3 +688,172 @@ body {
   transition-duration: 0.01ms !important;
 }
 :root[data-motion="none"] .hero-scan { display: none; }
+
+/* ======================================================================
+   MissionCommand look (the default since look version 2): deep teal,
+   maroon, gold, navy and green on light grey with white cards, set in
+   Plus Jakarta Sans. Palette + surface "mission"; font/mono "jakarta".
+   ====================================================================== */
+
+/* accents: page colors, status and agents */
+:root[data-palette="mission"] { --nb-cyan:#2e8b85; --nb-magenta:#b23a55; --nb-amber:#f0b43a; --nb-lime:#3f8f55; --nb-violet:#3d5fa8; --nb-rose:#d64555; }
+:root:not([data-theme="light"])[data-palette="mission"] { --ac-cyan:#5cc2b6; --ac-magenta:#e48aa0; --ac-amber:#f2b84a; --ac-lime:#74c48f; --ac-violet:#8fb0ee; --ac-rose:#f0808e; }
+:root[data-theme="light"][data-palette="mission"] { --ac-cyan:#1d5f5a; --ac-magenta:#9b2c46; --ac-amber:#b8790c; --ac-lime:#2e6b3a; --ac-violet:#2b4c8c; --ac-rose:#b42335; }
+
+/* background tone */
+:root[data-theme="light"][data-surface="mission"] {
+  --surface-void:#f1f4f4; --surface-abyss:#e8eded; --surface-panel:#ffffff; --surface-panel-2:#f3f7f6;
+  --tone-line:rgba(18,58,58,0.12); --tone-line-bright:rgba(18,58,58,0.28);
+  --tone-ink:#16222b; --tone-ink-dim:#46545e; --tone-ink-faint:#85929a;
+  --panel-light-base:#ffffff;
+}
+:root:not([data-theme="light"])[data-surface="mission"] {
+  --surface-void:#0a1719; --surface-abyss:#0d1d20; --surface-panel:#11262a; --surface-panel-2:#163036;
+  --tone-line:rgba(150,205,198,0.13); --tone-line-bright:rgba(150,205,198,0.3);
+  --tone-ink:#e6efee; --tone-ink-dim:#9cb4b1; --tone-ink-faint:#64807d;
+  --panel-bg:rgba(17,38,42,0.86);
+}
+
+/* clean white cards with a soft shadow (no tinted glass) */
+:root[data-theme="light"][data-surface="mission"] .panel {
+  background: #ffffff;
+  backdrop-filter: none;
+  border-color: rgba(18, 58, 58, 0.1);
+  box-shadow: 0 1px 2px rgba(16, 40, 40, 0.05), 0 8px 22px rgba(16, 40, 40, 0.07);
+}
+:root:not([data-theme="light"])[data-surface="mission"] .panel { backdrop-filter: none; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3); }
+
+/* dotted page background instead of the glow */
+:root[data-surface="mission"] .nebula { background: none; }
+:root[data-theme="light"][data-surface="mission"] .grid-bg {
+  background-image: radial-gradient(rgba(18, 58, 58, 0.17) 1px, transparent 1.3px);
+  background-size: 22px 22px;
+  mask-image: none;
+}
+:root:not([data-theme="light"])[data-surface="mission"] .grid-bg {
+  background-image: radial-gradient(rgba(150, 205, 198, 0.08) 1px, transparent 1.3px);
+  background-size: 22px 22px;
+  mask-image: none;
+}
+
+/* the four-color strip along the top edge */
+:root[data-surface="mission"] body::before {
+  content: "";
+  position: fixed;
+  inset: 0 0 auto 0;
+  height: 4px;
+  z-index: 60;
+  pointer-events: none;
+  background: linear-gradient(90deg, #1d5f5a 0 34%, #e0a12e 34% 53%, #9b2c46 53% 77%, #2b4c8c 77% 100%);
+}
+
+/* page title band: a slim dark band in the PAGE'S OWN color (--page-accent), white type,
+   with orbit lines + a dot field on the right (svg.hero-art in PageHero) */
+:root[data-surface="mission"] .page-hero {
+  padding: 10px 20px;
+  border-radius: 14px;
+  color: #ffffff;
+  background:
+    radial-gradient(300px 120px at 88% 50%, color-mix(in srgb, var(--page-accent, var(--ac-cyan)) 40%, transparent), transparent 72%),
+    linear-gradient(105deg,
+      color-mix(in srgb, var(--page-accent, var(--ac-cyan)) 62%, #061214) 0%,
+      color-mix(in srgb, var(--page-accent, var(--ac-cyan)) 44%, #0a171b) 55%,
+      color-mix(in srgb, var(--page-accent, var(--ac-cyan)) 30%, #10161d) 100%);
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--page-accent, var(--ac-cyan)) 22%, transparent);
+}
+/* dark mode accents are light: mix less of them so white type keeps its contrast */
+:root:not([data-theme="light"])[data-surface="mission"] .page-hero {
+  background:
+    radial-gradient(300px 120px at 88% 50%, color-mix(in srgb, var(--page-accent, var(--ac-cyan)) 26%, transparent), transparent 72%),
+    linear-gradient(105deg,
+      color-mix(in srgb, var(--page-accent, var(--ac-cyan)) 34%, #061214) 0%,
+      color-mix(in srgb, var(--page-accent, var(--ac-cyan)) 22%, #0a171b) 60%,
+      color-mix(in srgb, var(--page-accent, var(--ac-cyan)) 14%, #10161d) 100%);
+}
+:root[data-surface="mission"] .page-hero .hero-art { display: block; color: #ffffff; }
+:root[data-surface="mission"] .page-hero h2 {
+  color: #ffffff !important;
+  font-weight: 800;
+  letter-spacing: -0.015em;
+  text-transform: none;
+  font-size: 1.3rem;
+  line-height: 1.2;
+}
+:root[data-surface="mission"] .page-hero p,
+:root[data-surface="mission"] .page-hero .hero-crumb { color: rgba(214, 232, 229, 0.72); }
+:root[data-surface="mission"] .page-hero .hero-crumb span { color: #f0b43a !important; }
+:root[data-surface="mission"] .page-hero .hero-line { display: none; }
+
+/* app title: solid ink, tight, no neon shimmer */
+:root[data-surface="mission"] .logo-title {
+  background: none;
+  -webkit-text-fill-color: currentColor;
+  color: var(--tone-ink);
+  animation: none;
+  letter-spacing: -0.01em;
+}
+
+/* type: Plus Jakarta Sans everywhere, tighter headings */
+:root[data-font="jakarta"] { --mc-font-ui: var(--font-jakarta), "Segoe UI", ui-sans-serif, system-ui, sans-serif; }
+:root[data-font="jakarta"] h1,
+:root[data-font="jakarta"] h2,
+:root[data-font="jakarta"] h3 { letter-spacing: -0.015em; }
+/* numbers and small labels in the interface face too (tabular digits so columns line up) */
+:root[data-mono="jakarta"] { --mc-font-code: var(--font-jakarta), "Segoe UI", ui-sans-serif, system-ui, sans-serif; }
+:root[data-mono="jakarta"] .font-mono { font-variant-numeric: tabular-nums; }
+/* …but code, commands and tool output stay monospace */
+:root[data-mono="jakarta"] :is(pre, code, kbd, samp) {
+  font-family: var(--font-jetbrains), ui-monospace, "Cascadia Code", monospace;
+}
+
+/* KPI tiles: white cards with a colored left edge and dark numbers, like the screenshot's cash-gate cards */
+:root[data-surface="mission"] .glow-tile {
+  background: var(--surface-panel) !important;
+  border-left: 4px solid var(--tile-accent, var(--ac-cyan));
+  box-shadow: 0 1px 2px rgba(16, 40, 40, 0.05), 0 8px 22px rgba(16, 40, 40, 0.07);
+}
+:root[data-surface="mission"] .glow-tile-value { color: var(--tone-ink) !important; font-weight: 800; letter-spacing: -0.01em; }
+
+/* ---- MissionCommand: more graphical cards ---- */
+/* section headers: a soft wash of the page color, a ringed dot and a bold label (like "● GOALS & KPIS") */
+:root[data-surface="mission"] .panel > header {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--page-accent, var(--ac-cyan)) 8%, transparent), transparent 65%);
+}
+:root[data-surface="mission"] .panel-title {
+  color: var(--tone-ink);
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  font-size: 10.5px;
+}
+:root[data-surface="mission"] .panel-title > span[aria-hidden] {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--page-accent, var(--ac-cyan)) 20%, transparent);
+}
+/* cards lift a little on hover */
+:root[data-surface="mission"] .glow-panel:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 2px 4px rgba(16, 40, 40, 0.06), 0 14px 30px color-mix(in srgb, var(--page-accent, var(--ac-cyan)) 14%, rgba(16, 40, 40, 0.08));
+}
+/* KPI tiles: a faint ring motif in the tile's own color */
+:root[data-surface="mission"] .glow-tile::after {
+  content: "";
+  position: absolute;
+  right: -28px;
+  top: -28px;
+  width: 96px;
+  height: 96px;
+  border-radius: 999px;
+  border: 10px solid color-mix(in srgb, var(--tile-accent, var(--ac-cyan)) 10%, transparent);
+  box-shadow: 0 0 0 14px color-mix(in srgb, var(--tile-accent, var(--ac-cyan)) 5%, transparent);
+  pointer-events: none;
+}
+
+/* chart series colors (validated: lightness band, chroma, colorblind separation) - one per machine, fixed order */
+:root {
+  --series-1: #00897b; --series-2: #d39a2a; --series-3: #3d5fa8; --series-4: #b23a55; --series-other: #9aa5ab;
+}
+:root:not([data-theme="light"]) {
+  --series-1: #119c8e; --series-2: #b8852a; --series-3: #6585cf; --series-4: #c4627b; --series-other: #5d6f73;
+}

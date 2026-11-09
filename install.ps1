@@ -150,6 +150,18 @@ $startupDir = [Environment]::GetFolderPath('Startup')
 $vbs = Join-Path $startupDir 'Mission Control Server.vbs'
 $server = Join-Path $RepoDir 'server.cmd'
 $WatchdogTask = 'Mission Control Watchdog'
+$PeerRule = 'Mission Control LAN link'
+function Set-PeerFirewall {
+  # Machines on the same LAN talk directly on TCP 3101 (peer endpoints only; the app stays on 127.0.0.1:3000).
+  if ($DryRun) { Warn "would allow TCP 3101 in Windows Firewall (private/domain networks) for the LAN link"; return }
+  if (Get-NetFirewallRule -DisplayName $PeerRule -ErrorAction SilentlyContinue) { Ok "LAN link: firewall rule present"; return }
+  $admin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+  if (-not $admin) { Todo "LAN link: run the installer as administrator once (Modify -> Auto-start) so other machines can reach this one on port 3101"; return }
+  try {
+    New-NetFirewallRule -DisplayName $PeerRule -Direction Inbound -Protocol TCP -LocalPort 3101 -Action Allow -Profile Domain,Private -ErrorAction Stop | Out-Null
+    Done "LAN link: allowed TCP 3101 on private/work networks"
+  } catch { Todo "LAN link: couldn't add the firewall rule ($($_.Exception.Message))" }
+}
 function Read-EnvValue($key) {
   if (-not (Test-Path $envFile)) { return $null }
   $line = Get-Content $envFile | Where-Object { $_ -match "^\s*$key\s*=" } | Select-Object -First 1
@@ -256,6 +268,7 @@ function Invoke-Uninstall {
   Stop-MissionControl
   if (Test-Path $vbs) { Remove-Item $vbs -Force; Done "removed start-at-login" }
   if (Get-ScheduledTask -TaskName $WatchdogTask -ErrorAction SilentlyContinue) { Unregister-ScheduledTask -TaskName $WatchdogTask -Confirm:$false; Done "removed the watchdog task" }
+  if (Get-NetFirewallRule -DisplayName $PeerRule -ErrorAction SilentlyContinue) { Remove-NetFirewallRule -DisplayName $PeerRule -ErrorAction SilentlyContinue; Done "removed the LAN firewall rule" }
 
   # Leave the machine group (only this machine's own files in the vault)
   if ($cfg -and $cfg.enabled -and $vaultDir) {
@@ -757,6 +770,8 @@ else {
     & powershell -NoProfile -ExecutionPolicy Bypass -File $wd -Install | Out-Host
     if ($LASTEXITCODE -eq 0) { Done "starts hidden at every login, and restarts within 5 minutes if it ever stops" } else { Todo "the '$WatchdogTask' task didn't register - run install-watchdog.cmd" }
   } else { Todo "watchdog.ps1 is missing from $RepoDir - run update.cmd, then install-watchdog.cmd" }
+  # LAN link between machines: let the peer listener (TCP 3101) through Windows Firewall on private/work networks
+  Set-PeerFirewall
 }
 
 } while ($false)

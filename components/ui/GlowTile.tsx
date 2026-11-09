@@ -20,11 +20,11 @@ export default function GlowTile({
   const c = ACCENTS[accent];
   return (
     <div
-      className={`relative overflow-hidden rounded-xl border border-line p-3 ${className}`}
-      style={{ background: `radial-gradient(130px 80px at 100% 0%, ${c.soft}, transparent 70%)` }}
+      className={`glow-tile relative overflow-hidden rounded-xl border border-line p-3 ${className}`}
+      style={{ background: `radial-gradient(130px 80px at 100% 0%, ${c.soft}, transparent 70%)`, ["--tile-accent" as string]: c.base }}
     >
       <p className="panel-title">{label}</p>
-      <p className="mt-1 font-mono text-2xl font-bold" style={{ color: c.base }}>
+      <p className="glow-tile-value mt-1 font-mono text-2xl font-bold" style={{ color: c.base }}>
         {value}
       </p>
       {children && <div className="mt-2 flex h-4 items-center">{children}</div>}

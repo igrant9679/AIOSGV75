@@ -26,12 +26,15 @@ const CLI_TIMEOUT_MS = 300_000;
 const LLM_TIMEOUT_MS = 180_000;
 
 /** The env Mission Control runs agent CLIs with: no inherited Claude session vars, so they use their own login. */
-export function cleanEnv(): NodeJS.ProcessEnv {
+export function cleanEnv(headless = true): NodeJS.ProcessEnv {
   const env = { ...process.env };
   for (const key of Object.keys(env)) {
     if (key === "ANTHROPIC_API_KEY") continue;
     if (key.startsWith("CLAUDE_") || key.startsWith("ANTHROPIC_") || key === "CLAUDECODE") delete env[key];
   }
+  // Mission Control's own background runs: the session-alert hook (scripts/mc-hook.mjs) ignores them
+  if (headless) env.MC_HEADLESS = "1";
+  else delete env.MC_HEADLESS;
   return env;
 }
 

@@ -4,39 +4,44 @@ import fsp from "fs/promises";
 import os from "os";
 import path from "path";
 import { cleanEnv } from "./runners";
-import { sessionsSnapshot, type SessionSummary, type SessionTool } from "./sessions";
+import { liveClaudeProcesses, sessionsSnapshot, type SessionSummary, type SessionTool } from "./sessions";
 import { mergeRemoteSessions, readShareSettings, type RemoteReplies } from "./sessionShare";
 import { readConfig } from "./cluster";
 import { vaultAvailable, vaultInfo } from "./vault";
 import { readThread, type Thread } from "./sessionThread";
+import { PeerUnavailable, peerFetch } from "./peer";
+import { exportSession, importSession, type HandoffPackage } from "./handoff";
+import { setHidden } from "./sessionNaming";
 
 /**
- * Acting on sessions from the Projects page:
+ * Acting on sessions - from the Projects page, the live view and the
+ * run-somewhere box:
  *
- *  - reply   continue an existing Claude Code / Codex session with a new
- *            message (claude -p --resume <id>, codex exec resume <id>), in the
- *            session's own folder. The turn lands in the real session, so the
- *            desktop app / CLI shows it too. A session that is open right now
- *            is forked instead (--fork-session) so the two can't collide.
- *  - new     start a new session in a project's folder.
- *  - thread  fetch the full thread (tool calls included) of a session that
- *            lives on another machine.
+ *  - reply   continue an existing Claude Code / Codex session (claude -p
+ *            --resume / codex exec resume) in its own folder. A Claude session
+ *            that is open right now is forked (--fork-session) instead.
+ *  - new     start a new session in a project's folder (or the home folder).
+ *  - thread  fetch the full thread of a session on another machine.
+ *  - stop    stop a running session or Mission Control run.
+ *  - import  hand a session from this machine to another one (push).
+ *  - export  bring another machine's session to this one (pull).
  *  - open    terminal / folder / VS Code, on this machine only.
  *
- * Sessions on OTHER machines are reached through the vault, like everything
- * else in the machine group (no open ports):
+ * Another machine is reached over the LAN when it can be (lib/peer.ts,
+ * instant), else through the vault (1-2 minutes, OneDrive):
  *
  *   Agentic OS/Cluster/requests/<target-host>/<job-id>.json           request
- *   Agentic OS/Cluster/requests/<target-host>/results/<job-id>.json   progress + result
+ *   Agentic OS/Cluster/requests/<target-host>/results/<job-id>.json   result
+ *   Agentic OS/Cluster/handoff/<job-id>.jsonl                         a session being moved
  *
- * The target only acts when ITS "Replies from my other machines" setting
- * allows it (Fleet → Sharing; off by default), only on sessions / folders it
- * actually has, and never with more access than that setting grants.
+ * Either way the target only acts when ITS "Replies from my other machines"
+ * setting allows it (off by default), only on sessions / folders it really
+ * has, and never with more access than that setting grants.
  *
  * data/session-jobs.json is the source of truth (re-read on every call).
  */
 
-export type JobMode = "reply" | "new" | "thread";
+export type JobMode = "reply" | "new" | "thread" | "stop" | "import" | "export";
 export type JobAccess = "answer" | "edit";
 export type JobStatus = "queued" | "sent" | "running" | "done" | "error" | "expired";
 
@@ -44,14 +49,17 @@ export interface SessionJob {
   id: string;
   mode: JobMode;
   tool: SessionTool;
-  /** session replied to / whose thread was asked for */
+  /** session replied to / stopped / moved / whose thread was asked for */
   key?: string;
   sessionId?: string;
+  /** stop: a Mission Control run to stop */
+  stopJobId?: string;
   /** machine that runs it */
   host: string;
   hostLabel: string;
   cwd: string;
   project?: string;
+  title?: string;
   prompt: string;
   access: JobAccess;
   fork: boolean;
@@ -61,9 +69,17 @@ export interface SessionJob {
   finishedAt?: number;
   reply?: string;
   error?: string;
-  /** the session the reply landed in (differs from `key` when forked / new) */
+  /** the session the result landed in (differs from `key` when forked / new / moved) */
   resultKey?: string;
   costUsd?: number;
+  /** how a cross-machine job travels */
+  via?: "lan" | "vault";
+  /** process of a running local job (for Stop) */
+  pid?: number;
+  /** import / export: where the session goes on the receiving machine, and what then */
+  handoff?: { fromHost: string; fromLabel: string; oldCwd: string; targetCwd: string; openTerminal: boolean; hideSource: boolean };
+  /** run-somewhere: why this machine was picked */
+  dispatch?: string;
   /** set on the TARGET machine for a job another machine asked for */
   requestedBy?: string;
   requestedByLabel?: string;
@@ -79,6 +95,7 @@ const MAX_PROMPT = 20_000;
 
 const me = () => os.hostname();
 const ACTIVE: JobStatus[] = ["queued", "sent", "running"];
+const isActive = (j: SessionJob) => ACTIVE.includes(j.status);
 
 // ─── job store ───
 
@@ -113,13 +130,13 @@ async function patchJob(id: string, patch: Partial<SessionJob>): Promise<Session
     if (j) Object.assign(j, patch);
     return j ? { ...j } : undefined;
   });
-  if (job?.requestedBy) await writeRemoteResult(job).catch(() => {});
+  if (job?.requestedBy && job.via === "vault") await writeVaultResult(job).catch(() => {});
   return job;
 }
 
 export async function dismissJob(id: string): Promise<void> {
   await mutate((jobs) => {
-    const i = jobs.findIndex((j) => j.id === id && !ACTIVE.includes(j.status));
+    const i = jobs.findIndex((j) => j.id === id && !isActive(j));
     if (i >= 0) jobs.splice(i, 1);
   });
   await fsp.rm(path.join(THREADS_DIR, `${id}.json`), { force: true }).catch(() => {});
@@ -127,12 +144,13 @@ export async function dismissJob(id: string): Promise<void> {
 
 let seq = 0;
 const newId = () => `sj-${Date.now().toString(36)}-${(seq++).toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+const ID_RE = /^sj-[\w-]+$/;
 
-// ─── the machine group ───
+// ─── the vault channel ───
 
-function requestsDir(host: string): string {
-  return path.join(vaultInfo().base, "Cluster", "requests", host.replace(/[^A-Za-z0-9_-]+/g, "_"));
-}
+const clusterDir = () => path.join(vaultInfo().base, "Cluster");
+const requestsDir = (host: string) => path.join(clusterDir(), "requests", host.replace(/[^A-Za-z0-9_-]+/g, "_"));
+const handoffFile = (id: string) => path.join(clusterDir(), "handoff", `${id}.jsonl`);
 
 async function groupOn(): Promise<boolean> {
   const cfg = await readConfig().catch(() => null);
@@ -146,39 +164,67 @@ async function writeJson(file: string, data: unknown): Promise<void> {
   await fsp.rename(tmp, file);
 }
 
-async function writeRemoteResult(job: SessionJob): Promise<void> {
-  if (!job.requestedBy) return;
-  const res: Partial<SessionJob> & { id: string; thread?: Thread } = {
-    id: job.id,
-    status: job.status,
-    startedAt: job.startedAt,
-    finishedAt: job.finishedAt,
-    reply: job.reply,
-    error: job.error,
-    resultKey: job.resultKey,
-    costUsd: job.costUsd,
-  };
-  if (job.mode === "thread" && job.status === "done") {
-    res.thread = JSON.parse(await fsp.readFile(path.join(THREADS_DIR, `${job.id}.json`), "utf8")) as Thread;
+async function readThreadFile(id: string): Promise<Thread | undefined> {
+  try {
+    return JSON.parse(await fsp.readFile(path.join(THREADS_DIR, `${id}.json`), "utf8")) as Thread;
+  } catch {
+    return undefined;
   }
+}
+
+const resultOf = (job: SessionJob) => ({
+  id: job.id,
+  status: job.status,
+  startedAt: job.startedAt,
+  finishedAt: job.finishedAt,
+  reply: job.reply,
+  error: job.error,
+  resultKey: job.resultKey,
+  costUsd: job.costUsd,
+});
+
+async function writeVaultResult(job: SessionJob): Promise<void> {
+  if (!job.requestedBy) return;
+  const res: ReturnType<typeof resultOf> & { thread?: Thread } = resultOf(job);
+  if (job.mode === "thread" && job.status === "done") res.thread = await readThreadFile(job.id);
   await writeJson(path.join(requestsDir(me()), "results", `${job.id}.json`), res);
+}
+
+/** /peer/job - a job's progress for the machine that asked for it over the LAN. */
+export async function jobForPeer(id: string): Promise<ReturnType<typeof resultOf> & { thread?: Thread }> {
+  if (!ID_RE.test(id)) throw new Error("bad id");
+  const j = (await listJobs()).find((x) => x.id === id);
+  if (!j) throw Object.assign(new Error("unknown job"), { status: 404 });
+  return { ...resultOf(j), thread: j.mode === "thread" && j.status === "done" ? await readThreadFile(j.id) : undefined };
+}
+
+/** /peer/thread - full thread of a session on this machine. */
+export async function localThread(key: string): Promise<Thread | null> {
+  const snap = await sessionsSnapshot();
+  const s = snap.sessions.find((x) => x.key === key);
+  return s ? readThread(s, 1500) : null;
 }
 
 // ─── starting jobs ───
 
 export interface StartInput {
   mode: JobMode;
-  /** reply / thread: the session */
+  /** reply / thread / stop / import / export: the session */
   key?: string;
-  /** new: the folder to start in, the machine that has it, and the tool */
+  /** new / import / export: the folder on the machine that runs it ("~" = home folder) */
   folder?: string;
+  /** new / import: the machine to run on / move to */
   host?: string;
   tool?: SessionTool;
   project?: string;
   prompt?: string;
   access?: JobAccess;
-  /** reply: fork instead of continuing in place (forced on for a session that is open right now) */
   fork?: boolean;
+  /** stop: a Mission Control run */
+  jobId?: string;
+  openTerminal?: boolean;
+  hideSource?: boolean;
+  dispatch?: string;
 }
 
 export async function startJob(input: StartInput): Promise<SessionJob> {
@@ -186,89 +232,307 @@ export async function startJob(input: StartInput): Promise<SessionJob> {
   const { sessions, remote } = await mergeRemoteSessions(snap.sessions);
   const cfg = await readConfig().catch(() => null);
   const myLabel = cfg?.label || me();
+  const labelOf = (host: string) => (host === me() ? myLabel : (remote.find((r) => r.host === host)?.label ?? host));
   const prompt = (input.prompt ?? "").trim();
   const access: JobAccess = input.access === "edit" ? "edit" : "answer";
-  if (input.mode !== "thread" && !prompt) throw new Error("Write a message first.");
+  if ((input.mode === "reply" || input.mode === "new") && !prompt) throw new Error("Write a message first.");
   if (prompt.length > MAX_PROMPT) throw new Error(`That message is too long (max ${MAX_PROMPT.toLocaleString()} characters).`);
+  const base = { id: newId(), prompt, access, fork: false, status: "queued" as JobStatus, createdAt: Date.now(), dispatch: input.dispatch };
 
   let job: SessionJob;
-  if (input.mode === "reply" || input.mode === "thread") {
-    const s = sessions.find((x) => x.key === input.key);
-    if (!s) throw new Error("That session isn't in the list any more.");
-    const local = s.host === me();
-    if (input.mode === "thread" && local) throw new Error("This session is on this machine - read it directly.");
-    const busy = s.status !== "ended";
-    job = {
-      id: newId(),
-      mode: input.mode,
-      tool: s.tool,
-      key: s.key,
-      sessionId: s.id,
-      host: s.host,
-      hostLabel: local ? myLabel : (remote.find((r) => r.host === s.host)?.label ?? s.host),
-      cwd: s.cwd,
-      project: s.project,
-      prompt,
-      access,
-      // Codex can't fork; Claude forks when asked or when the session is open right now
-      fork: s.tool === "claude" && input.mode === "reply" && (Boolean(input.fork) || (local && busy)),
-      status: "queued",
-      createdAt: Date.now(),
-    };
-  } else {
-    const host = input.host || me();
-    const tool: SessionTool = input.tool === "codex" ? "codex" : "claude";
-    const folder = input.folder ?? "";
-    // only folders that sessions on that machine actually used - never an arbitrary path
-    const known = sessions.some((s) => s.host === host && (s.folder === folder || s.cwd === folder));
-    if (!folder || !known) throw new Error("Pick a project that has a folder first.");
-    job = {
-      id: newId(),
-      mode: "new",
-      tool,
-      host,
-      hostLabel: host === me() ? myLabel : (remote.find((r) => r.host === host)?.label ?? host),
-      cwd: folder,
-      project: input.project,
-      prompt,
-      access,
-      fork: false,
-      status: "queued",
-      createdAt: Date.now(),
-    };
+  let content: HandoffPackage | undefined;
+  const s = input.key ? sessions.find((x) => x.key === input.key) : undefined;
+
+  switch (input.mode) {
+    case "reply":
+    case "thread": {
+      if (!s) throw new Error("That session isn't in the list any more.");
+      const local = s.host === me();
+      if (input.mode === "thread" && local) throw new Error("This session is on this machine - read it directly.");
+      job = {
+        ...base,
+        mode: input.mode,
+        tool: s.tool,
+        key: s.key,
+        sessionId: s.id,
+        host: s.host,
+        hostLabel: labelOf(s.host),
+        cwd: s.cwd,
+        project: s.project,
+        title: s.title,
+        // Codex can't fork; Claude forks when asked or when the session is open right now
+        fork: s.tool === "claude" && input.mode === "reply" && (Boolean(input.fork) || (local && s.status !== "ended")),
+      };
+      break;
+    }
+    case "new": {
+      const host = input.host || me();
+      const tool: SessionTool = input.tool === "codex" ? "codex" : "claude";
+      const folder = input.folder ?? "";
+      // only folders that sessions on that machine actually used (or its home folder) - never an arbitrary path
+      const known = folder === "~" || sessions.some((x) => x.host === host && (x.folder === folder || x.cwd === folder));
+      if (!folder || !known) throw new Error("Pick a project that has a folder first.");
+      job = { ...base, mode: "new", tool, host, hostLabel: labelOf(host), cwd: folder, project: input.project };
+      break;
+    }
+    case "stop": {
+      if (input.jobId) {
+        const j = (await listJobs()).find((x) => x.id === input.jobId);
+        if (!j) throw new Error("That run isn't in the list.");
+        job = { ...base, mode: "stop", tool: j.tool, stopJobId: j.id, key: j.key, host: j.host, hostLabel: j.hostLabel, cwd: j.cwd, title: j.title };
+        if (j.host !== me()) job.stopJobId = j.id; // the target knows the run by the same id
+      } else {
+        if (!s) throw new Error("That session isn't in the list any more.");
+        job = { ...base, mode: "stop", tool: s.tool, key: s.key, sessionId: s.id, host: s.host, hostLabel: labelOf(s.host), cwd: s.cwd, title: s.title };
+      }
+      break;
+    }
+    case "import": {
+      // push one of THIS machine's sessions to another machine
+      if (!s || s.host !== me()) throw new Error("Pick a session on this machine to move.");
+      const host = input.host ?? "";
+      if (!host || host === me()) throw new Error("Pick the machine to move it to.");
+      content = await exportSession(s.key);
+      job = {
+        ...base,
+        mode: "import",
+        tool: s.tool,
+        key: s.key,
+        sessionId: s.id,
+        host,
+        hostLabel: labelOf(host),
+        cwd: input.folder || "~",
+        project: s.project,
+        title: s.title,
+        handoff: { fromHost: me(), fromLabel: myLabel, oldCwd: s.cwd, targetCwd: input.folder || "~", openTerminal: Boolean(input.openTerminal), hideSource: input.hideSource !== false },
+      };
+      break;
+    }
+    case "export": {
+      // pull another machine's session to THIS machine
+      if (!s || s.host === me()) throw new Error("Pick a session on another machine to bring here.");
+      if (s.tool !== "claude") throw new Error("Only Claude Code sessions can be moved between machines.");
+      job = {
+        ...base,
+        mode: "export",
+        tool: s.tool,
+        key: s.key,
+        sessionId: s.id,
+        host: s.host,
+        hostLabel: labelOf(s.host),
+        cwd: s.cwd,
+        project: s.project,
+        title: s.title,
+        handoff: { fromHost: s.host, fromLabel: labelOf(s.host), oldCwd: s.cwd, targetCwd: input.folder || "~", openTerminal: Boolean(input.openTerminal), hideSource: input.hideSource !== false },
+      };
+      break;
+    }
+    default:
+      throw new Error("unknown action");
   }
 
-  if (job.host !== me()) {
-    const m = remote.find((r) => r.host === job.host);
-    const level: RemoteReplies = m?.acceptsReplies ?? "off";
-    if (!(await groupOn())) throw new Error("The machine group is off on this machine, so it can't reach the others.");
-    if (level === "off") throw new Error(`${job.hostLabel} doesn't accept replies from other machines. Turn it on there: Fleet → Sharing → Replies from my other machines.`);
-    if (job.access === "edit" && level !== "edit") throw new Error(`${job.hostLabel} only allows answers (no file edits) from other machines.`);
-    job.status = "sent";
-    await writeJson(path.join(requestsDir(job.host), `${job.id}.json`), {
-      v: 1,
-      job: { ...job, requestedBy: me(), requestedByLabel: myLabel },
-      sentAt: Date.now(),
-    });
+  // ── on this machine ──
+  if (job.host === me()) {
     await mutate((jobs) => void jobs.unshift(job));
+    if (job.mode === "stop") return finishInline(job, () => stopLocal(job));
+    void pump();
     return job;
   }
 
+  // ── on another machine ──
+  const m = remote.find((r) => r.host === job.host);
+  const level: RemoteReplies = m?.acceptsReplies ?? "off";
+  if (level === "off") throw new Error(`${job.hostLabel} doesn't accept requests from other machines. Turn it on there: Fleet → Sharing → Replies from my other machines.`);
+  if (job.access === "edit" && level !== "edit") throw new Error(`${job.hostLabel} only allows answers (no file edits) from other machines.`);
+  const request = { ...job, requestedBy: me(), requestedByLabel: myLabel };
+
+  // 1) the LAN
+  try {
+    if (job.mode === "thread") {
+      const t = await peerFetch<Thread>(job.host, `/peer/thread?key=${encodeURIComponent(job.key!)}`, { timeoutMs: 20_000 });
+      await writeJson(path.join(THREADS_DIR, `${job.id}.json`), t);
+      Object.assign(job, { via: "lan", status: "done", startedAt: Date.now(), finishedAt: Date.now() });
+      await mutate((jobs) => void jobs.unshift(job));
+      return job;
+    }
+    if (job.mode === "export") {
+      const pkg = await peerFetch<HandoffPackage>(job.host, `/peer/export?key=${encodeURIComponent(job.key!)}`, { timeoutMs: 60_000 });
+      job.via = "lan";
+      await mutate((jobs) => void jobs.unshift(job));
+      return finishInline(job, () => receiveHandoff(job, pkg));
+    }
+    const r = await peerFetch<{ job: SessionJob }>(job.host, "/peer/request", { body: { job: request, content }, timeoutMs: job.mode === "import" ? 60_000 : 10_000 });
+    Object.assign(job, resultOf({ ...job, ...r.job }), { via: "lan", status: r.job.status === "queued" ? "sent" : r.job.status });
+    if (job.mode === "import" && job.status === "done" && job.handoff?.hideSource) await setHidden([job.key!], true).catch(() => {});
+    await mutate((jobs) => void jobs.unshift(job));
+    return job;
+  } catch (e) {
+    if (!(e instanceof PeerUnavailable)) throw e; // it answered with a refusal
+  }
+
+  // 2) the vault
+  if (!(await groupOn())) throw new Error(`${job.hostLabel} can't be reached over the LAN, and the machine group is off here, so the vault can't carry it either.`);
+  if (content) await fsp.mkdir(path.dirname(handoffFile(job.id)), { recursive: true }).then(() => fsp.writeFile(handoffFile(job.id), JSON.stringify(content), "utf8"));
+  job.via = "vault";
+  job.status = "sent";
+  await writeJson(path.join(requestsDir(job.host), `${job.id}.json`), { v: 1, job: { ...request, via: "vault" }, sentAt: Date.now() });
   await mutate((jobs) => void jobs.unshift(job));
+  return job;
+}
+
+/** Run a quick job (stop, handoff) right away and record its outcome. */
+async function finishInline(job: SessionJob, run: () => Promise<Partial<SessionJob>>): Promise<SessionJob> {
+  let p: Partial<SessionJob>;
+  try {
+    p = await run();
+  } catch (e) {
+    p = { status: "error", error: (e as Error).message };
+  }
+  return (await patchJob(job.id, { startedAt: job.startedAt ?? Date.now(), finishedAt: Date.now(), ...p })) ?? { ...job, ...p };
+}
+
+/** A handed-off session arrived at THIS machine (pull over the LAN, or from the vault). */
+async function receiveHandoff(job: SessionJob, pkg: HandoffPackage): Promise<Partial<SessionJob>> {
+  const h = job.handoff!;
+  const r = await importSession(pkg, h.targetCwd);
+  if (h.openTerminal) openTerminal(r.cwd, `claude --resume ${pkg.id}`);
+  if (h.hideSource && job.key) await setHidden([job.key], true).catch(() => {});
+  return { status: "done", resultKey: r.key, reply: `Moved to this machine, in ${r.cwd}.${h.openTerminal ? " Opened it in a terminal." : ""}` };
+}
+
+// ─── accepting requests from other machines ───
+
+/**
+ * A request from another machine (LAN or vault). Everything that matters is
+ * re-derived from THIS machine's own data, never taken from the request.
+ */
+export async function acceptRequest(r: SessionJob, via: "lan" | "vault", content?: HandoffPackage): Promise<SessionJob> {
+  if (!r?.id || !r.requestedBy || !ID_RE.test(r.id)) throw new Error("bad request");
+  const existing = (await listJobs()).find((j) => j.id === r.id);
+  if (existing) return existing;
+  const settings = await readShareSettings();
+  const cfg = await readConfig().catch(() => null);
+  const myLabel = cfg?.label || me();
+  if (settings.remoteReplies === "off") throw Object.assign(new Error(`Replies from other machines are turned off on ${myLabel}.`), { status: 403 });
+  const snap = await sessionsSnapshot();
+  const known = (key?: string) => snap.sessions.find((x) => x.key === key);
+
+  const job: SessionJob = {
+    id: r.id,
+    mode: r.mode,
+    tool: r.tool === "codex" ? "codex" : "claude",
+    host: me(),
+    hostLabel: myLabel,
+    cwd: "",
+    project: r.project,
+    title: r.title,
+    prompt: String(r.prompt ?? "").slice(0, MAX_PROMPT),
+    access: r.access === "edit" && settings.remoteReplies === "edit" ? "edit" : "answer",
+    fork: false,
+    status: "queued",
+    createdAt: Date.now(),
+    via,
+    requestedBy: r.requestedBy,
+    requestedByLabel: r.requestedByLabel,
+    dispatch: r.dispatch,
+  };
+  if (r.access === "edit" && job.access !== "edit") throw Object.assign(new Error(`${myLabel} only allows answers (no file edits) from other machines.`), { status: 403 });
+
+  switch (r.mode) {
+    case "reply":
+    case "thread":
+    case "export": {
+      const s = known(r.key);
+      if (!s) throw new Error("That session isn't on this machine.");
+      Object.assign(job, { key: s.key, sessionId: s.id, tool: s.tool, cwd: s.cwd, title: s.title });
+      job.fork = s.tool === "claude" && r.mode === "reply" && (Boolean(r.fork) || s.status !== "ended");
+      if (r.mode === "reply" && !job.prompt.trim()) throw new Error("Empty message.");
+      break;
+    }
+    case "new": {
+      const ok = r.cwd === "~" || snap.sessions.some((x) => x.folder === r.cwd || x.cwd === r.cwd);
+      if (!ok) throw new Error("That folder isn't one this machine's sessions use.");
+      if (!job.prompt.trim()) throw new Error("Empty message.");
+      job.cwd = r.cwd;
+      break;
+    }
+    case "stop": {
+      if (r.stopJobId) {
+        const target = (await listJobs()).find((j) => j.id === r.stopJobId);
+        if (!target) throw new Error("That run isn't on this machine.");
+        Object.assign(job, { stopJobId: target.id, key: target.key, cwd: target.cwd });
+      } else {
+        const s = known(r.key);
+        if (!s) throw new Error("That session isn't on this machine.");
+        Object.assign(job, { key: s.key, sessionId: s.id, tool: s.tool, cwd: s.cwd, title: s.title });
+      }
+      break;
+    }
+    case "import": {
+      if (!r.handoff) throw new Error("bad handoff");
+      job.key = r.key;
+      job.sessionId = r.sessionId;
+      job.handoff = { ...r.handoff, hideSource: false };
+      job.cwd = r.handoff.targetCwd;
+      break;
+    }
+    default:
+      throw new Error("unknown request");
+  }
+
+  await mutate((jobs) => {
+    if (!jobs.some((j) => j.id === job.id)) jobs.unshift(job);
+  });
+
+  // quick ones run right away; AI runs wait for a slot
+  if (job.mode === "stop") return finishInline(job, () => stopLocal(job));
+  if (job.mode === "thread") {
+    return finishInline(job, async () => {
+      const t = await readThread({ key: job.key!, tool: job.tool }, 1500);
+      if (!t) throw new Error("The session file isn't on this machine any more.");
+      await writeJson(path.join(THREADS_DIR, `${job.id}.json`), t);
+      return { status: "done" };
+    });
+  }
+  if (job.mode === "export") {
+    return finishInline(job, async () => {
+      const pkg = await exportSession(job.key!);
+      await fsp.mkdir(path.dirname(handoffFile(job.id)), { recursive: true });
+      await fsp.writeFile(handoffFile(job.id), JSON.stringify(pkg), "utf8");
+      return { status: "done", reply: `Sent through the vault.` };
+    });
+  }
+  if (job.mode === "import") {
+    return finishInline(job, async () => {
+      let pkg = content;
+      if (!pkg) {
+        pkg = JSON.parse(await fsp.readFile(handoffFile(job.id), "utf8")) as HandoffPackage;
+        await fsp.rm(handoffFile(job.id), { force: true }).catch(() => {});
+      }
+      const res = await importSession({ ...pkg, cwd: job.handoff!.oldCwd || pkg.cwd }, job.handoff!.targetCwd);
+      if (job.handoff!.openTerminal) openTerminal(res.cwd, `claude --resume ${pkg.id}`);
+      return { status: "done", resultKey: res.key, reply: `Moved to ${myLabel}, in ${res.cwd}.${job.handoff!.openTerminal ? " Opened it in a terminal there." : ""}` };
+    });
+  }
+  if (via === "vault") await writeVaultResult(job).catch(() => {});
   void pump();
   return job;
 }
 
 // ─── running jobs on this machine ───
 
-function killTree(pid?: number): void {
+export function killTree(pid?: number): void {
   if (!pid) return;
   if (process.platform === "win32") spawnSync("taskkill", ["/pid", String(pid), "/T", "/F"], { stdio: "ignore" });
   else {
     try {
       process.kill(-pid, "SIGTERM");
     } catch {
-      /* already gone */
+      try {
+        process.kill(pid, "SIGTERM");
+      } catch {
+        /* already gone */
+      }
     }
   }
 }
@@ -276,9 +540,16 @@ function killTree(pid?: number): void {
 /** shell:true joins args with spaces - quote the ones that need it. */
 const q = (a: string) => (/[\s"&|<>^()]/.test(a) ? `"${a.replace(/"/g, '\\"')}"` : a);
 
-function runCli(cmd: string, args: string[], cwd: string, stdin: string): Promise<{ out: string; err: string; code: number | null; timedOut: boolean }> {
+function runCli(
+  cmd: string,
+  args: string[],
+  cwd: string,
+  stdin: string,
+  onSpawn: (pid?: number) => void,
+): Promise<{ out: string; err: string; code: number | null; timedOut: boolean }> {
   return new Promise((resolve) => {
     const child = spawn(cmd, args.map(q), { cwd, shell: true, env: cleanEnv(), detached: process.platform !== "win32" });
+    onSpawn(child.pid);
     let out = "";
     let err = "";
     let timedOut = false;
@@ -301,16 +572,14 @@ function runCli(cmd: string, args: string[], cwd: string, stdin: string): Promis
   });
 }
 
+const homeOr = (cwd: string) => (cwd === "~" ? os.homedir() : cwd);
+
 async function execute(job: SessionJob): Promise<Partial<SessionJob>> {
-  const done = (p: Partial<SessionJob>) => ({ finishedAt: Date.now(), ...p });
-  if (job.mode === "thread") {
-    const t = await readThread({ key: job.key!, tool: job.tool }, 1500);
-    if (!t) return done({ status: "error", error: "The session file isn't on this machine any more." });
-    await writeJson(path.join(THREADS_DIR, `${job.id}.json`), t);
-    return done({ status: "done" });
-  }
-  const st = await fsp.stat(job.cwd).catch(() => null);
-  if (!st?.isDirectory()) return done({ status: "error", error: `The folder ${job.cwd} doesn't exist on ${job.hostLabel} any more.` });
+  const done = (p: Partial<SessionJob>) => ({ finishedAt: Date.now(), pid: undefined, ...p });
+  const cwd = homeOr(job.cwd);
+  const st = await fsp.stat(cwd).catch(() => null);
+  if (!st?.isDirectory()) return done({ status: "error", error: `The folder ${cwd} doesn't exist on ${job.hostLabel} any more.` });
+  const setPid = (pid?: number) => void patchJob(job.id, { pid }).catch(() => {});
 
   if (job.tool === "claude") {
     const args = ["-p", "--output-format", "json"];
@@ -319,14 +588,16 @@ async function execute(job: SessionJob): Promise<Partial<SessionJob>> {
       if (job.fork) args.push("--fork-session");
     }
     if (job.access === "edit") args.push("--permission-mode", "acceptEdits");
-    const r = await runCli("claude", args, job.cwd, job.prompt);
+    const r = await runCli("claude", args, cwd, job.prompt, setPid);
+    const cur = (await listJobs()).find((x) => x.id === job.id);
+    if (cur && !isActive(cur)) return {}; // stopped meanwhile - keep that outcome
     if (r.timedOut) return done({ status: "error", error: "Stopped after 20 minutes." });
     try {
       const j = JSON.parse(r.out) as { result?: string; is_error?: boolean; session_id?: string; total_cost_usd?: number };
       return done({
         status: j.is_error ? "error" : "done",
         reply: j.result ?? "",
-        error: j.is_error ? (j.result || "Claude reported an error") : undefined,
+        error: j.is_error ? j.result || "Claude reported an error" : undefined,
         resultKey: j.session_id ? `claude:${j.session_id}` : job.key,
         costUsd: j.total_cost_usd,
       });
@@ -342,9 +613,11 @@ async function execute(job: SessionJob): Promise<Partial<SessionJob>> {
   if (job.mode === "reply") args.push("resume", job.sessionId!);
   args.push("-", "--skip-git-repo-check", "-o", outFile);
   if (job.access === "edit") args.push("-c", "sandbox_mode=workspace-write");
-  const r = await runCli("codex", args, job.cwd, job.prompt);
+  const r = await runCli("codex", args, cwd, job.prompt, setPid);
   const reply = await fsp.readFile(outFile, "utf8").catch(() => "");
   await fsp.rm(outFile, { force: true }).catch(() => {});
+  const cur = (await listJobs()).find((x) => x.id === job.id);
+  if (cur && !isActive(cur)) return {};
   if (r.timedOut) return done({ status: "error", error: "Stopped after 20 minutes.", reply });
   if (r.code !== 0 && !reply.trim()) return done({ status: "error", error: (r.err.trim() || `codex exited with code ${r.code}`).slice(-800) });
   return done({ status: "done", reply, resultKey: job.mode === "reply" ? job.key : undefined });
@@ -352,10 +625,9 @@ async function execute(job: SessionJob): Promise<Partial<SessionJob>> {
 
 let pumping = false;
 /**
- * Start queued local jobs, at most MAX_RUNNING at a time. The background tick
- * runs in a different module instance than the API route, so it only picks up
- * jobs older than `minAgeMs` (the route starts its own at once) - that keeps
- * the two from starting the same job.
+ * Start queued local AI runs, at most MAX_RUNNING at a time. The background
+ * tick runs in a different module instance than the API route, so it only
+ * picks up jobs older than `minAgeMs` (the route starts its own at once).
  */
 async function pump(minAgeMs = 0): Promise<void> {
   if (pumping) return;
@@ -365,22 +637,77 @@ async function pump(minAgeMs = 0): Promise<void> {
       const next = await mutate((jobs) => {
         const running = jobs.filter((j) => j.host === me() && j.status === "running").length;
         if (running >= MAX_RUNNING) return undefined;
-        const j = [...jobs].reverse().find((x) => x.host === me() && x.status === "queued" && Date.now() - x.createdAt >= minAgeMs);
+        const j = [...jobs].reverse().find((x) => x.host === me() && x.status === "queued" && (x.mode === "reply" || x.mode === "new") && Date.now() - x.createdAt >= minAgeMs);
         if (!j) return undefined;
         j.status = "running";
         j.startedAt = Date.now();
         return { ...j };
       });
       if (!next) break;
-      if (next.requestedBy) await writeRemoteResult(next).catch(() => {});
+      if (next.requestedBy && next.via === "vault") await writeVaultResult(next).catch(() => {});
       void execute(next)
         .catch((e: Error): Partial<SessionJob> => ({ status: "error", error: e.message, finishedAt: Date.now() }))
-        .then((p) => patchJob(next.id, p))
+        .then((p) => (Object.keys(p).length ? patchJob(next.id, p) : undefined))
         .then(() => pump());
     }
   } finally {
     pumping = false;
   }
+}
+
+// ─── stop ───
+
+function processesMatching(needle: string): number[] {
+  if (!/^[\w-]+$/.test(needle)) return [];
+  if (process.platform === "win32") {
+    const r = spawnSync(
+      "powershell",
+      ["-NoProfile", "-Command", `Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match '${needle}' -and $_.Name -match 'codex|node' } | ForEach-Object { $_.ProcessId }`],
+      { encoding: "utf8" },
+    );
+    return (r.stdout || "").split(/\s+/).map(Number).filter((n) => n > 0 && n !== process.pid);
+  }
+  const r = spawnSync("ps", ["-ax", "-o", "pid=,command="], { encoding: "utf8" });
+  return (r.stdout || "")
+    .split("\n")
+    .filter((l) => l.includes(needle) && /codex/.test(l))
+    .map((l) => Number(l.trim().split(/\s+/)[0]))
+    .filter((n) => n > 0 && n !== process.pid);
+}
+
+async function stopLocal(job: SessionJob): Promise<Partial<SessionJob>> {
+  const jobs = await listJobs();
+  // a Mission Control run: by id, or the run currently replying to this session
+  const run = jobs.find(
+    (x) => x.host === me() && x.status === "running" && x.id !== job.id && ((job.stopJobId && x.id === job.stopJobId) || (!job.stopJobId && job.key && (x.key === job.key || x.resultKey === job.key))),
+  );
+  if (run) {
+    // record the stop first: the run notices its process died and must keep this outcome
+    await patchJob(run.id, { status: "error", error: `Stopped${job.requestedByLabel ? ` from ${job.requestedByLabel}` : ""}.`, finishedAt: Date.now(), pid: undefined });
+    killTree(run.pid);
+    return { status: "done", reply: "Stopped the Mission Control run." };
+  }
+  if (job.stopJobId) {
+    const j = jobs.find((x) => x.id === job.stopJobId);
+    if (j && j.status === "queued") {
+      await patchJob(j.id, { status: "error", error: "Cancelled.", finishedAt: Date.now() });
+      return { status: "done", reply: "Cancelled before it started." };
+    }
+    throw new Error("That run isn't running any more.");
+  }
+  const snap = await sessionsSnapshot();
+  const s = snap.sessions.find((x) => x.key === job.key);
+  if (!s) throw new Error("That session isn't on this machine.");
+  if (s.tool === "claude") {
+    const p = (await liveClaudeProcesses()).get(s.id);
+    if (!p) throw new Error("That session isn't running.");
+    killTree(p.pid);
+    return { status: "done", reply: `Stopped ${s.title}.` };
+  }
+  const pids = processesMatching(s.id);
+  if (!pids.length) throw new Error("This Codex session runs inside the Codex app - stop it there.");
+  for (const pid of pids) killTree(pid);
+  return { status: "done", reply: `Stopped ${s.title}.` };
 }
 
 // ─── the background tick (every machine) ───
@@ -390,31 +717,25 @@ export async function sessionJobsTick(minAgeMs = 10_000): Promise<void> {
   if (ticking) return;
   ticking = true;
   try {
-    // local runs that outlived their process (Mission Control restarted mid-run)
     await mutate((jobs) => {
       for (const j of jobs) {
         if (j.host === me() && j.status === "running" && Date.now() - (j.startedAt ?? j.createdAt) > RUN_TIMEOUT_MS + 5 * 60_000) {
-          Object.assign(j, { status: "error", error: "Interrupted (Mission Control restarted while it ran).", finishedAt: Date.now() });
+          Object.assign(j, { status: "error", error: "Interrupted (Mission Control restarted while it ran).", finishedAt: Date.now(), pid: undefined });
         }
       }
     });
-    if (await groupOn()) {
-      await takeRequests();
-      await collectResults();
-    }
+    if (await groupOn()) await takeVaultRequests();
+    await collectResults();
     await pump(minAgeMs);
   } finally {
     ticking = false;
   }
 }
 
-/** Requests other machines left for this one. */
-async function takeRequests(): Promise<void> {
+/** Requests other machines left for this one in the vault. */
+async function takeVaultRequests(): Promise<void> {
   const dir = requestsDir(me());
   const names = await fsp.readdir(dir).catch(() => [] as string[]);
-  if (!names.some((n) => n.endsWith(".json"))) return;
-  const settings = await readShareSettings();
-  const snap = await sessionsSnapshot();
   for (const n of names) {
     if (!n.endsWith(".json")) continue;
     const file = path.join(dir, n);
@@ -426,113 +747,93 @@ async function takeRequests(): Promise<void> {
     }
     await fsp.rm(file, { force: true }).catch(() => {});
     const r = req.job;
-    if (!r?.id || !r.requestedBy || !/^sj-[\w-]+$/.test(r.id)) continue;
-    const refuse = (error: string) =>
-      writeJson(path.join(dir, "results", `${r.id}.json`), { id: r.id, status: "error", error, finishedAt: Date.now() }).catch(() => {});
+    if (!r?.id || !ID_RE.test(r.id)) continue;
     if (Date.now() - (req.sentAt ?? 0) > REMOTE_EXPIRE_MS) {
-      await refuse("The request arrived too late (over 30 minutes in transit).");
+      await writeJson(path.join(dir, "results", `${r.id}.json`), { id: r.id, status: "error", error: "The request arrived too late (over 30 minutes in transit).", finishedAt: Date.now() }).catch(() => {});
       continue;
     }
-    if (settings.remoteReplies === "off") {
-      await refuse(`Replies from other machines are turned off on ${r.hostLabel}.`);
-      continue;
+    try {
+      const job = await acceptRequest(r, "vault");
+      await writeVaultResult(job).catch(() => {});
+    } catch (e) {
+      await writeJson(path.join(dir, "results", `${r.id}.json`), { id: r.id, status: "error", error: (e as Error).message, finishedAt: Date.now() }).catch(() => {});
     }
-    // re-derive everything that matters from THIS machine's own data, never from the request
-    let cwd: string;
-    let tool: SessionTool;
-    let sessionId: string | undefined;
-    let fork = false;
-    if (r.mode === "reply" || r.mode === "thread") {
-      const s = snap.sessions.find((x) => x.key === r.key);
-      if (!s) {
-        await refuse("That session isn't on this machine.");
-        continue;
-      }
-      [cwd, tool, sessionId] = [s.cwd, s.tool, s.id];
-      fork = s.tool === "claude" && r.mode === "reply" && (Boolean(r.fork) || s.status !== "ended");
-    } else if (r.mode === "new") {
-      const ok = snap.sessions.some((s) => s.folder === r.cwd || s.cwd === r.cwd);
-      if (!ok) {
-        await refuse("That folder isn't one this machine's sessions use.");
-        continue;
-      }
-      [cwd, tool] = [r.cwd, r.tool === "codex" ? "codex" : "claude"];
-    } else continue;
-    const access: JobAccess = r.access === "edit" && settings.remoteReplies === "edit" ? "edit" : "answer";
-    if (r.access === "edit" && access !== "edit") {
-      await refuse(`${r.hostLabel} only allows answers (no file edits) from other machines.`);
-      continue;
-    }
-    const job: SessionJob = {
-      id: r.id,
-      mode: r.mode,
-      tool,
-      key: r.mode === "new" ? undefined : r.key,
-      sessionId,
-      host: me(),
-      hostLabel: r.hostLabel,
-      cwd,
-      project: r.project,
-      prompt: String(r.prompt ?? "").slice(0, MAX_PROMPT),
-      access,
-      fork,
-      status: "queued",
-      createdAt: Date.now(),
-      requestedBy: r.requestedBy,
-      requestedByLabel: r.requestedByLabel,
-    };
-    if (job.mode !== "thread" && !job.prompt.trim()) continue;
-    await mutate((jobs) => {
-      if (!jobs.some((j) => j.id === job.id)) jobs.unshift(job);
-    });
-    await writeRemoteResult(job).catch(() => {});
   }
 }
 
-/** Progress / results for jobs this machine sent to others. */
-async function collectResults(): Promise<void> {
-  const mine = (await listJobs()).filter((j) => j.host !== me() && !j.requestedBy && ACTIVE.includes(j.status));
-  for (const j of mine) {
+let lastLanPoll = 0;
+/** Fast LAN progress poll for in-flight jobs (the page calls this while it waits). */
+export async function refreshLanJobs(): Promise<void> {
+  if (Date.now() - lastLanPoll < 2_000) return;
+  lastLanPoll = Date.now();
+  const mine = (await listJobs()).filter((j) => j.host !== me() && !j.requestedBy && isActive(j) && j.via === "lan");
+  await Promise.all(mine.map((j) => collectOne(j)));
+}
+
+async function collectOne(j: SessionJob): Promise<void> {
+  let res: (Partial<SessionJob> & { thread?: Thread }) | null = null;
+  if (j.via === "lan") {
+    try {
+      res = await peerFetch(j.host, `/peer/job?id=${encodeURIComponent(j.id)}`, { timeoutMs: 4_000 });
+    } catch (e) {
+      if (!(e instanceof PeerUnavailable)) res = { status: "error", error: (e as Error).message };
+    }
+  } else {
     const file = path.join(requestsDir(j.host), "results", `${j.id}.json`);
-    let res: (Partial<SessionJob> & { thread?: Thread }) | null = null;
     try {
       res = JSON.parse(await fsp.readFile(file, "utf8"));
     } catch {
       res = null;
     }
-    if (res?.status) {
-      const final = !ACTIVE.includes(res.status);
-      if (res.thread) await writeJson(path.join(THREADS_DIR, `${j.id}.json`), res.thread);
-      await patchJob(j.id, {
-        status: res.status === "queued" ? "sent" : res.status,
-        startedAt: res.startedAt,
-        finishedAt: res.finishedAt,
-        reply: res.reply,
-        error: res.error,
-        resultKey: res.resultKey,
-        costUsd: res.costUsd,
-      });
-      if (final) await fsp.rm(file, { force: true }).catch(() => {});
-      continue;
+  }
+  if (res?.status) {
+    const final = !ACTIVE.includes(res.status);
+    if (res.thread) await writeJson(path.join(THREADS_DIR, `${j.id}.json`), res.thread);
+    const patch: Partial<SessionJob> = {
+      status: res.status === "queued" ? "sent" : res.status,
+      startedAt: res.startedAt,
+      finishedAt: res.finishedAt,
+      reply: res.reply,
+      error: res.error,
+      resultKey: res.resultKey,
+      costUsd: res.costUsd,
+    };
+    // a pulled session waits in the vault: import it here
+    if (j.mode === "export" && res.status === "done" && j.via === "vault") {
+      try {
+        const pkg = JSON.parse(await fsp.readFile(handoffFile(j.id), "utf8")) as HandoffPackage;
+        Object.assign(patch, await receiveHandoff(j, pkg));
+        await fsp.rm(handoffFile(j.id), { force: true }).catch(() => {});
+      } catch (e) {
+        if (Date.now() - (res.finishedAt ?? Date.now()) < 10 * 60_000) return; // the file may still be syncing
+        Object.assign(patch, { status: "error", error: `The session didn't arrive through the vault: ${(e as Error).message}` });
+      }
     }
-    if (Date.now() - j.createdAt > REMOTE_EXPIRE_MS) {
-      await patchJob(j.id, {
-        status: "expired",
-        error: `No answer from ${j.hostLabel} in 30 minutes. Is Mission Control running there, with "Replies from my other machines" turned on?`,
-        finishedAt: Date.now(),
-      });
-      await fsp.rm(path.join(requestsDir(j.host), `${j.id}.json`), { force: true }).catch(() => {});
-    }
+    if (j.mode === "import" && res.status === "done" && j.handoff?.hideSource && j.key) await setHidden([j.key], true).catch(() => {});
+    await patchJob(j.id, patch);
+    if (final && j.via !== "lan") await fsp.rm(path.join(requestsDir(j.host), "results", `${j.id}.json`), { force: true }).catch(() => {});
+    return;
+  }
+  if (Date.now() - j.createdAt > REMOTE_EXPIRE_MS) {
+    await patchJob(j.id, {
+      status: "expired",
+      error: `No answer from ${j.hostLabel} in 30 minutes. Is Mission Control running there, with "Replies from my other machines" turned on?`,
+      finishedAt: Date.now(),
+    });
+    await fsp.rm(path.join(requestsDir(j.host), `${j.id}.json`), { force: true }).catch(() => {});
+    await fsp.rm(handoffFile(j.id), { force: true }).catch(() => {});
   }
 }
 
+/** Progress / results for jobs this machine sent to others. */
+async function collectResults(): Promise<void> {
+  const mine = (await listJobs()).filter((j) => j.host !== me() && !j.requestedBy && isActive(j));
+  for (const j of mine) await collectOne(j).catch(() => {});
+}
+
 export async function readJobThread(id: string): Promise<Thread | null> {
-  if (!/^sj-[\w-]+$/.test(id)) return null;
-  try {
-    return JSON.parse(await fsp.readFile(path.join(THREADS_DIR, `${id}.json`), "utf8")) as Thread;
-  } catch {
-    return null;
-  }
+  if (!ID_RE.test(id)) return null;
+  return (await readThreadFile(id)) ?? null;
 }
 
 // ─── open things on this machine ───
@@ -549,7 +850,7 @@ function launchDetached(cmd: string, args: string[], opts: { cwd?: string; verba
     cwd: opts.cwd,
     detached: true,
     stdio: "ignore",
-    env: cleanEnv(),
+    env: cleanEnv(false), // an interactive session you'll use: its alerts count
     shell: opts.shell,
     windowsVerbatimArguments: opts.verbatim,
   });
@@ -557,7 +858,7 @@ function launchDetached(cmd: string, args: string[], opts: { cwd?: string; verba
   child.unref();
 }
 
-function openTerminal(cwd: string, command: string): void {
+export function openTerminal(cwd: string, command: string): void {
   if (process.platform === "win32") {
     const wt = path.join(process.env.LOCALAPPDATA ?? "", "Microsoft", "WindowsApps", "wt.exe");
     if (fs.existsSync(wt)) launchDetached(wt, ["-d", cwd, "cmd", "/k", command]);
