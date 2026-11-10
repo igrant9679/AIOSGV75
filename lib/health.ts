@@ -175,13 +175,16 @@ async function checkSchedules(): Promise<HealthCheck[]> {
     const master = c?.master ?? "another machine";
     if (!failing.length) return [{ id: "schedules", label: "Scheduled jobs", level: "ok", detail: `Not run here right now — ${master} is master and runs them.` }];
     const last = Math.max(...failing.map((s) => s.lastRun ?? 0));
+    // Older than a day: history, not an open issue - this machine can't re-run them to
+    // clear it while it isn't master, so a warning here would never go away.
+    const stale = Date.now() - last > 24 * 60 * 60 * 1000;
     return [
       {
         id: "schedules",
         label: "Scheduled jobs",
-        level: "warn",
-        detail: `${master} runs schedules now. When this machine last ran them (${fmtAgo(last)}), ${failing.length} of ${schedules.length} failed: ${failing[0].lastStatus}`,
-        fix: `Fix this machine's login checks before it takes over as master again, and check Health on ${master}.`,
+        level: stale ? "ok" : "warn",
+        detail: `${master} runs schedules now. When this machine last ran them (${fmtAgo(last)}), ${failing.length} of ${schedules.length} failed: ${failing[0].lastStatus}${stale ? " (history - not an open issue)" : ""}`,
+        ...(stale ? {} : { fix: `Fix this machine's login checks before it takes over as master again, and check Health on ${master}.` }),
       },
     ];
   }
