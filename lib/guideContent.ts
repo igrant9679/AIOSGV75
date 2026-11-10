@@ -380,9 +380,11 @@ Chats are tagged with their machine automatically going forward; older exchanges
 - Or double-click **MissionControlSetup.command** (the first time: right-click → **Open** → **Open**, because it was downloaded).
 - On a Mac that already has it: \`bash ~/Documents/mission-control/install.sh\`
 
+**Choose what to install** — at the start of an install, update or reinstall, a checklist lists the optional parts: **Ollama**, its **local models**, the **Codex CLI**, **Hermes**, **OpenClaw** and (Windows) the **LAN link** firewall rule. Type a number to tick or untick it, Enter to continue. Everything optional starts unticked except the LAN link; items already on the machine are kept. Required parts always install: Git, Node.js, the app, Claude Code and auto-start. Unattended: -Components ollama,codex (Windows) or --components ollama,codex (Mac); "none" for only the required parts. Add things later with Modify.
+
 **What a full install does** (each step checks first, so re-running is safe)
 1. **Tools:** Windows — winget, Git, Node.js 22.15+; Mac — Homebrew (asks for your Mac password), Git, Node.js.
-2. **Ollama** + the local models (llama3.2, nomic-embed-text for vault search) — optional, recommended. Set to start at login (Windows: Startup entry; Mac: \`brew services\`).
+2. **Ollama** + the local models (llama3.2, nomic-embed-text for vault search) — optional (tick it in the checklist; most useful on the primary machine). Set to start at login (Windows: Startup entry; Mac: \`brew services\`).
 3. **The app** — clones from GitHub, or repairs an existing copy: re-links the branch to GitHub, switches to main, and moves hand-copied files that block the update into a \`mc-untracked-backup-…\` folder. Then \`npm install\` + build.
 4. **Claude Code** (required) and **Codex** (optional) CLIs.
 5. **The vault** — finds the OneDrive folder that contains \`Agentic OS\`, offers to pin it to the device (Windows; on Mac use Finder → "Always Keep on This Device"), and writes \`VAULT_DIR\` into \`.env.local\`.

@@ -17,8 +17,10 @@
 #
 # Flags: --mode install|update|modify|reinstall|uninstall  --dry-run  --yes
 #        --repo-dir <path>  --vault <path>  --label <name>  --role primary|backup|workstation
-#        --skip-models  --skip-ollama  --install-codex  --no-codex
-#        --install-hermes  --install-openclaw  --no-companions  --no-login  --no-start  --repair-only
+#        --components ollama,models,codex,hermes,openclaw   (or none) - skip the checklist
+#        --skip-models  --skip-ollama  --install-ollama  --install-codex  --no-codex
+#        --install-hermes  --install-openclaw  --no-hermes  --no-openclaw  --no-companions
+#        --no-login  --no-start  --repair-only
 #
 # Never handles passwords: Homebrew asks for your Mac password itself, and
 # sign-ins happen in the official CLIs' browser flow. Install / update /
@@ -27,7 +29,7 @@
 
 MODE=""; REPO_DIR="$HOME/Documents/mission-control"; REPO_URL="https://github.com/igrant9679/AIOSGV75.git"; BRANCH="main"
 VAULT=""; LABEL=""; ROLE=""; DRY=0; YES=0; SKIP_MODELS=0; SKIP_OLLAMA=0; INSTALL_CODEX=0; NO_CODEX=0
-INSTALL_HERMES=0; INSTALL_OPENCLAW=0; NO_COMPANIONS=0; NO_LOGIN=0; NO_START=0; REPAIR_ONLY=0; REPO_DIR_SET=0
+INSTALL_HERMES=0; INSTALL_OPENCLAW=0; NO_COMPANIONS=0; INSTALL_OLLAMA=0; NO_HERMES=0; NO_OPENCLAW=0; COMPONENTS=""; NO_LOGIN=0; NO_START=0; REPAIR_ONLY=0; REPO_DIR_SET=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --mode) MODE="$2"; shift ;;
@@ -39,6 +41,10 @@ while [ $# -gt 0 ]; do
     --yes|-y) YES=1 ;;
     --skip-models) SKIP_MODELS=1 ;;
     --skip-ollama) SKIP_OLLAMA=1 ;;
+    --install-ollama) INSTALL_OLLAMA=1 ;;
+    --components) COMPONENTS="$2"; shift ;;
+    --no-hermes) NO_HERMES=1 ;;
+    --no-openclaw) NO_OPENCLAW=1 ;;
     --install-codex) INSTALL_CODEX=1 ;;
     --no-codex) NO_CODEX=1 ;;
     --install-hermes) INSTALL_HERMES=1 ;;
@@ -47,7 +53,7 @@ while [ $# -gt 0 ]; do
     --no-login) NO_LOGIN=1 ;;
     --no-start) NO_START=1 ;;
     --repair-only) REPAIR_ONLY=1 ;;
-    -h|--help) sed -n '2,25p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,27p' "$0"; exit 0 ;;
     *) echo "Unknown option: $1"; exit 2 ;;
   esac
   shift
@@ -156,6 +162,70 @@ if [ "$MODE" = "modify" ]; then
   [ -z "$SEL" ] && { echo "Nothing selected - no changes made."; exit 0; }
   case " $SEL " in *" vault "*) VAULT_DIR="$VAULT" ;; esac
 fi
+# Install / update / reinstall: choose the optional parts up front (one checklist),
+# so the steps below don't ask about each one. Already-installed items are kept.
+if { [ "$MODE" = "install" ] || [ "$MODE" = "reinstall" ]; } && [ $REPAIR_ONLY = 0 ]; then
+  KEYS="ollama models codex hermes openclaw"
+  hermes_here() { have hermes || [ -x "$HOME/.hermes/hermes-agent/venv/bin/hermes" ] || [ -x "$HOME/.local/bin/hermes" ]; }
+  C_ollama=0; C_models=0; C_codex=0; C_hermes=0; C_openclaw=0
+  H_ollama=0; H_codex=0; H_hermes=0; H_openclaw=0
+  have ollama && { H_ollama=1; C_models=1; }
+  have codex && H_codex=1
+  hermes_here && H_hermes=1
+  have openclaw && H_openclaw=1
+  [ $INSTALL_OLLAMA = 1 ] && { C_ollama=1; C_models=1; }
+  [ $SKIP_OLLAMA = 1 ] && { C_ollama=0; C_models=0; }
+  [ $SKIP_MODELS = 1 ] && C_models=0
+  [ $INSTALL_CODEX = 1 ] && C_codex=1
+  [ $INSTALL_HERMES = 1 ] && C_hermes=1
+  [ $INSTALL_OPENCLAW = 1 ] && C_openclaw=1
+  label_of() { case "$1" in
+    ollama) echo "Ollama - free local AI models + smarter vault search (~2.3 GB; best on the primary machine)" ;;
+    models) echo "Local models for Ollama (llama3.2 + nomic-embed-text)" ;;
+    codex) echo "Codex CLI - ChatGPT/Codex jobs on this machine (your ChatGPT subscription)" ;;
+    hermes) echo "Hermes - goal mode + Control Room (~5-10 min)" ;;
+    openclaw) echo "OpenClaw - Telegram gateway + approvals (primary machine only)" ;;
+  esac; }
+  getv() { eval "echo \$$1_$2"; }
+  setv() { eval "$1_$2=$3"; }
+  if [ -n "$COMPONENTS" ]; then
+    for k in $KEYS; do setv C "$k" 0; done
+    for c in $(echo "$COMPONENTS" | tr 'A-Z,' 'a-z '); do
+      case " $KEYS none " in *" $c "*) [ "$c" != none ] && setv C "$c" 1 ;; *) warn "--components: unknown item '$c' (use ollama, models, codex, hermes, openclaw)" ;; esac
+    done
+  elif [ $YES = 0 ] && [ $DRY = 0 ]; then
+    while :; do
+      echo; echo "Choose what to install"
+      echo "  Always installed: Homebrew, Git, Node.js, the Mission Control app, Claude Code CLI, auto-start"
+      i=0
+      for k in $KEYS; do
+        i=$((i + 1))
+        if [ "$k" != models ] && [ "$(getv H "$k")" = 1 ]; then echo "   [*] $i  $(label_of "$k")  (already installed - kept)"; continue; fi
+        if [ "$(getv C "$k")" = 1 ]; then box="[x]"; else box="[ ]"; fi
+        echo "   $box $i  $(label_of "$k")"
+      done
+      read -r -p "Type numbers to turn items on/off (e.g. 1 3), or press Enter to continue: " t </dev/tty
+      [ -z "$t" ] && break
+      for n in $(echo "$t" | tr ',' ' '); do
+        i=0
+        for k in $KEYS; do
+          i=$((i + 1)); [ "$i" = "$n" ] || continue
+          [ "$k" != models ] && [ "$(getv H "$k")" = 1 ] && continue
+          if [ "$(getv C "$k")" = 1 ]; then setv C "$k" 0; else setv C "$k" 1; [ "$k" = ollama ] && C_models=1; fi
+        done
+      done
+    done
+  fi
+  # apply: the steps below read these flags and stop asking
+  if [ $C_ollama = 1 ] || [ $H_ollama = 1 ]; then SKIP_OLLAMA=0; else SKIP_OLLAMA=1; fi; INSTALL_OLLAMA=$C_ollama
+  [ $C_models = 1 ] && SKIP_MODELS=0 || SKIP_MODELS=1
+  if [ $C_codex = 1 ] || [ $H_codex = 1 ]; then NO_CODEX=0; else NO_CODEX=1; fi; INSTALL_CODEX=$C_codex
+  NO_HERMES=$((1 - C_hermes)); INSTALL_HERMES=$C_hermes
+  NO_OPENCLAW=$((1 - C_openclaw)); INSTALL_OPENCLAW=$C_openclaw
+  PICKED=""; for k in $KEYS; do { [ "$k" = models ] || [ "$(getv H "$k")" = 0 ]; } && [ "$(getv C "$k")" = 1 ] && PICKED="$PICKED $k"; done
+  info "optional items:${PICKED:- none} (re-run the installer -> Modify to add more later)"
+fi
+
 should() { [ $REPAIR_ONLY = 1 ] && { [ "$1" = "app" ]; return; }; [ "$MODE" != "modify" ] && return 0; [ "$1" = "start" ] && return 0; case " $SEL " in *" $1 "*) return 0 ;; esac; return 1; }
 
 # ---- uninstall ------------------------------------------------------------------
@@ -217,7 +287,7 @@ if should tools; then
   section "Ollama (free local models + vault search embeddings)"
   if [ $SKIP_OLLAMA = 1 ]; then info "skipped"
   elif have ollama; then ok "ollama present"
-  elif yesno "Install Ollama? Recommended - powers semantic vault search and free local models." y; then
+  elif [ $INSTALL_OLLAMA = 1 ] || yesno "Install Ollama? Recommended - powers semantic vault search and free local models." y; then
     if [ $DRY = 1 ]; then warn "would brew install ollama"; else brew install ollama && ok "Ollama installed"; fi
   else USE_OLLAMA=0; info "skipped"; fi
   if have ollama && [ $USE_OLLAMA = 1 ]; then
@@ -390,7 +460,7 @@ if should companions; then
   section "Companions (start automatically with Mission Control)"
   find_hermes() { have hermes && command -v hermes && return; for p in "$HOME/.hermes/hermes-agent/venv/bin/hermes" "$HOME/.local/bin/hermes"; do [ -x "$p" ] && echo "$p" && return; done; }
   HB="$(find_hermes)"
-  if [ -z "$HB" ] && [ $NO_COMPANIONS = 0 ]; then
+  if [ -z "$HB" ] && [ $NO_COMPANIONS = 0 ] && [ $NO_HERMES = 0 ]; then
     info "Hermes (Nous Research agent: goal mode + Control Room) - optional. Docs: $HERMES_DOCS"
     if [ $INSTALL_HERMES = 1 ] || yesno "Install Hermes now with its official installer? (~5-10 min)" n; then
       if [ $DRY = 1 ]; then warn "would run: curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash"
@@ -402,7 +472,7 @@ if should companions; then
   if have openclaw; then
     env_set OPENCLAW_CMD "openclaw agent --agent main --message {input}"; ok "OpenClaw present"
     [ "$MYROLE" != "primary" ] && [ -f "$CLUSTER_FILE" ] && warn "this isn't the primary machine - keep the OpenClaw Telegram gateway OFF here (openclaw gateway stop)"
-  elif { [ "$MYROLE" = "primary" ] || [ ! -f "$CLUSTER_FILE" ]; } && [ $NO_COMPANIONS = 0 ]; then
+  elif { [ "$MYROLE" = "primary" ] || [ ! -f "$CLUSTER_FILE" ] || [ $INSTALL_OPENCLAW = 1 ]; } && [ $NO_COMPANIONS = 0 ] && [ $NO_OPENCLAW = 0 ]; then
     info "OpenClaw (Telegram gateway + approvals from your phone) - optional, primary machine only. Docs: $OPENCLAW_DOCS"
     if [ $INSTALL_OPENCLAW = 1 ] || yesno "Install OpenClaw now with its official installer? (it opens a setup wizard)" n; then
       if [ $DRY = 1 ]; then warn "would run: curl -fsSL https://openclaw.ai/install.sh | bash   then: openclaw onboard --install-daemon"

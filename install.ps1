@@ -1,6 +1,6 @@
 <#
   Mission Control - Windows installer, updater, modifier and uninstaller.
-  MC-INSTALLER-VERSION: 2026.11.09.1   (bump on every change; setup.exe runs the newer of its bundled copy and GitHub's)
+  MC-INSTALLER-VERSION: 2026.11.09.2   (bump on every change; setup.exe runs the newer of its bundled copy and GitHub's)
 
   Run it any time. On a machine without Mission Control it installs everything;
   on a machine that has it, it asks what you want:
@@ -33,10 +33,16 @@
     -Vault <path>    vault folder (the one containing "Agentic OS")
     -Label <name>    display name in the machine group (default: computer name)
     -Role <primary|backup|workstation>   default: workstation
+    -Components <list>  optional items to install, skipping the checklist, e.g.
+                     -Components ollama,models,codex,hermes,openclaw,firewall
+                     (-Components none = only the required parts)
     -SkipModels / -SkipOllama            no local models / no Ollama
+    -InstallOllama                       Ollama without asking
     -InstallCodex / -NoCodex             Codex CLI without asking / never
     -InstallHermes / -InstallOpenClaw    run those official installers without asking
+    -NoHermes / -NoOpenClaw              never offer that one
     -NoCompanions    don't offer Hermes / OpenClaw
+    -NoFirewall      don't add the LAN link firewall rule (port 3101)
     -NoLogin         don't offer the Claude / Codex browser sign-ins
     -NoStart         don't start the server or open the browser at the end
     -RepairOnly      only fix/update the code (git link, hand-copied files) and stop
@@ -59,11 +65,16 @@ param(
   [switch]$Yes,
   [switch]$SkipModels,
   [switch]$SkipOllama,
+  [switch]$InstallOllama,
+  [string]$Components = "",
   [switch]$InstallCodex,
   [switch]$NoCodex,
   [switch]$InstallHermes,
   [switch]$InstallOpenClaw,
   [switch]$NoCompanions,
+  [switch]$NoHermes,
+  [switch]$NoOpenClaw,
+  [switch]$NoFirewall,
   [switch]$NoLogin,
   [switch]$NoStart,
   [switch]$RepairOnly
@@ -156,6 +167,7 @@ function Set-PeerFirewall {
   # Machines on the same LAN talk directly on TCP 3101 (peer endpoints only; the app stays on 127.0.0.1:3000).
   if ($DryRun) { Warn "would allow TCP 3101 in Windows Firewall (private/domain networks) for the LAN link"; return }
   if (Get-NetFirewallRule -DisplayName $PeerRule -ErrorAction SilentlyContinue) { Ok "LAN link: firewall rule present"; return }
+  if ($NoFirewall) { Info "LAN link: firewall rule not selected - other machines reach this one through OneDrive only"; return }
   $admin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
   $add = "New-NetFirewallRule -DisplayName '$PeerRule' -Direction Inbound -Protocol TCP -LocalPort 3101 -Action Allow -Profile Domain,Private"
   if ($admin) {
@@ -168,7 +180,7 @@ function Set-PeerFirewall {
   # Not elevated (the normal case): only this one step needs administrator rights, so ask Windows
   # for them just for the firewall rule. Everything else keeps running as you, in your profile.
   Info "LAN link: other machines on your network reach this one on port 3101 - Windows will ask for permission to allow it"
-  if (-not (YesNo "Add the Windows Firewall rule now?" $true)) { Todo "LAN link: allow TCP 3101 later - run this installer again (Modify -> Auto-start)"; return }
+  if (-not $script:firewallChosen -and -not (YesNo "Add the Windows Firewall rule now?" $true)) { Todo "LAN link: allow TCP 3101 later - run this installer again (Modify -> Auto-start)"; return }
   try {
     $p = Start-Process -FilePath "powershell.exe" -Verb RunAs -Wait -PassThru -WindowStyle Hidden -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", $add)
   } catch { $p = $null }
@@ -258,6 +270,67 @@ if ($Mode -eq "modify") {
   if ($sel.Count -eq 0) { Write-Host "Nothing selected - no changes made." -ForegroundColor Yellow; try { Stop-Transcript | Out-Null } catch { }; exit 0 }
   if ($sel.vault) { $vaultDir = $Vault }          # re-detect / re-ask
 }
+# Install / update / reinstall: choose the optional parts up front (one checklist),
+# so the steps below don't ask about each one. Already-installed items are kept.
+if ($Mode -in @("install", "reinstall") -and -not $RepairOnly) {
+  $items = [ordered]@{
+    ollama   = @{ label = "Ollama - free local AI models + smarter vault search (~2.3 GB; best on the primary machine)"; have = [bool](Have ollama); on = $false }
+    models   = @{ label = "Local models for Ollama (llama3.2 + nomic-embed-text)"; have = $false; on = $false }
+    codex    = @{ label = "Codex CLI - ChatGPT/Codex jobs on this machine (your ChatGPT subscription)"; have = [bool](Have codex); on = $false }
+    hermes   = @{ label = "Hermes - goal mode + Control Room (~5-10 min, downloads Python)"; have = [bool](Test-Path (Join-Path $env:LOCALAPPDATA "hermes\hermes-agent\venv\Scripts\hermes.exe")) -or [bool](Get-Command hermes -ErrorAction SilentlyContinue); on = $false }
+    openclaw = @{ label = "OpenClaw - Telegram gateway + approvals (primary machine only)"; have = [bool](Have openclaw); on = $false }
+    firewall = @{ label = "LAN link - let your other machines reach this one (firewall rule, port 3101)"; have = [bool](Get-NetFirewallRule -DisplayName $PeerRule -ErrorAction SilentlyContinue); on = $true }
+  }
+  if ($items.ollama.have) { $items.models.on = $true }
+  # flags given on the command line win over the defaults
+  if ($InstallOllama) { $items.ollama.on = $true; $items.models.on = $true }
+  if ($SkipOllama) { $items.ollama.on = $false; $items.models.on = $false }
+  if ($SkipModels) { $items.models.on = $false }
+  if ($InstallCodex) { $items.codex.on = $true }
+  if ($InstallHermes) { $items.hermes.on = $true }
+  if ($InstallOpenClaw) { $items.openclaw.on = $true }
+  if ($NoFirewall) { $items.firewall.on = $false }
+  if ($Components) {
+    foreach ($k in @($items.Keys)) { $items[$k].on = $false }
+    foreach ($c in ($Components.ToLower() -split '[,\s]+' | Where-Object { $_ -and $_ -ne "none" })) {
+      if ($items.Contains($c)) { $items[$c].on = $true } else { Warn "-Components: unknown item '$c' (use ollama, models, codex, hermes, openclaw, firewall)" }
+    }
+  } elseif (-not ($Yes -or $DryRun)) {
+    $keys = @($items.Keys)
+    while ($true) {
+      Write-Host ""
+      Write-Host "Choose what to install" -ForegroundColor White
+      Write-Host "  Always installed: Git, Node.js, the Mission Control app, Claude Code CLI, auto-start" -ForegroundColor DarkGray
+      for ($i = 0; $i -lt $keys.Count; $i++) {
+        $it = $items[$keys[$i]]
+        if ($it.have -and $keys[$i] -ne "models") { Write-Host ("   [*] {0}  {1}  (already installed - kept)" -f ($i + 1), $it.label) -ForegroundColor DarkGray; continue }
+        $box = if ($it.on) { "[x]" } else { "[ ]" }
+        Write-Host ("   {0} {1}  {2}" -f $box, ($i + 1), $it.label) -ForegroundColor $(if ($it.on) { "Green" } else { "Gray" })
+      }
+      $t = Read-Host "Type numbers to turn items on/off (e.g. 1 3), or press Enter to continue"
+      if (-not $t.Trim()) { break }
+      foreach ($n in ($t -split '[,\s]+' | Where-Object { $_ -match '^\d+$' })) {
+        $i = [int]$n - 1
+        if ($i -lt 0 -or $i -ge $keys.Count) { continue }
+        $k = $keys[$i]
+        if ($items[$k].have -and $k -ne "models") { continue }
+        $items[$k].on = -not $items[$k].on
+        if ($k -eq "ollama" -and $items.ollama.on) { $items.models.on = $true }
+      }
+    }
+  }
+  # apply: the steps below read these switches and stop asking
+  $SkipOllama = -not ($items.ollama.on -or $items.ollama.have); $InstallOllama = $items.ollama.on
+  $useOllama = -not $SkipOllama
+  $SkipModels = -not $items.models.on
+  $NoCodex = -not ($items.codex.on -or $items.codex.have); $InstallCodex = $items.codex.on
+  $NoHermes = -not $items.hermes.on; $InstallHermes = $items.hermes.on
+  $NoOpenClaw = -not $items.openclaw.on; $InstallOpenClaw = $items.openclaw.on
+  $NoFirewall = -not $items.firewall.on; $script:firewallChosen = $items.firewall.on
+  $picked = @($items.Keys | Where-Object { $items[$_].on -and -not ($items[$_].have -and $_ -ne "models") })
+  Info ("optional items: " + $(if ($picked.Count) { $picked -join ", " } else { "none" }) + " (re-run the installer -> Modify to add more later)")
+}
+
 function Should($area) {
   if ($RepairOnly) { return ($area -eq "app") }   # repair-only touches nothing but the code
   if ($Mode -ne "modify") { return $true }
@@ -393,7 +466,7 @@ do { if (-not (Should "tools")) { break }
 Section "Ollama (free local models + vault search embeddings)"
 if ($SkipOllama) { Info "skipped (-SkipOllama)" }
 elseif (Have ollama) { Ok "ollama present" }
-elseif (YesNo "Install Ollama? Recommended - powers semantic vault search and free local models." $true) {
+elseif ($InstallOllama -or (YesNo "Install Ollama? Recommended - powers semantic vault search and free local models." $true)) {
   Winget-Install "Ollama.Ollama" "Ollama"; if (Have ollama) { Done "Ollama installed" }
 } else { $useOllama = $false; Info "skipped" }
 
@@ -680,7 +753,7 @@ function Find-Hermes {
   return $null
 }
 $hermesExe = Find-Hermes
-if (-not $hermesExe -and -not $NoCompanions) {
+if (-not $hermesExe -and -not $NoCompanions -and -not $NoHermes) {
   Info "Hermes (Nous Research agent: goal mode + Control Room) - optional"
   Info "  docs: $HermesDocs"
   $wantHermes = $InstallHermes -or (YesNo "Install Hermes now with its official installer? (downloads Python + tools, ~5-10 min)" $false)
@@ -710,7 +783,7 @@ if (Have openclaw) {
   Set-EnvKey "OPENCLAW_CMD" "openclaw agent --agent main --message {input}"
   Ok "OpenClaw present"
   if (-not $isPrimary) { Warn "this isn't the primary machine - keep the OpenClaw Telegram gateway OFF here (openclaw gateway stop)" }
-} elseif ($isPrimary -and -not $NoCompanions) {
+} elseif (($isPrimary -or $InstallOpenClaw) -and -not $NoCompanions -and -not $NoOpenClaw) {
   Info "OpenClaw (Telegram gateway + approvals from your phone) - optional, primary machine only"
   Info "  docs: $OpenClawDocs"
   $wantClaw = $InstallOpenClaw -or (YesNo "Install OpenClaw now with its official installer? (it opens a setup wizard: model, Telegram bot)" $false)
@@ -728,7 +801,7 @@ if (Have openclaw) {
       } else { Todo "OpenClaw didn't finish installing - see $OpenClawDocs, then run this installer again (Modify)" }
     }
   } else { $script:later.Add("OpenClaw (optional, primary only): in PowerShell run   iwr -useb https://openclaw.ai/install.ps1 | iex   then   openclaw onboard --install-daemon.  Docs: $OpenClawDocs") }
-} else { Info "OpenClaw: not on this machine (only the primary runs the Telegram gateway)" }
+} elseif ($NoOpenClaw) { Info "OpenClaw: not selected" } else { Info "OpenClaw: not on this machine (only the primary runs the Telegram gateway)" }
 
 } while ($false)
 
