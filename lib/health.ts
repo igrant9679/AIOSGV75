@@ -6,7 +6,7 @@ import path from "path";
 import { cleanEnv } from "./runners";
 import { listSchedules } from "./schedules";
 import { daemonStatus } from "./daemons";
-import { clusterStatus, isMasterNow, readConfig } from "./cluster";
+import { clusterStatus, groupMasterElsewhere, isMasterNow, readConfig } from "./cluster";
 import { vaultAvailable, vaultInfo } from "./vault";
 import { sendTelegram } from "./telegram";
 import { effectiveNetSettings, productName } from "./netSettings";
@@ -331,7 +331,18 @@ async function checkHook(): Promise<HealthCheck | null> {
 
 async function checkCluster(): Promise<HealthCheck | null> {
   const c = await clusterStatus().catch(() => null);
-  if (!c || !c.config.enabled) return null;
+  if (c && !c.config.enabled) {
+    const master = await groupMasterElsewhere();
+    if (!master) return null; // a lone machine
+    return {
+      id: "cluster",
+      label: "Machine group",
+      level: "warn",
+      detail: `This machine shares the vault with a machine group (master: ${master}) but hasn't joined it, so it holds back: no scheduled jobs and no bridge status here.`,
+      fix: "Settings → Machine Group & Roles → tick “Enable machine-group coordination”, role Workstation, Save. (Or run the installer → Modify → 1.)",
+    };
+  }
+  if (!c) return null;
   const others = c.nodes.filter((n) => !n.self);
   const offline = others.filter((n) => !n.online);
   const base = { id: "cluster", label: "Machine group" };

@@ -3,6 +3,7 @@ import path from "path";
 import os from "os";
 import { vaultInfo, vaultAvailable } from "./vault";
 import { lanAddresses, PEER_PORT } from "./netAddrs";
+import { sweepConflictCopies } from "./conflictCopies";
 
 /**
  * Cluster coordination across machines that share ONE vault (via OneDrive) but
@@ -214,15 +215,21 @@ async function elect(cfg: ClusterConfig): Promise<boolean> {
  * master-only duties. Clustering off (or vault unreachable) → behave as a lone
  * machine so nothing silently stops. Heartbeat + election happen as a side effect.
  */
+let lastLeaseSweep = 0;
 export async function clusterTick(): Promise<boolean> {
   const cfg = await readConfig();
-  if (!cfg.enabled) return true;
+  if (!cfg.enabled) return !(await groupMasterElsewhere());
   if (!(await vaultAvailable())) return cfg.role === "primary"; // vault outage: only the primary keeps firing
   // A retired machine that was switched back on must never run master duties or rejoin the group.
   if (isRetired(await readRetired(), nodeId())) return false;
   try {
     const isMaster = await elect(cfg);
     await writeHeartbeat(cfg, isMaster);
+    // the master clears OneDrive's conflict copies of the lease (lease-<PC>-<n>.json), hourly
+    if (isMaster && Date.now() - lastLeaseSweep > 60 * 60 * 1000) {
+      lastLeaseSweep = Date.now();
+      await sweepConflictCopies(clusterDir(), /^lease-.+\.json$/i).catch(() => 0);
+    }
     return isMaster;
   } catch {
     return false; // coordination error → be conservative, don't double-fire
@@ -261,9 +268,25 @@ export async function clusterStatus() {
  */
 export async function isMasterNow(): Promise<boolean> {
   const cfg = await readConfig();
-  if (!cfg.enabled) return true;
+  if (!cfg.enabled) return !(await groupMasterElsewhere());
   const lease = await readLease();
   return Boolean(lease && lease.expiresAt > Date.now() && lease.holder === nodeId());
+}
+
+/**
+ * The live master of this vault's machine group when it's another machine - for a
+ * machine that has NOT joined the group. Such a machine used to act as a lone master
+ * on a shared vault: it ran its own schedules and rewrote Bridge/Status.md every 10
+ * minutes alongside the real master (OneDrive conflict copies, "two masters"). Now it
+ * stays quiet while a group master is alive. A truly lone vault has no lease: unaffected.
+ */
+export async function groupMasterElsewhere(): Promise<string | null> {
+  try {
+    const lease = await readLease();
+    return lease && lease.expiresAt > Date.now() && lease.holder !== nodeId() ? lease.holder : null;
+  } catch {
+    return null;
+  }
 }
 
 /** Force this machine to become master now (respects nothing — explicit operator action). */

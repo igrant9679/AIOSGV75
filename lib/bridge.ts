@@ -4,6 +4,7 @@ import os from "os";
 import path from "path";
 import { vaultAvailable, vaultInfo } from "./vault";
 import { clusterStatus, isMasterNow, readConfig } from "./cluster";
+import { sweepConflictCopies } from "./conflictCopies";
 import { createApproval, listApprovals } from "./approvals";
 import { listMissions, startMission } from "./missions";
 import { hubSnapshot } from "./activity";
@@ -422,6 +423,7 @@ export function bridgeTick(force = false): Promise<void> {
     if (force || Date.now() - last > STATUS_EVERY_MS) {
       await writeStatus();
       lastStatusAt = Date.now();
+      await sweepConflictCopies(bridgeDir(), /^Status-.+\.md$/i);
     }
   })()
     .catch(() => {})
