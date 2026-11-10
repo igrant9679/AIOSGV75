@@ -4,6 +4,7 @@ import { readUserProfile, writeUserProfile, readGoals, readJournal, readMemory, 
 import { listExchanges } from "./conversations";
 import { readTasks } from "./tasks";
 import { runAgentText } from "./runners";
+import { ownerName } from "./netSettings";
 
 /**
  * The fleet-wide user profile: a maintained "who you are working with" note,
@@ -171,7 +172,9 @@ async function gatherSources() {
 }
 
 function buildPrompt(existing: string, sources: string): string {
-  return `You maintain the user profile for Idris's AI fleet. What you write is injected into the system prompt of EVERY agent he talks to, so it must be true, useful, and short.
+  const owner = ownerName();
+  const whose = owner === "the user" ? "the user's" : `${owner}'s`;
+  return `You maintain the user profile for ${whose} AI fleet. What you write is injected into the system prompt of EVERY agent they talk to, so it must be true, useful, and short.
 
 ${existing.trim() ? `Here is the CURRENT profile. Merge, don't restart — keep what still holds, revise what changed, and DELETE anything the evidence below now contradicts:\n\n${existing.trim()}` : "There is no profile yet. Write the first one."}
 

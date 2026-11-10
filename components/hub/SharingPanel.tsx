@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useProductName } from "../useNetSettings";
 import Panel from "../ui/Panel";
 import StatusOrb from "../ui/StatusOrb";
 import { ACCENTS } from "@/lib/accents";
@@ -46,6 +47,7 @@ function Toggle({ on, label, hint, onClick, disabled }: { on: boolean; label: st
  * vault, and what the other machines share back.
  */
 export default function SharingPanel({ onShared }: { onShared?: () => void }) {
+  const product = useProductName(); // this network's product name
   const [view, setView] = useState<SharingView | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -79,7 +81,7 @@ export default function SharingPanel({ onShared }: { onShared?: () => void }) {
       <Panel title="Sharing across machines">
         <p className="p-4 text-[11px] leading-5 text-ink-faint">
           Turn on the machine group in Settings → Machines on each computer. Each one then shares its Claude Code and Codex sessions,
-          conversations and tool memory through your vault, and every Mission Control shows them all.
+          conversations and tool memory through your vault, and every {product} shows them all.
         </p>
       </Panel>
     );
@@ -125,7 +127,7 @@ export default function SharingPanel({ onShared }: { onShared?: () => void }) {
           <div className="flex flex-col gap-1.5 rounded-xl border px-3 py-2" style={{ borderColor: view.settings.remoteReplies !== "off" ? ACCENTS.amber.border : "var(--color-line)" }}>
             <span className="text-xs font-semibold text-ink">Replies from my other machines</span>
             <span className="text-[10px] leading-4 text-ink-faint">
-              Lets Mission Control on your other machines reply to {view.label}'s sessions, start new ones in its project folders, and read their full threads
+              Lets {product} on your other machines reply to {view.label}'s sessions, start new ones in its project folders, and read their full threads
               (Projects page). Requests travel through the vault, so anyone who can write to it could use this - leave it off unless you need it.
             </span>
             <span className="flex flex-wrap gap-1.5 pt-0.5">
@@ -154,14 +156,14 @@ export default function SharingPanel({ onShared }: { onShared?: () => void }) {
             </span>
           </div>
           <p className="text-[10px] leading-4 text-ink-faint">
-            Already shared by the vault itself: Memory.md, your profile, journal, goals and Mission Control chat logs.
+            Already shared by the vault itself: Memory.md, your profile, journal, goals and {product} chat logs.
           </p>
         </div>
         <div className="flex flex-col gap-2">
           <p className="panel-title">Other machines share</p>
           {view.remote.length === 0 && (
             <p className="text-[11px] leading-4 text-ink-faint">
-              Nothing yet. Update Mission Control on your other machines (run update.cmd there) — they start sharing within 5 minutes.
+              Nothing yet. Update {product} on your other machines (run update.cmd there) — they start sharing within 5 minutes.
             </p>
           )}
           {view.remote.map((r) => {

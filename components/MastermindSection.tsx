@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useProductName } from "./useNetSettings";
 import { motion } from "framer-motion";
 import { ACCENTS, type Accent } from "@/lib/accents";
 import type { MastermindChat } from "@/lib/mastermind";
@@ -32,6 +33,7 @@ function ago(ts: number): string {
 }
 
 export default function MastermindSection() {
+  const product = useProductName(); // this network's product name
   const { agents, registry, system } = useMission();
   const [chats, setChats] = useState<ChatMeta[]>([]);
   const [active, setActive] = useState<MastermindChat | null>(null);
@@ -194,7 +196,7 @@ export default function MastermindSection() {
                   </div>
                   <p className="pt-2 text-sm text-ink-dim">Drop a question and watch them go.</p>
                   <p className="text-[11px] text-ink-faint">
-                    &quot;What should I build next in Mission Control?&quot; · &quot;@codex how would you structure this?&quot;
+                    &quot;What should I build next in {product}?&quot; · &quot;@codex how would you structure this?&quot;
                   </p>
                 </div>
               )}

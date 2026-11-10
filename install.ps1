@@ -1,6 +1,6 @@
 <#
   Mission Control - Windows installer, updater, modifier and uninstaller.
-  MC-INSTALLER-VERSION: 2026.11.10.1   (bump on every change; setup.exe runs the newer of its bundled copy and GitHub's)
+  MC-INSTALLER-VERSION: 2026.11.10.3   (bump on every change; setup.exe runs the newer of its bundled copy and GitHub's)
 
   Run it any time. On a machine without Mission Control it installs everything;
   on a machine that has it, it asks what you want:
@@ -31,6 +31,12 @@
     -Yes             accept defaults, ask nothing (sign-ins are skipped)
     -RepoDir <path>  install folder (default Documents\mission-control)
     -Vault <path>    vault folder (the one containing "Agentic OS")
+    -NewNetwork      start a NEW network: create a new OneDrive vault, make this machine
+                     its primary, and ask for the network's names and Telegram bot
+    -VaultParent <path> / -VaultName <name>   where to create the new vault / its folder name
+    -ProductName <name>   the product's name in this installer and, for a new network, in the
+                     app (e.g. "Agentic Operations Control"); default install folder becomes
+                     Documents\<name-in-lowercase-with-dashes>
     -Label <name>    display name in the machine group (default: computer name)
     -Role <primary|backup|workstation>   default: workstation
     -Components <list>  optional items to install, skipping the checklist, e.g.
@@ -59,6 +65,10 @@ param(
   [string]$RepoUrl = "https://github.com/igrant9679/AIOSGV75.git",
   [string]$Branch = "main",
   [string]$Vault = "",
+  [switch]$NewNetwork,
+  [string]$VaultParent = "",
+  [string]$VaultName = "",
+  [string]$ProductName = "Mission Control",
   [string]$Label = "",
   [ValidateSet("", "primary", "backup", "workstation")][string]$Role = "",
   [switch]$DryRun,
@@ -169,6 +179,17 @@ function Winget-Install($id, $name) {
   Update-SessionPath
 }
 
+# A renamed product installs to its own folder (Documents\agentic-operations-control), unless
+# this machine already has the app in the classic folder - then that copy is updated in place.
+$branded = $ProductName -and $ProductName -ne "Mission Control"
+if ($branded -and -not $PSBoundParameters.ContainsKey('RepoDir')) {
+  $slug = ($ProductName.ToLower() -replace '[^a-z0-9]+', '-').Trim('-')
+  $brandDir = Join-Path "$env:USERPROFILE\Documents" $slug
+  $classic = Join-Path "$env:USERPROFILE\Documents" "mission-control"
+  if ((Test-Path (Join-Path $classic "package.json")) -and -not (Test-Path (Join-Path $brandDir "package.json"))) { $RepoDir = $classic } else { $RepoDir = $brandDir }
+}
+try { $Host.UI.RawUI.WindowTitle = "$ProductName Setup" } catch { }
+
 # If this script sits next to server.cmd, we're already inside a clone.
 $here = if ($PSScriptRoot) { $PSScriptRoot } else { (Get-Location).Path }
 if (-not $PSBoundParameters.ContainsKey('RepoDir') -and (Test-Path (Join-Path $here "server.cmd"))) { $RepoDir = $here }
@@ -178,6 +199,7 @@ Update-SessionPath
 # Work from TEMP so this window never holds the app folder open (reinstall/uninstall move or delete it).
 Set-Location $env:TEMP
 $script:later = New-Object System.Collections.Generic.List[string]
+$script:createdNetwork = $false   # set when this run creates a brand-new vault (= a new network)
 $useOllama = -not $SkipOllama
 $envFile = Join-Path $RepoDir ".env.local"
 $clusterFile = Join-Path $RepoDir "data\cluster.json"
@@ -225,7 +247,7 @@ function Test-Vault($p) {
 }
 $current = Read-EnvValue "VAULT_DIR"
 $vaultDir = $Vault
-if (-not $vaultDir -and (Test-Vault $current)) { $vaultDir = $current }
+if (-not $vaultDir -and -not $NewNetwork -and (Test-Vault $current)) { $vaultDir = $current }
 $script:envBackedUp = $false
 function Set-EnvKey($key, $value) {
   # Set KEY=value in .env.local: replace an existing (or commented-out) line, else append. Backs up once.
@@ -251,7 +273,7 @@ function Read-ClusterConfig {
 }
 
 Write-Host "==================================================" -ForegroundColor Cyan
-Write-Host "  Mission Control - Windows installer" -ForegroundColor Cyan
+Write-Host "  $ProductName - Windows installer" -ForegroundColor Cyan
 Write-Host "  folder:  $RepoDir" -ForegroundColor Cyan
 Write-Host "  log:     $logFile" -ForegroundColor Cyan
 if ($DryRun) { Write-Host "  DRY RUN - nothing will be installed or changed" -ForegroundColor Yellow }
@@ -265,7 +287,7 @@ if (-not $Mode) {
   else {
     $cfg0 = Read-ClusterConfig
     $who = if ($cfg0 -and $cfg0.label) { " as '$($cfg0.label)' ($($cfg0.role))" } else { "" }
-    Write-Host "`nMission Control is already installed here$who." -ForegroundColor White
+    Write-Host "`n$ProductName is already installed here$who." -ForegroundColor White
     Write-Host "  1  Update / repair   (latest code, fix problems, re-check everything)"
     Write-Host "  2  Modify            (name/role, vault, Codex/Hermes/OpenClaw/models, sign-ins, auto-start)"
     Write-Host "  3  Reinstall         (fresh copy of the app; keeps your settings and keys)"
@@ -324,7 +346,7 @@ if ($Mode -in @("install", "reinstall") -and -not $RepairOnly) {
     while ($true) {
       Write-Host ""
       Write-Host "Choose what to install" -ForegroundColor White
-      Write-Host "  Always installed: Git, Node.js, the Mission Control app, Claude Code CLI, auto-start" -ForegroundColor DarkGray
+      Write-Host "  Always installed: Git, Node.js, the $ProductName app, Claude Code CLI, auto-start" -ForegroundColor DarkGray
       for ($i = 0; $i -lt $keys.Count; $i++) {
         $it = $items[$keys[$i]]
         if ($it.have -and $keys[$i] -ne "models") { Write-Host ("   [*] {0}  {1}  (already installed - kept)" -f ($i + 1), $it.label) -ForegroundColor DarkGray; continue }
@@ -364,10 +386,10 @@ function Should($area) {
 
 # ---- uninstall ----------------------------------------------------------------
 function Invoke-Uninstall {
-  Section "Uninstall Mission Control"
+  Section "Uninstall $ProductName"
   if (-not (Test-Path $RepoDir)) { Warn "nothing installed at $RepoDir"; return }
   $cfg = Read-ClusterConfig
-  Write-Host "    This stops Mission Control, removes its auto-start and watchdog, and deletes $RepoDir." -ForegroundColor White
+  Write-Host "    This stops $ProductName, removes its auto-start and watchdog, and deletes $RepoDir." -ForegroundColor White
   Write-Host "    Your vault, Claude Code, Git and Node stay. You'll be offered a backup of your settings first." -ForegroundColor White
   if (-not $Yes -and -not $DryRun) {
     $c = Read-Host "    Type UNINSTALL to continue"
@@ -503,7 +525,7 @@ elseif ($InstallOllama -or (YesNo "Install Ollama? Recommended - powers semantic
 
 # ---- 5. The app: clone or repair ------------------------------------------
 do { if (-not (Should "app")) { break }
-Section "Mission Control app"
+Section "$ProductName app"
 $isRepo = Test-Path (Join-Path $RepoDir ".git")
 if (-not $isRepo -and (Test-Path $RepoDir) -and (Get-ChildItem $RepoDir -Force -ErrorAction SilentlyContinue | Select-Object -First 1)) {
   # A copied (non-git) install: keep its settings, replace the code with a real clone.
@@ -567,7 +589,7 @@ if ($RepairOnly) {
 # ---- 6. Dependencies + build ----------------------------------------------
 do { if (-not (Should "app")) { break }
 Section "Dependencies + build"
-if ($DryRun) { Warn "would stop a running Mission Control on port 3000, run npm install + npm run build, then restart it" }
+if ($DryRun) { Warn "would stop a running $ProductName on port 3000, run npm install + npm run build, then restart it" }
 elseif (Test-Path (Join-Path $RepoDir "package.json")) {
   Push-Location $RepoDir
   # Pause the watchdog and stop the server so the build can replace its files.
@@ -646,27 +668,87 @@ function Find-Vaults {
   # the real shared vault first
   return $found | Sort-Object { if ($_ -match 'IdrisGV75') { 0 } else { 1 } }, Length
 }
+# A new network = a brand-new vault in a OneDrive folder; every machine in that network syncs it.
+function Get-OneDriveRoots {
+  $r = New-Object System.Collections.Generic.List[string]
+  foreach ($v in @($env:OneDriveCommercial, $env:OneDriveConsumer, $env:OneDrive)) { if ($v -and (Test-Path $v) -and -not $r.Contains($v)) { $r.Add($v) } }
+  # SharePoint / Teams libraries synced with OneDrive
+  try {
+    Get-ChildItem "HKCU:\Software\SyncEngines\Providers\OneDrive" -ErrorAction Stop | ForEach-Object {
+      $mp = (Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue).MountPoint
+      if ($mp -and (Test-Path $mp) -and -not $r.Contains($mp)) { $r.Add($mp) }
+    }
+  } catch { }
+  return $r
+}
+function Write-NetSettingsFile($vault, $settings) {
+  $f = Join-Path $vault "Agentic OS\Cluster\settings.json"
+  New-Item -ItemType Directory -Force (Split-Path $f) | Out-Null
+  # UTF-8 without a BOM (Set-Content -Encoding UTF8 adds one in Windows PowerShell 5.1)
+  [System.IO.File]::WriteAllText($f, ($settings | ConvertTo-Json -Depth 4), (New-Object System.Text.UTF8Encoding($false)))
+  return $f
+}
+function New-NetworkVault {
+  Info "A new network gets its own vault: a folder in OneDrive that every machine in that network syncs."
+  $parent = $VaultParent
+  if (-not $parent) {
+    $roots = @(Get-OneDriveRoots)
+    if ($roots.Count -gt 0) {
+      Info "OneDrive folders on this PC:"
+      for ($i = 0; $i -lt $roots.Count; $i++) { Info "  [$($i + 1)] $($roots[$i])" }
+      $pick = Ask "Create the new vault in which folder? (number, or paste a path)" "1"
+      if ($pick -match '^\d+$' -and [int]$pick -ge 1 -and [int]$pick -le $roots.Count) { $parent = $roots[[int]$pick - 1] } else { $parent = $pick }
+    } else {
+      Warn "OneDrive isn't set up on this PC - sign in to OneDrive first, so the vault syncs to your other machines"
+      $parent = Ask "Folder to create the vault in (paste a path)" (Join-Path $env:USERPROFILE "Documents")
+    }
+  }
+  if (-not $parent -or -not (Test-Path -LiteralPath $parent)) { Warn "'$parent' doesn't exist - no vault created"; return "" }
+  $defVault = if ($branded) { "$ProductName Vault" } else { "AI Operations Vault" }
+  $name = if ($VaultName) { $VaultName } else { Ask "Name for the new vault folder" $defVault }
+  $name = ($name -replace '[\\/:*?"<>|]', '').Trim()
+  if (-not $name) { $name = $defVault }
+  $dir = Join-Path $parent $name
+  if (Test-Vault $dir) { Warn "'$dir' is already a vault - using it as is (every machine that uses it is one network)"; return $dir }
+  if ($DryRun) { Warn "would create the new vault $dir"; return "" }
+  New-Item -ItemType Directory -Force (Join-Path $dir "Agentic OS\Cluster") | Out-Null
+  # its own settings file from the start, so it never inherits another network's Telegram chat
+  Write-NetSettingsFile $dir ([ordered]@{ v = 1; networkName = ""; ownerName = ""; appName = ""; appTagline = ""; telegram = [ordered]@{ botToken = ""; chatId = "" }; updatedBy = $env:COMPUTERNAME }) | Out-Null
+  Done "new vault created: $dir"
+  $script:createdNetwork = $true
+  return $dir
+}
+
 $current = $null
 if (Test-Path $envFile) {
   $line = Get-Content $envFile | Where-Object { $_ -match '^\s*VAULT_DIR\s*=' } | Select-Object -First 1
   if ($line) { $current = ($line -replace '^\s*VAULT_DIR\s*=\s*', '').Trim('"', ' ') }
 }
 if ($Mode -eq "modify") { $vaultDir = $Vault }
-if (-not $vaultDir -and $Mode -ne "modify" -and (Test-Vault $current)) { $vaultDir = $current; Ok "VAULT_DIR already points at the vault: $current" }
+if ($NewNetwork -and (Test-Vault $current)) { Warn "this machine uses the vault $current now - -NewNetwork moves it to a new network's vault" }
+if (-not $vaultDir -and -not $NewNetwork -and $Mode -ne "modify" -and (Test-Vault $current)) { $vaultDir = $current; Ok "VAULT_DIR already points at the vault: $current" }
+if (-not $vaultDir -and $NewNetwork) {
+  $vaultDir = New-NetworkVault
+  if (-not $vaultDir) { if (-not $DryRun) { Todo "No new vault was created - run this installer again with -NewNetwork, or create it in the app: Settings -> This network" }; break }
+}
 if (-not $vaultDir -and $current -and -not (Test-Vault $current)) { Warn "VAULT_DIR in .env.local is '$current', which doesn't exist on this machine (copied from another PC?)" }
 if (-not $vaultDir) {
   Info "looking for the synced vault (a folder containing 'Agentic OS')..."
   $cands = @(Find-Vaults)
   if ($cands.Count -gt 0) {
     for ($i = 0; $i -lt [Math]::Min($cands.Count, 6); $i++) { Info "  [$($i + 1)] $($cands[$i])" }
-    $pick = Ask "Use which vault? (number, or paste a path)" "1"
-    if ($pick -match '^\d+$' -and [int]$pick -ge 1 -and [int]$pick -le $cands.Count) { $vaultDir = $cands[[int]$pick - 1] } else { $vaultDir = $pick }
+    Info "  [N] start a NEW network (create a new vault)"
+    $pick = Ask "Use which vault? (number, N, or paste a path)" "1"
+    if ($pick -match '^[nN]$') { $vaultDir = New-NetworkVault }
+    elseif ($pick -match '^\d+$' -and [int]$pick -ge 1 -and [int]$pick -le $cands.Count) { $vaultDir = $cands[[int]$pick - 1] } else { $vaultDir = $pick }
   } else {
-    Warn "no vault found. Sync the 'AI Mission Control\IdrisGV75' folder with OneDrive first (LSI Media LLC library)."
-    Info "  1. Sign in to OneDrive on this PC (as this Windows user) with your LSI Media account"
-    Info "  2. In SharePoint, open the 'Working Files Idris' library -> AI Mission Control -> IdrisGV75 -> 'Sync' (or 'Add shortcut to My files')"
-    Info "  3. Wait until 'Agentic OS' appears in File Explorer, then paste that IdrisGV75 path below or re-run the installer"
-    $vaultDir = Ask "Paste the vault path now, or press Enter to set it later" ""
+    Warn "no vault found on this PC."
+    Info "  To JOIN an existing network: sign in to OneDrive and sync that network's vault folder (the one that"
+    Info "  contains 'Agentic OS'; if someone shared it with you, use 'Add shortcut to My files'). When 'Agentic OS'"
+    Info "  shows in File Explorer, paste the vault's path below (or run this installer again)."
+    Info "  To START a new network on this machine: type N."
+    $a = Ask "Paste the vault path, type N for a new network, or press Enter to set it later" ""
+    if ($a -match '^[nN]$') { $vaultDir = New-NetworkVault } else { $vaultDir = $a }
   }
 }
 if ($vaultDir -and -not (Test-Vault $vaultDir)) { Warn "'$vaultDir' has no 'Agentic OS' folder - that's not the vault"; $vaultDir = "" }
@@ -716,12 +798,64 @@ elseif (Test-Path $envFile) {
 
 } while ($false)
 
+# ---- 10b. New network settings (only when this run created a new vault) -----
+do { if (-not $script:createdNetwork -or -not $vaultDir) { break }
+Section "New network settings (shared by every machine in it)"
+Info "Stored in the vault (Agentic OS\Cluster\settings.json). Change them any time in the app: Settings -> This network."
+$netName = Ask "Network name (e.g. Office LAN)" (Split-Path $vaultDir -Leaf)
+$owner = Ask "Your name (the agents work for this person)" $env:USERNAME
+$app = Ask "App name shown in the header" $(if ($branded) { $ProductName.ToUpper() } else { "AI OPERATIONS CONTROL" })
+$tag = Ask "Subtitle under the app name" "LOCAL AI OPERATIONS DECK"
+$tok = ""; $chat = ""
+Info "Telegram is optional - you can also set it up later in the app (Settings -> This network -> Telegram)."
+if (-not $Yes -and -not $DryRun -and (YesNo "Set up this network's Telegram bot now?" $true)) {
+  Info "  1. In Telegram, open @BotFather, send /newbot and follow the steps. It replies with a token like 123456789:ABC..."
+  $tok = (Read-Host "    Paste the bot token (or press Enter to skip)").Trim()
+  if ($tok -and $tok -notmatch '^\d{5,}:[A-Za-z0-9_-]{30,}$') { Warn "that doesn't look like a bot token - skipped (set it later in Settings -> This network)"; $tok = "" }
+  if ($tok) {
+    try {
+      [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+      $me = Invoke-RestMethod "https://api.telegram.org/bot$tok/getMe" -TimeoutSec 20
+      $botName = $me.result.username
+      Ok "bot: @$botName"
+      Info "  2. In Telegram, open @$botName and press Start (or send it any message)."
+      Read-Host "    Then press Enter here" | Out-Null
+      $up = Invoke-RestMethod "https://api.telegram.org/bot$tok/getUpdates" -TimeoutSec 20
+      $chats = @($up.result | ForEach-Object { if ($_.message) { $_.message.chat } elseif ($_.my_chat_member) { $_.my_chat_member.chat } } | Where-Object { $_ } | Sort-Object id -Unique)
+      $chats = @($chats | Sort-Object { if ($_.type -eq 'private') { 0 } else { 1 } })   # your own chat with the bot first
+      if ($chats.Count -eq 0) { Warn "no message from you yet - set the chat later in the app (Settings -> This network -> Find my chat)" }
+      else {
+        for ($i = 0; $i -lt $chats.Count; $i++) {
+          $c = $chats[$i]
+          $t = if ($c.title) { $c.title } else { (@($c.first_name, $c.last_name) | Where-Object { $_ }) -join ' ' }
+          Info "  [$($i + 1)] $t ($($c.type), id $($c.id))"
+        }
+        $p = Ask "Send messages to which chat?" "1"
+        if ($p -match '^\d+$' -and [int]$p -ge 1 -and [int]$p -le $chats.Count) { $chat = [string]$chats[[int]$p - 1].id }
+      }
+      if ($chat) {
+        $body = @{ chat_id = $chat; text = "Test from $app on $env:COMPUTERNAME - Telegram is set up for $netName." } | ConvertTo-Json
+        try { Invoke-RestMethod "https://api.telegram.org/bot$tok/sendMessage" -Method Post -ContentType "application/json; charset=utf-8" -Body $body -TimeoutSec 20 | Out-Null; Done "test message sent - check Telegram" }
+        catch { Warn "test message failed: $($_.Exception.Message)" }
+      }
+    } catch { Warn "Telegram didn't accept the token or couldn't be reached ($($_.Exception.Message)) - set it later in Settings -> This network"; $tok = "" }
+  }
+}
+$appOut = if ($app -eq "AI OPERATIONS CONTROL") { "" } else { $app }
+$tagOut = if ($tag -eq "LOCAL AI OPERATIONS DECK") { "" } else { $tag }
+$prodOut = if ($branded) { $ProductName } else { "" }
+$sf = Write-NetSettingsFile $vaultDir ([ordered]@{ v = 1; networkName = $netName; ownerName = $owner; appName = $appOut; appTagline = $tagOut; productName = $prodOut; telegram = [ordered]@{ botToken = $tok; chatId = $chat }; updatedBy = $env:COMPUTERNAME })
+Done "network settings saved ($sf)"
+$script:later.Add("Add machines to '$netName': give them the vault folder '$vaultDir' through OneDrive (same Microsoft account, or Share it -> 'Add shortcut to My files'), wait until it syncs, then run the installer there and pick that vault.")
+if (-not $chat) { $script:later.Add("Telegram for '$netName': in the app, Settings -> This network -> Telegram (paste the bot token, Find my chat, Save, Send test).") }
+} while ($false)
+
 # ---- 11. Machine group -----------------------------------------------------
 do { if (-not (Should "group")) { break }
 Section "Machine group (shares sessions, health and jobs through the vault)"
 $cfg = $null
 if (Test-Path $clusterFile) { try { $cfg = Get-Content $clusterFile -Raw | ConvertFrom-Json } catch { } }
-if ($cfg -and $cfg.enabled -and -not $Label -and -not $Role -and $Mode -ne "modify") {
+if ($cfg -and $cfg.enabled -and -not $Label -and -not $Role -and $Mode -ne "modify" -and -not $script:createdNetwork) {
   Ok "already in the group as '$($cfg.label)' ($($cfg.role))"
 } elseif (-not $vaultDir) {
   Todo "Join the machine group later (Settings -> Machine Group & Roles) once the vault is set"
@@ -738,7 +872,7 @@ if ($cfg -and $cfg.enabled -and -not $Label -and -not $Role -and $Mode -ne "modi
   Info "roles: workstation = shares + works, never runs scheduled jobs (recommended)"
   Info "       backup      = also takes over jobs while the primary is down"
   Info "       primary     = runs the scheduled jobs (only ONE machine)"
-  $defaultRole = if ($Role) { $Role } elseif ($cfg -and $cfg.role) { $cfg.role } else { "workstation" }
+  $defaultRole = if ($Role) { $Role } elseif ($script:createdNetwork) { "primary" } elseif ($cfg -and $cfg.role) { $cfg.role } else { "workstation" }
   $r = (Ask "Role (workstation / backup / primary)" $defaultRole).ToLower()
   if ($r -notin @("workstation", "backup", "primary")) { $r = "workstation" }
   if ($r -eq "primary" -and $livePrimary) { Warn "$livePrimary is already primary - two primaries fight over the jobs"; if (-not (YesNo "Make this machine primary anyway?" $false)) { $r = "backup" } }
@@ -755,7 +889,7 @@ if ($cfg -and $cfg.enabled -and -not $Label -and -not $Role -and $Mode -ne "modi
 
 # ---- 11b. Companions: Ollama autostart, Hermes, OpenClaw --------------------
 do { if (-not (Should "companions")) { break }
-Section "Companions (start automatically with Mission Control)"
+Section "Companions (start automatically with $ProductName)"
 # Ollama: its own login entry, plus Mission Control's service supervisor starts 'ollama serve' if it's down.
 if ($useOllama -and (Have ollama)) {
   $ollamaApp = Join-Path $env:LOCALAPPDATA "Programs\Ollama\ollama app.exe"
@@ -768,7 +902,7 @@ if ($useOllama -and (Have ollama)) {
       $sc.TargetPath = $ollamaApp; $sc.WorkingDirectory = (Split-Path $ollamaApp); $sc.Save()
       Done "Ollama set to start at login"
     }
-  } else { Info "Ollama login entry not found - Mission Control starts 'ollama serve' itself when it boots" }
+  } else { Info "Ollama login entry not found - $ProductName starts 'ollama serve' itself when it boots" }
 }
 # Hermes (Nous Research): goal mode + Control Room. Optional. Official installer; Mission Control
 # then starts its dashboard automatically (service supervisor) once HERMES_BIN is set.
@@ -800,7 +934,7 @@ if (-not $hermesExe -and -not $NoCompanions -and -not $NoHermes) {
 if ($hermesExe) {
   Set-EnvKey "HERMES_BIN" $hermesExe
   Set-EnvKey "HERMES_CMD" "$hermesExe -z {input}"
-  Done "Hermes wired up - Mission Control starts its dashboard automatically ($hermesExe)"
+  Done "Hermes wired up - $ProductName starts its dashboard automatically ($hermesExe)"
 }
 
 # OpenClaw: Telegram gateway + approvals from your phone. PRIMARY machine only - two gateways
@@ -826,7 +960,7 @@ if (Have openclaw) {
         Set-EnvKey "OPENCLAW_CMD" "openclaw agent --agent main --message {input}"
         Done "OpenClaw installed"
         & openclaw gateway status 2>&1 | Out-Host
-        $script:later.Add("OpenClaw: if the gateway isn't running yet, run   openclaw onboard --install-daemon   (starts it automatically), then pair your Telegram bot. Mission Control's approval protocol: Guide -> Installing Companions. Docs: $OpenClawDocs")
+        $script:later.Add("OpenClaw: if the gateway isn't running yet, run   openclaw onboard --install-daemon   (starts it automatically), then pair your Telegram bot. $ProductName approval protocol: Guide -> Installing Companions. Docs: $OpenClawDocs")
       } else { Todo "OpenClaw didn't finish installing - see $OpenClawDocs, then run this installer again (Modify)" }
     }
   } else { $script:later.Add("OpenClaw (optional, primary only): in PowerShell run   iwr -useb https://openclaw.ai/install.ps1 | iex   then   openclaw onboard --install-daemon.  Docs: $OpenClawDocs") }
@@ -867,7 +1001,7 @@ if (Have codex) {
 do { if (-not (Should "autostart")) { break }
 Section "Auto-start at login + watchdog"
 $wantAuto = $true
-if ($Mode -eq "modify") { $wantAuto = YesNo "Start Mission Control automatically at login (with the watchdog)?" $true }
+if ($Mode -eq "modify") { $wantAuto = YesNo "Start $ProductName automatically at login (with the watchdog)?" $true }
 if (-not $wantAuto) {
   if ($DryRun) { Warn "would remove the login launcher and the watchdog task" }
   else {
@@ -908,9 +1042,9 @@ elseif (Test-Path $server) {
   for ($i = 0; $i -lt 60 -and -not $up; $i++) {
     try { $resp = Invoke-WebRequest -UseBasicParsing -TimeoutSec 5 http://127.0.0.1:3000/ ; $up = ($resp.StatusCode -eq 200) } catch { Start-Sleep -Seconds 3 }
   }
-  if (-not $up) { Todo "Mission Control didn't answer on port 3000 - run server.cmd in $RepoDir to see why" }
+  if (-not $up) { Todo "$ProductName didn't answer on port 3000 - run server.cmd in $RepoDir to see why" }
   else {
-    Done "Mission Control is running"
+    Done "$ProductName is running"
     try {
       $h = Invoke-RestMethod -Method Post -TimeoutSec 90 -ContentType "application/json" -Body '{"action":"run"}' http://127.0.0.1:3000/api/health
       foreach ($c in $h.report.checks) {
@@ -935,7 +1069,7 @@ elseif (Test-Path $server) {
 Write-Host "`n==================================================" -ForegroundColor Green
 $verb = switch ($Mode) { "modify" { "Changes applied" } "reinstall" { "Reinstalled" } default { "Installed" } }
 if ($DryRun) { Write-Host "  Dry run finished - nothing was changed." -ForegroundColor Green }
-elseif ($script:todo.Count -eq 0) { Write-Host "  All done - $verb. Mission Control is running." -ForegroundColor Green }
+elseif ($script:todo.Count -eq 0) { Write-Host "  All done - $verb. $ProductName is running." -ForegroundColor Green }
 else { Write-Host "  $verb, with $($script:todo.Count) thing(s) left for you:" -ForegroundColor Yellow }
 Write-Host "==================================================" -ForegroundColor Green
 foreach ($t in $script:todo) { Write-Host "  * $t" -ForegroundColor Yellow }

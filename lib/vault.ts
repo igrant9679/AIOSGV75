@@ -1,4 +1,5 @@
 import fs from "fs/promises";
+import { productName } from "./netSettings";
 import path from "path";
 import os from "os";
 import { agentDisplayName, agentWikilink } from "./chatMarkdown";
@@ -59,7 +60,7 @@ export async function ensureAgentPage(agentId: string, tagline?: string): Promis
   } catch {
     await fs.writeFile(
       file,
-      `# ${name}\n\n#agentic-os/agent\n\n${tagline ?? "AI agent on the Mission Control deck."}\n\nChats, missions, and memories from this agent link back here — open the backlinks pane or graph view to see everything ${name} has touched. Part of [[Agentic OS/Home|Agentic OS]].\n`,
+      `# ${name}\n\n#agentic-os/agent\n\n${tagline ?? `AI agent on the ${productName()} deck.`}\n\nChats, missions, and memories from this agent link back here — open the backlinks pane or graph view to see everything ${name} has touched. Part of [[Agentic OS/Home|Agentic OS]].\n`,
       "utf8",
     );
   }
@@ -83,7 +84,8 @@ export async function ensureScaffold(agents: { id: string; tagline?: string }[] 
   // export the user guide so agents can answer questions about the OS via RAG
   try {
     const { guideMarkdown } = await import("./guideContent");
-    await fs.writeFile(safeJoin("Guide.md"), guideMarkdown(), "utf8");
+    const { productName } = await import("./netSettings"); // dynamic: netSettings imports this file
+    await fs.writeFile(safeJoin("Guide.md"), guideMarkdown(productName()), "utf8");
   } catch {
     /* non-fatal */
   }
@@ -93,7 +95,7 @@ export async function ensureScaffold(agents: { id: string; tagline?: string }[] 
     ``,
     `#agentic-os/home`,
     ``,
-    `The control room of your AI operating system. Regenerated daily by Mission Control — edits here get overwritten.`,
+    `The control room of your AI operating system. Regenerated daily by ${productName()} — edits here get overwritten.`,
     ``,
     `## Live surfaces`,
     `- [[Agentic OS/Guide|User Guide]] — how the whole OS works`,

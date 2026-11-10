@@ -2,6 +2,7 @@ import { spawn } from "child_process";
 import { existsSync } from "fs";
 import os from "os";
 import { vaultInfo } from "./vault";
+import { productName } from "./netSettings";
 import { AGENT_DEFS } from "./agents-config";
 import { readRegistry, isLocalEndpoint, type LlmConfig } from "./registry";
 import { gatherContext, memoryBlock, memorySystemBlock, EMPTY_CONTEXT } from "./retrieval";
@@ -205,7 +206,7 @@ export async function runAgentText(
     const reg = await readRegistry();
     const llm = reg.llms.find((l) => l.id === agentId);
     if (llm) {
-      const system = `${llm.systemPrompt?.trim() || `You are ${llm.name}, an AI agent on the user's Mission Control dashboard.`}\n\n${memorySystemBlock(ctx)}`;
+      const system = `${llm.systemPrompt?.trim() || `You are ${llm.name}, an AI agent on the user's ${productName()} dashboard.`}\n\n${memorySystemBlock(ctx)}`;
       result = await runLlmText(llm, prompt, system);
     } else {
       const def = AGENT_DEFS.find((d) => d.id === agentId) ?? reg.commandAgents.find((a) => a.id === agentId);

@@ -23,7 +23,7 @@ export const BILLING_NOTE: Record<BillingMode, string> = {
   subscription: "Runs against a subscription — costs shown are estimates at API list prices, not charges. The real limit is your plan's usage allowance.",
   api: "Billed per token against an API key. These are real charges.",
   local: "Runs on this machine. No cost.",
-  unknown: "This agent's CLI authenticates itself (its own login or key), so Mission Control can't see how it bills.",
+  unknown: "This agent's CLI authenticates itself (its own login or key), so this app can't see how it bills.",
 };
 
 export interface LlmLite {

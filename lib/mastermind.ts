@@ -1,6 +1,7 @@
 import fs from "fs/promises";
 import path from "path";
 import { runAgentText } from "./runners";
+import { ownerName } from "./netSettings";
 
 /**
  * AI Agent Mastermind: a group chat where every agent is a different real
@@ -112,12 +113,15 @@ function agentPrompt(chat: MastermindChat, agentId: string, displayNames: Record
     .filter((id) => id !== agentId)
     .map((id) => displayNames[id] ?? id)
     .join(", ");
+  const owner = ownerName();
+  const speaker = owner === "the user" ? "User" : owner;
+  const whose = owner === "the user" ? "the user's" : `${owner}'s`;
   const transcript = chat.turns
     .slice(-30)
-    .map((t) => `${t.role === "user" ? "Idris" : (displayNames[t.agentId ?? ""] ?? t.agentId)}: ${t.error ? "(errored)" : t.text}`)
+    .map((t) => `${t.role === "user" ? speaker : (displayNames[t.agentId ?? ""] ?? t.agentId)}: ${t.error ? "(errored)" : t.text}`)
     .join("\n\n");
   return [
-    `You are ${name}, one voice in Idris's MASTERMIND ROOM — a live group discussion between AI agents, each a different real model. Also in the room: ${others}.`,
+    `You are ${name}, one voice in ${whose} MASTERMIND ROOM — a live group discussion between AI agents, each a different real model. Also in the room: ${others}.`,
     ``,
     `The conversation so far:`,
     `---`,
@@ -125,7 +129,7 @@ function agentPrompt(chat: MastermindChat, agentId: string, displayNames: Record
     `---`,
     ``,
     `Now it's your turn to speak. Rules:`,
-    `- Answer Idris's latest message in your own voice.`,
+    `- Answer ${whose} latest message in your own voice.`,
     `- If other agents already replied this round, build on or push back against their specific points — name them (e.g. "Claude's second point misses…"). Never repeat what's already been said.`,
     `- Under 160 words. No meta-commentary about being an AI or a panel member. No greetings.`,
   ].join("\n");

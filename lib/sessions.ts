@@ -1,4 +1,5 @@
 import fs from "fs";
+import { productName } from "./netSettings";
 import fsp from "fs/promises";
 import path from "path";
 import os from "os";
@@ -6,7 +7,6 @@ import readline from "readline";
 import zlib from "zlib";
 import {
   UNSORTED,
-  JOBS_PROJECT,
   desktopAppTitles,
   folderProject,
   inferWorkDir,
@@ -797,7 +797,7 @@ function resolveNames(
   let folder: string | undefined;
   if (userO?.project) [project, projectSource] = [userO.project, "user"];
   else if (folderDir) [project, projectSource, folder] = [prettyProject(folderDir), "folder", folderDir];
-  else if (ev.job) [project, projectSource] = [JOBS_PROJECT, "job"];
+  else if (ev.job) [project, projectSource] = [`${productName()} jobs`, "job"];
   else if (workDir) [project, projectSource, folder] = [prettyProject(workDir), "files", workDir];
   else if (aiO?.project) [project, projectSource] = [aiO.project, "ai"];
   else [project, projectSource] = [UNSORTED, "unsorted"];

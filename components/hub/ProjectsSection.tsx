@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useProductName, brandText } from "../useNetSettings";
 import Panel from "../ui/Panel";
 import EmptyState from "../ui/EmptyState";
 import Markdown from "../Markdown";
@@ -141,6 +142,7 @@ function Renamable({
  * lib/projectNames.ts; renames and AI grouping live in data/session-names.json.
  */
 export default function ProjectsSection() {
+  const product = useProductName(); // this network's product name
   const { hub, error, reload } = useHub(30_000);
   const [selected, setSelected] = useState<string | null>(null);
   const [q, setQ] = useState("");
@@ -417,7 +419,7 @@ export default function ProjectsSection() {
                 </span>
               </div>
               <p className="pt-1 font-mono text-[11px] text-ink-faint">
-                {[...current.hosts].join(", ")} · {current.sessions.length} sessions · {fmtTokens(current.tokens)} tokens · {SOURCE_LABEL[currentSource]}
+                {[...current.hosts].join(", ")} · {current.sessions.length} sessions · {fmtTokens(current.tokens)} tokens · {brandText(SOURCE_LABEL[currentSource], product)}
               </p>
               {currentFolder && (
                 <p className="truncate pt-0.5 font-mono text-[10px] text-ink-faint">

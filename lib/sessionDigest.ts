@@ -1,4 +1,5 @@
 import fs from "fs";
+import { productName } from "./netSettings";
 import fsp from "fs/promises";
 import os from "os";
 import path from "path";
@@ -156,7 +157,7 @@ export function digestMarkdown(s: SessionSummary, turns: Turn[], machine: string
     "",
     `${toolName} session on **${machine}** · project **${s.project}** · ${when(s.startedAt)} → ${when(s.updatedAt)} · ${s.userTurns} prompts`,
     "",
-    "> Your messages and the replies only — tool calls and their output are left out, and likely secrets are redacted. Written by Mission Control; edits here are overwritten.",
+    `> Your messages and the replies only — tool calls and their output are left out, and likely secrets are redacted. Written by ${productName()}; edits here are overwritten.`,
     "",
   ];
   const blocks = turns.map((t) => `### ${t.role === "user" ? "You" : toolName}${t.ts ? ` · ${when(t.ts)}` : ""}\n\n${clip(redactSecrets(t.text), MAX_TURN_CHARS)}`);

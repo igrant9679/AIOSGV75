@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useProductName } from "./useNetSettings";
 import { motion } from "framer-motion";
 import Panel from "./ui/Panel";
 import StatusOrb from "./ui/StatusOrb";
@@ -18,6 +19,7 @@ interface DaemonInfo {
 }
 
 export default function DaemonsPanel() {
+  const product = useProductName(); // this network's product name
   const { addEvent } = useMission();
   const [services, setServices] = useState<DaemonInfo[]>([]);
   const [starting, setStarting] = useState<string | null>(null);
@@ -131,7 +133,7 @@ export default function DaemonsPanel() {
           </div>
         ))}
         <p className="px-1 pt-1 text-[11px] leading-4 text-ink-faint">
-          These companion services start automatically when Mission Control boots — including after a system restart, since
+          These companion services start automatically when {product} boots — including after a system restart, since
           the app itself launches at login. Use Start to bring one up now without waiting.
         </p>
       </div>

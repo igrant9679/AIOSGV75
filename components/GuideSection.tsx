@@ -5,6 +5,7 @@ import { motion } from "framer-motion";
 import { GUIDE_SECTIONS } from "@/lib/guideContent";
 import Panel from "./ui/Panel";
 import Markdown from "./Markdown";
+import { useProductName, brandText } from "./useNetSettings";
 
 /** Score a section against the query: title > keywords > body. */
 function matchScore(query: string, title: string, keywords: string, body: string): number {
@@ -20,6 +21,7 @@ function matchScore(query: string, title: string, keywords: string, body: string
 }
 
 export default function GuideSection() {
+  const product = useProductName(); // the guide is written as "Mission Control"; show this network's name
   const [query, setQuery] = useState("");
 
   const results = useMemo(() => {
@@ -46,7 +48,7 @@ export default function GuideSection() {
                 onClick={() => scrollTo(s.id)}
                 className="cursor-pointer rounded-lg px-3 py-1.5 text-left text-[12px] text-ink-dim transition-colors hover:bg-white/[0.04] hover:text-ink"
               >
-                {s.title}
+                {brandText(s.title, product)}
               </button>
             ))}
             {results.length === 0 && <p className="px-3 py-2 text-[11px] text-ink-faint">No matches.</p>}
@@ -84,9 +86,9 @@ export default function GuideSection() {
             transition={{ delay: Math.min(i * 0.03, 0.2) }}
             className="scroll-mt-4"
           >
-            <Panel title={s.title}>
+            <Panel title={brandText(s.title, product)}>
               <div className="px-5 py-4">
-                <Markdown>{s.body}</Markdown>
+                <Markdown>{brandText(s.body, product)}</Markdown>
               </div>
             </Panel>
           </motion.div>

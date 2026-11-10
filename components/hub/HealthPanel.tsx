@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useCallback, useEffect, useState } from "react";
+import { useProductName } from "../useNetSettings";
 import Panel from "../ui/Panel";
 import StatusOrb from "../ui/StatusOrb";
 import { ACCENTS, type Accent } from "@/lib/accents";
@@ -90,6 +91,7 @@ function CheckRow({ c }: { c: HealthCheck }) {
  * disk). Problems open the panel; all-clear collapses to one line.
  */
 export default function HealthPanel() {
+  const product = useProductName(); // this network's product name
   const [view, setView] = useState<HealthView | null>(null);
   const [busy, setBusy] = useState(false);
   const [showAll, setShowAll] = useState(false);
@@ -233,7 +235,7 @@ export default function HealthPanel() {
               const stale = m.report && Date.now() - m.report.checkedAt > 30 * 60_000;
               const bad = m.report?.checks.filter((c) => c.level === "fail" || c.level === "warn") ?? [];
               const tip = !m.report
-                ? "No health report yet — this machine needs the newer Mission Control"
+                ? `No health report yet — this machine needs the newer ${product}`
                 : `${bad.length ? bad.map((c) => `${c.level === "fail" ? "✖" : "!"} ${c.label}`).join("\n") : "All checks passing"}\nchecked ${ago(m.report.checkedAt)} ago`;
               return (
                 <span key={m.host} title={tip} className="inline-flex items-center gap-1.5 rounded-md border border-line px-2 py-1 font-mono text-[10px] text-ink-dim">

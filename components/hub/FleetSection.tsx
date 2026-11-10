@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useProductName } from "../useNetSettings";
 import { useEffect, useMemo, useState } from "react";
 import Panel from "../ui/Panel";
 import StatusOrb from "../ui/StatusOrb";
@@ -40,6 +41,7 @@ const TOOLS: SubscriptionMeter["tool"][] = ["claude", "codex", "kimi"];
  * session summaries are shared through the vault (roadmap phase 4).
  */
 export default function FleetSection() {
+  const product = useProductName(); // this network's product name
   const { hub, error, reload } = useHub();
   const [reading, setReading] = useState<string | null>(null);
   const [cluster, setCluster] = useState<ClusterView | null>(null);
@@ -116,7 +118,7 @@ export default function FleetSection() {
           )}
           {cluster?.config.enabled && machines.some((m) => !m.shares) && (
             <p className="pt-3 text-[11px] text-ink-faint">
-              Dashed cells: that machine runs an older Mission Control that doesn't share its sessions yet. Run update.cmd there and it
+              Dashed cells: that machine runs an older {product} that doesn't share its sessions yet. Run update.cmd there and it
               appears within 5 minutes.
             </p>
           )}
@@ -186,6 +188,7 @@ function FleetRow({
   selected: { host: string; tool: SubscriptionMeter["tool"] } | null;
   onPick: (p: { host: string; tool: SubscriptionMeter["tool"] }) => void;
 }) {
+  const product = useProductName(); // this network's product name
   return (
     <>
       <span className="flex min-w-0 items-center gap-2 self-center">
@@ -207,7 +210,7 @@ function FleetRow({
         if (!m.shares) {
           return (
             <div key={t} className="rounded-xl border border-dashed border-line px-3 py-2 text-center font-mono text-[10px] text-ink-faint">
-              {m.online ? "not sharing yet — update Mission Control there" : "offline"}
+              {m.online ? `not sharing yet — update ${product} there` : "offline"}
             </div>
           );
         }

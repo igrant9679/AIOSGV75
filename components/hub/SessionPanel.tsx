@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useProductName } from "../useNetSettings";
 import Markdown from "../Markdown";
 import type { SessionSummary } from "@/lib/sessions";
 import type { SessionJob } from "@/lib/sessionActions";
@@ -293,6 +294,7 @@ function ThreadView({ s, local, level, machineLabel, refresh, jobs, reloadJobs }
 // ─── jobs (replies / new sessions) ───
 
 export function JobBubble({ job, onOpenSession, knownKeys }: { job: SessionJob; onOpenSession?: (key: string) => void; knownKeys?: Set<string> }) {
+  const product = useProductName(); // this network's product name
   const [busy, setBusy] = useState(false);
   const toolName = job.tool === "claude" ? "Claude" : "Codex";
   const final = !ACTIVE.includes(job.status);
@@ -309,7 +311,7 @@ export function JobBubble({ job, onOpenSession, knownKeys }: { job: SessionJob; 
     <div className="flex flex-col gap-1.5 rounded-xl border border-dashed border-line px-3 py-2">
       <div className="flex items-start gap-2">
         <p className="min-w-0 flex-1 font-mono text-[10px] text-ink-faint">
-          <span style={{ color: "var(--page-accent)" }}>You, from Mission Control</span> · {when(job.createdAt)}
+          <span style={{ color: "var(--page-accent)" }}>You, from {product}</span> · {when(job.createdAt)}
           {job.requestedByLabel ? ` · asked from ${job.requestedByLabel}` : ""} · {job.access === "edit" ? "can edit files" : "answer only"}
           {job.fork ? " · as a new branch" : ""}
         </p>

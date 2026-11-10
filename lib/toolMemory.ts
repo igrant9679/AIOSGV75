@@ -1,4 +1,5 @@
 import fsp from "fs/promises";
+import { productName } from "./netSettings";
 import os from "os";
 import path from "path";
 import { vaultInfo } from "./vault";
@@ -85,7 +86,7 @@ export async function mirrorToolMemory(machine: string): Promise<number> {
       const [src, dst] = await Promise.all([fsp.stat(s.from), fsp.stat(target).catch(() => null)]);
       if (dst && dst.mtimeMs >= src.mtimeMs) continue;
       const text = await fsp.readFile(s.from, "utf8");
-      const header = `<!-- Mirrored by Mission Control from ${machine}: ${s.from.replace(HOME, "~")} — read-only copy, edit the original -->\n\n`;
+      const header = `<!-- Mirrored by ${productName()} from ${machine}: ${s.from.replace(HOME, "~")} — read-only copy, edit the original -->\n\n`;
       await fsp.mkdir(path.dirname(target), { recursive: true });
       await fsp.writeFile(target, header + text, "utf8");
       written++;

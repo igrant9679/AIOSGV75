@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useProductName } from "../useNetSettings";
 import Panel from "../ui/Panel";
 import StatusOrb from "../ui/StatusOrb";
 import Markdown from "../Markdown";
@@ -39,6 +40,7 @@ const MODES: [NetView["machines"][number]["mode"], string, string][] = [
 ];
 
 export function NetworkPanel() {
+  const product = useProductName(); // this network's product name
   const [view, setView] = useState<NetView | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -91,7 +93,7 @@ export function NetworkPanel() {
         {error && <p className="text-[11px] text-ink-faint">{error}</p>}
         {view && !view.self.listening && (
           <p className="text-[11px]" style={{ color: ACCENTS.amber.base }}>
-            This machine&apos;s LAN listener isn&apos;t running (port {view.self.port} may be in use). It starts with Mission Control; see Health for details.
+            This machine&apos;s LAN listener isn&apos;t running (port {view.self.port} may be in use). It starts with {product}; see Health for details.
           </p>
         )}
         {view && view.machines.length === 0 && <p className="text-[11px] text-ink-faint">No other machines in the group yet.</p>}
@@ -134,7 +136,7 @@ export function NetworkPanel() {
                     set(m.host, { address: addr[m.host] ?? "" });
                   }}
                 >
-                  <span>Addresses it reports: {m.lanAddrs.join(", ") || "none yet (update Mission Control there)"}</span>
+                  <span>Addresses it reports: {m.lanAddrs.join(", ") || `none yet (update ${product} there)`}</span>
                   <span>· fixed address:</span>
                   <input
                     value={addr[m.host] ?? ""}
@@ -201,6 +203,7 @@ const HOOK_TEXT: Record<string, string> = {
 };
 
 export function AlertsPanel() {
+  const product = useProductName(); // this network's product name
   const [data, setData] = useState<{ settings: AlertSettings; hooks: HookStatus } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -254,7 +257,7 @@ export function AlertsPanel() {
       <div className="grid gap-4 p-4 lg:grid-cols-2">
         <div className="flex flex-col gap-2">
           <p className="text-[11px] leading-4 text-ink-dim">
-            A tiny hook in Claude Code (and Codex) tells Mission Control when a session needs you, finishes a turn, or closes - on every machine. Waiting sessions and
+            A tiny hook in Claude Code (and Codex) tells {product} when a session needs you, finishes a turn, or closes - on every machine. Waiting sessions and
             long runs show under Command → Needs you.
           </p>
           {error && <p className="text-[11px] text-ink-faint">{error}</p>}
@@ -263,7 +266,7 @@ export function AlertsPanel() {
               <Toggle
                 on={s.hooks}
                 label="Install the hook on every machine"
-                hint="Adds Mission Control's hook to Claude Code's settings (~/.claude/settings.json) and Codex's notify (if free) on each machine, keeping your own hooks. Off removes it everywhere."
+                hint={`Adds ${product}'s hook to Claude Code's settings (~/.claude/settings.json) and Codex's notify (if free) on each machine, keeping your own hooks. Off removes it everywhere.`}
                 onClick={() => post({ action: "settings", hooks: !s.hooks })}
                 disabled={busy}
               />
@@ -303,13 +306,13 @@ export function AlertsPanel() {
               <Toggle
                 on={browser}
                 label="Browser notifications (this computer)"
-                hint="Pops up a notification on this computer when a session on any machine needs you or finishes a long run, while a Mission Control tab is open."
+                hint={`Pops up a notification on this computer when a session on any machine needs you or finishes a long run, while a ${product} tab is open.`}
                 onClick={toggleBrowser}
               />
               <Toggle
                 on={s.telegram.waiting}
                 label="Telegram: a session needs me"
-                hint="Sent by the master machine, for every machine. Needs Telegram set up (TELEGRAM_BOT_TOKEN or OpenClaw)."
+                hint="Sent by the master machine, for every machine. Needs Telegram set up (Settings → This network → Telegram)."
                 onClick={() => post({ action: "settings", telegram: { waiting: !s.telegram.waiting } })}
                 disabled={busy}
               />

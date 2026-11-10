@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useProductName } from "./useNetSettings";
 import { motion } from "framer-motion";
 import Panel from "./ui/Panel";
 import EmptyState from "./ui/EmptyState";
@@ -8,8 +9,8 @@ import Avatar from "./Avatar";
 import Markdown from "./Markdown";
 import { IconBook, IconSpark, IconPulse } from "./icons";
 import { useMission } from "./store";
+import { useObsidianVault } from "./useNetSettings";
 
-const VAULT_NAME = "IdrisGV75";
 
 interface Facet { key: string; count: number }
 interface Result {
@@ -78,6 +79,8 @@ function highlight(text: string, q: string) {
 }
 
 export default function ConversationsSection() {
+  const product = useProductName(); // this network's product name
+  const VAULT_NAME = useObsidianVault(); // obsidian:// links: the vault folder's name
   const [view, setView] = useState<"search" | "analytics">("search");
   const [q, setQ] = useState("");
   const [agent, setAgent] = useState("");
@@ -279,7 +282,7 @@ export default function ConversationsSection() {
                           {r.kind === "history" && (
                             <span
                               className="shrink-0 rounded bg-neon-violet/15 px-1.5 py-px font-mono text-[8.5px] tracking-[0.1em] text-neon-violet"
-                              title="A topic distilled from your imported ChatGPT/Claude history — not a live Mission Control chat."
+                              title={`A topic distilled from your imported ChatGPT/Claude history — not a live ${product} chat.`}
                             >
                               IMPORTED
                             </span>

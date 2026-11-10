@@ -5,6 +5,7 @@ import { type Accent } from "@/lib/accents";
 import Panel from "./ui/Panel";
 import NumberTicker from "./ui/NumberTicker";
 import { useMission } from "./store";
+import { useObsidianVault } from "./useNetSettings";
 
 /**
  * Knowledge-graph visualization: vault notes as nodes, [[wikilinks]] as
@@ -12,7 +13,6 @@ import { useMission } from "./store";
  * graph library — same spirit as the hand-built gauges and radar).
  */
 
-const VAULT_NAME = "IdrisGV75"; // matches Markdown.tsx obsidian:// deep links
 const ACCENT_CYCLE: Accent[] = ["cyan", "magenta", "amber", "lime", "violet", "rose"];
 
 interface GNode {
@@ -33,6 +33,9 @@ interface GEdge {
 }
 
 export default function GraphSection() {
+  const vaultName = useObsidianVault(); // obsidian:// links: the vault folder's name
+  const vaultRef = useRef(vaultName); // read by the canvas handlers, which are set up once
+  vaultRef.current = vaultName;
   const { vaultOk } = useMission();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -345,7 +348,7 @@ export default function GraphSection() {
       const d = drag.current;
       if (d.node && !d.moved) {
         window.open(
-          `obsidian://open?vault=${encodeURIComponent(VAULT_NAME)}&file=${encodeURIComponent(d.node.id)}`,
+          `obsidian://open?vault=${encodeURIComponent(vaultRef.current)}&file=${encodeURIComponent(d.node.id)}`,
           "_self"
         );
       }

@@ -283,7 +283,7 @@ export const APPEARANCE_OPTIONS: AppearanceOption[] = [
     attr: "start-page",
     group: "Behavior",
     label: "Start page",
-    hint: "What opens first when you load Mission Control.",
+    hint: "What opens first when you load the app.",
     choices: [
       { value: "/", label: "Overview" },
       { value: "/command", label: "Command" },

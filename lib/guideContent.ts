@@ -197,7 +197,7 @@ The **model picker** chooses Sonnet / Opus / Haiku per conversation. Sessions re
 
 The gateway runs as a Windows Scheduled Task (starts on boot). If the bot goes silent, check \`openclaw gateway status\` in a terminal. Note: only **dashboard** conversations are logged to the vault — Telegram-side chats live in OpenClaw's own memory.
 
-**Sending and receiving are separate — this matters in a machine group.** Schedules, watchers and nudges run *only on the cluster master*, so the master is the machine that has to SEND. Set \`TELEGRAM_BOT_TOKEN\` in \`.env.local\` on every machine that can become master and it posts to the Bot API directly — no OpenClaw needed there, and no clash with the gateway (the single-consumer limit applies to polling, not sending). Without the token on a master that lacks OpenClaw, notifications fail *silently*: the send returns false and the run is still marked successful.
+**Sending and receiving are separate — this matters in a machine group.** Schedules, watchers and nudges run *only on the cluster master*, so the master is the machine that has to SEND. Set the bot token once in **Settings → This network → Telegram** (stored in the vault, so every machine that can become master has it — or per machine as \`TELEGRAM_BOT_TOKEN\` in \`.env.local\`) and it posts to the Bot API directly — no OpenClaw needed there, and no clash with the gateway (the single-consumer limit applies to polling, not sending). Without the token on a master that lacks OpenClaw, notifications fail *silently*: the send returns false and the run is still marked successful.
 
 RECEIVING (answering approvals from your phone) needs the gateway, and **only one machine may poll the bot** — two conflict, Telegram 409s the loser. But the gateway no longer has to be the master: approvals live in the **shared vault** (\`Agentic OS/Approvals.json\`), so it can action an approval raised on any machine, and the master launches the resulting mission. Keep the gateway on whichever machine is most reliably on — that's usually the desktop, not the fastest laptop.`,
   },
@@ -491,6 +491,35 @@ The **gateway** and the **master** are now independent — approvals are shared 
 **Why not host it in the cloud (Railway etc.)?** The server is the engine room — it spawns local CLIs, reads the vault from disk, and talks to localhost Ollama; none of that exists in a cloud container, and the dashboard has no auth layer (it can run commands, so it binds 127.0.0.1 only). Remote access, when wanted, = **Tailscale** private mesh, not public hosting.
 
 Full walkthrough for a new machine: **SETUP-NEW-MACHINE.md** in the repo.`,
+  },
+  {
+    id: "new-network",
+    title: "Set Up a New Network",
+    keywords: "new network second office another lan new vault new onedrive new telegram bot botfather chat id owner name app name settings this network fresh workstations separate fleet",
+    body: `One **vault = one network**. Every machine that uses the same OneDrive vault shares the brain, the machine group, sessions, the LAN link key and the network settings. To run a separate network (another office or LAN, other workstations, its own Telegram bot), give it its **own vault** — the app code is the same and updates from the same GitHub repo.
+
+**First machine (becomes the primary)**
+1. Sign in to OneDrive on the PC (the account that will own the new vault).
+2. Run **\`1 - First machine - Start a new network.cmd\`** from the "Agentic Operations Control - New Network Installer" folder (or \`install.ps1 -NewNetwork\`, or the normal installer → type **N** at the vault step).
+3. The installer installs everything, lists your OneDrive folders (including synced SharePoint libraries), creates the new vault folder, makes this PC the network's **primary**, and asks for: network name, your name, app name and subtitle, and (optional) the Telegram bot.
+4. Optional: in Obsidian, *Open folder as vault* → the new vault folder.
+
+**Telegram for the new network**
+1. In Telegram open **@BotFather**, send \`/newbot\`, follow the steps → it replies with a **bot token**.
+2. Paste it in the installer, or later in **Settings → This network → Telegram**.
+3. Open your new bot in Telegram and press **Start** (or send it any message).
+4. Click **Find my chat**, pick your chat, **Save**, then **Send test**.
+The token is stored in the vault, so any machine that takes over as master can send. Replies from your phone (approvals, chatting with agents) need OpenClaw on the primary, paired with this same bot during \`openclaw onboard\` — only one machine may run the gateway for a bot.
+
+**Each additional machine**
+1. Give it the vault: same Microsoft account → it's already in OneDrive; a different account → on the first PC right-click the vault folder → *Share* (can edit), then on the new PC open OneDrive on the web → *Shared* → *Add shortcut to My files*.
+2. Wait until the \`Agentic OS\` folder appears in File Explorer (right-click → *Always keep on this device*).
+3. Run **\`2 - Add a machine to this network.cmd\`** (or the normal installer) and pick that vault. Role: *workstation* (or *backup* to take over jobs if the primary is down).
+4. The installer adds the LAN link firewall rule; mark machines outside this LAN as Off-LAN on **Fleet → Network**.
+
+**Change it later: Settings → This network** — network name, your name (used in agent prompts), app name and subtitle (header and tab title), Telegram bot token + chat, and this machine's vault folder (switch to another vault, or *Create a new vault here* to start a network from the app; then **Restart now**).
+
+**What stays per machine**: \`.env.local\` (API keys; a \`TELEGRAM_BOT_TOKEN\` / \`TELEGRAM_TARGET\` set there overrides the network's) and the \`data\\\` folder (schedules, chats, settings). Schedules are per machine and run on the master — create them on the primary.`,
   },
   {
     id: "ops-pages",
@@ -835,13 +864,14 @@ Other per-machine state in \`data/\` (all git-ignored, none of it syncs): \`clus
   },
 ];
 
-/** Full guide as one markdown document (vault export). */
-export function guideMarkdown(): string {
+/** Full guide as one markdown document (vault export), in this network's product name. */
+export function guideMarkdown(product = "Mission Control"): string {
+  const b = (t: string) => (product === "Mission Control" ? t : t.split("Mission Control").join(product));
   return [
-    `# Mission Control — User Guide`,
+    `# ${product} — User Guide`,
     ``,
     `#agentic-os/guide · This note is auto-generated daily from the in-app guide (/guide). Part of [[Agentic OS/Home|Agentic OS]].`,
     ``,
-    ...GUIDE_SECTIONS.map((s) => `## ${s.title}\n\n${s.body}\n`),
+    ...GUIDE_SECTIONS.map((s) => b(`## ${s.title}\n\n${s.body}\n`)),
   ].join("\n");
 }

@@ -8,10 +8,10 @@ import StatusOrb from "./ui/StatusOrb";
 import EmptyState from "./ui/EmptyState";
 import Markdown from "./Markdown";
 import { useMission } from "./store";
+import { useObsidianVault } from "./useNetSettings";
 
 /** Content library — every markdown doc the OS has written into the vault. */
 
-const VAULT_NAME = "IdrisGV75"; // matches Markdown.tsx obsidian:// deep links
 
 interface NoteMeta {
   path: string;
@@ -30,6 +30,7 @@ function ago(ts: number): string {
 }
 
 export default function LibrarySection() {
+  const VAULT_NAME = useObsidianVault(); // obsidian:// links: the vault folder's name
   const { vaultOk } = useMission();
   const [notes, setNotes] = useState<NoteMeta[]>([]);
   const [filter, setFilter] = useState<string>("All");

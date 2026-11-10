@@ -4,17 +4,32 @@
   newer of GitHub's install.ps1 and the bundled one (MC-INSTALLER-VERSION), or the bundled
   one when offline.
   Also copies the logo + icon to dist\. Run:  installer\build-installer.cmd
+
+  -ProductName "Agentic Operations Control" builds a renamed copy instead
+  (dist\AgenticOperationsControlSetup.exe) that runs the installer as that product.
 #>
+param([string]$ProductName = "Mission Control")
 $ErrorActionPreference = "Stop"
+$branded = $ProductName -ne "Mission Control"
+$exeName = (($ProductName -split '[^A-Za-z0-9]+' | Where-Object { $_ } | ForEach-Object { $_.Substring(0, 1).ToUpper() + $_.Substring(1) }) -join '') + "Setup.exe"
 $root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $stage = Join-Path $env:TEMP "mc-setup-stage"
 $out = Join-Path $root "dist"
 if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
 New-Item -ItemType Directory -Force $stage, $out | Out-Null
-Copy-Item (Join-Path $PSScriptRoot "setup.cmd") $stage
+if ($branded) {
+  # same bootstrap, but it tells the installer which product it is
+  $cmd = Get-Content (Join-Path $PSScriptRoot "setup.cmd") -Raw
+  $cmd = $cmd.Replace("title Mission Control Setup", "title $ProductName Setup")
+  $cmd = $cmd.Replace('"%MC_PS1%" %*', ('"%MC_PS1%" -ProductName "' + $ProductName + '" %*'))
+  if ($cmd -notmatch [regex]::Escape("-ProductName")) { throw "setup.cmd changed - couldn't add -ProductName" }
+  Set-Content -Path (Join-Path $stage "setup.cmd") -Value $cmd -Encoding Ascii -NoNewline
+} else {
+  Copy-Item (Join-Path $PSScriptRoot "setup.cmd") $stage
+}
 Copy-Item (Join-Path $PSScriptRoot "pick-installer.ps1") $stage
 Copy-Item (Join-Path $root "install.ps1") $stage
-$exe = Join-Path $out "MissionControlSetup.exe"
+$exe = Join-Path $out $exeName
 if (Test-Path $exe) { Remove-Item $exe -Force }
 
 $sed = @"
@@ -45,7 +60,7 @@ InstallPrompt=
 DisplayLicense=
 FinishMessage=
 TargetName=$exe
-FriendlyName=Mission Control Setup
+FriendlyName=$ProductName Setup
 AppLaunched=cmd /c setup.cmd
 PostInstallCmd=<None>
 AdminQuietInstCmd=

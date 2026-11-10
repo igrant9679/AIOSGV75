@@ -6,8 +6,16 @@ import StatusOrb from "./ui/StatusOrb";
 import { IconSun, IconMoon } from "./icons";
 import { useMission } from "./store";
 import { APPEARANCE_EVENT } from "@/lib/appearance";
+import { useNetSettings, NET_DEFAULTS } from "./useNetSettings";
 
 export default function Header() {
+  const net = useNetSettings();
+  const appName = net?.appName || NET_DEFAULTS.appName;
+  const appTagline = net?.appTagline || NET_DEFAULTS.appTagline;
+  // the tab title follows the network's app name (the static title is the build-time default)
+  useEffect(() => {
+    if (net?.appName) document.title = `${net.appName} // ${net.appTagline || NET_DEFAULTS.appTagline}`;
+  }, [net?.appName, net?.appTagline]);
   const { system, busy } = useMission();
   const claudeBusy = Boolean(busy.claude);
   const [clock, setClock] = useState<string>("");
@@ -116,10 +124,10 @@ export default function Header() {
         </div>
         <div>
           <h1 className="font-display text-2xl font-bold tracking-[0.14em] md:text-4xl">
-            <span className="logo-title">AI OPERATIONS CONTROL</span>
+            <span className="logo-title">{appName}</span>
           </h1>
           <p className="mt-1 font-mono text-[11px] tracking-[0.3em] text-ink-faint md:text-[13px]">
-            LOCAL AI OPERATIONS DECK
+            {appTagline}
           </p>
         </div>
       </div>

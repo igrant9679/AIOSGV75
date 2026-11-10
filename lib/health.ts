@@ -9,6 +9,7 @@ import { daemonStatus } from "./daemons";
 import { clusterStatus, isMasterNow, readConfig } from "./cluster";
 import { vaultAvailable, vaultInfo } from "./vault";
 import { sendTelegram } from "./telegram";
+import { effectiveNetSettings, productName } from "./netSettings";
 import { readRemoteSessions, readShareState } from "./sessionShare";
 
 /**
@@ -136,7 +137,7 @@ async function checkClaude(): Promise<HealthCheck> {
     impact: "Agents, missions, scheduled jobs, Board and Group with AI can't run Claude on this machine.",
   };
   const r = await run("claude", ["auth", "status", "--json"]);
-  if (r.missing) return { ...base, level: "fail", detail: "The claude command isn't installed or isn't on PATH.", fix: "Install Claude Code, then restart Mission Control." };
+  if (r.missing) return { ...base, level: "fail", detail: "The claude command isn't installed or isn't on PATH.", fix: `Install Claude Code, then restart ${productName()}.` };
   try {
     const j = JSON.parse(r.out.slice(r.out.indexOf("{"), r.out.lastIndexOf("}") + 1)) as { loggedIn?: boolean; authMethod?: string };
     if (j.loggedIn) return { ...base, level: "ok", detail: `Signed in${j.authMethod && j.authMethod !== "none" ? ` (${j.authMethod})` : ""}.` };
@@ -210,7 +211,7 @@ async function checkSchedules(): Promise<HealthCheck[]> {
         label: "Scheduler",
         level: "warn",
         detail: `${overdue.length} schedule(s) are more than 15 minutes overdue (${overdue.map((s) => s.title).join(", ")}).`,
-        fix: "The schedule tick may be stuck — restart Mission Control (stop.cmd, then the startup launcher).",
+        fix: `The schedule tick may be stuck — restart ${productName()} (stop.cmd, then the startup launcher).`,
       });
     }
   }
@@ -246,8 +247,8 @@ async function checkWatchdog(): Promise<HealthCheck> {
     // macOS: install.sh sets up a LaunchAgent (RunAtLoad + KeepAlive) instead of a scheduled task
     const uid = typeof process.getuid === "function" ? process.getuid() : 0;
     const r = await run("launchctl", ["print", `gui/${uid}/ai.missioncontrol.server`], 10_000, false);
-    if (r.code === 0) return { ...base, label: "Start at login (LaunchAgent)", level: "ok", detail: "Loaded - starts at login and restarts Mission Control if it stops." };
-    return { ...base, label: "Start at login (LaunchAgent)", level: "warn", detail: "Not set up - Mission Control won't start by itself after a restart.", fix: "Run the installer again (bash install.sh) -> Modify -> Auto-start." };
+    if (r.code === 0) return { ...base, label: "Start at login (LaunchAgent)", level: "ok", detail: `Loaded - starts at login and restarts ${productName()} if it stops.` };
+    return { ...base, label: "Start at login (LaunchAgent)", level: "warn", detail: `Not set up - ${productName()} won't start by itself after a restart.`, fix: "Run the installer again (bash install.sh) -> Modify -> Auto-start." };
   }
   if (process.platform !== "win32") return { ...base, level: "skip", detail: "Windows and macOS only." };
   try {
@@ -265,7 +266,7 @@ async function checkWatchdog(): Promise<HealthCheck> {
   const r = await run("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", ps], 20_000, false);
   try {
     const j = JSON.parse(r.out.trim().split(/\r?\n/).pop() ?? "") as { registered: boolean; state?: string; lastResult?: number; lastRun?: string };
-    if (!j.registered) return { ...base, level: "warn", detail: "The 5-minute watchdog task isn't registered.", fix: "Run install-watchdog.cmd in the Mission Control folder." };
+    if (!j.registered) return { ...base, level: "warn", detail: "The 5-minute watchdog task isn't registered.", fix: `Run install-watchdog.cmd in the ${productName()} folder.` };
     if (/disabled/i.test(j.state ?? "")) return { ...base, level: "warn", detail: "The watchdog task is disabled.", fix: "Enable “Mission Control Watchdog” in Task Scheduler, or rerun install-watchdog.cmd." };
     // 0 = success, 267009 = running now, 267011 = not run yet
     if (j.lastResult && ![0, 267009, 267011].includes(j.lastResult)) {
@@ -286,7 +287,7 @@ async function checkLan(): Promise<HealthCheck | null> {
   const { peerListening, probePeer, readNetwork, modeOf } = await import("./peer");
   const { PEER_PORT } = await import("./netAddrs");
   if (!(await peerListening())) {
-    return { ...base, level: "warn", detail: `This machine's LAN listener isn't running on port ${PEER_PORT}.`, fix: "Restart Mission Control (stop.cmd, then it restarts within 5 minutes). If another program uses the port, set MC_PEER_PORT=3102 in .env.local." };
+    return { ...base, level: "warn", detail: `This machine's LAN listener isn't running on port ${PEER_PORT}.`, fix: `Restart ${productName()} (stop.cmd, then it restarts within 5 minutes). If another program uses the port, set MC_PEER_PORT=3102 in .env.local.` };
   }
   if (process.platform === "win32") {
     const r = await run("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", "if (Get-NetFirewallRule -DisplayName 'Mission Control LAN link' -ErrorAction SilentlyContinue) { 'yes' } else { 'no' }"], 15_000, false);
@@ -310,7 +311,7 @@ async function checkLan(): Promise<HealthCheck | null> {
       ...base,
       level: "info",
       detail: `Not reachable over the LAN: ${down.map((x) => x.n.label).join(", ")} - using OneDrive for ${down.length > 1 ? "them" : "it"}.${tail}`,
-      fix: "Update Mission Control there (update.cmd) and allow port 3101 in its firewall; or mark it Off-LAN on Fleet → Network if it's away from this network.",
+      fix: `Update ${productName()} there (update.cmd) and allow port 3101 in its firewall; or mark it Off-LAN on Fleet → Network if it's away from this network.`,
     };
   }
   return { ...base, level: "ok", detail: `Listening on port ${PEER_PORT}.${lan.length ? ` Direct link to ${lan.map((n) => n.label).join(", ")}.` : ""}${tail}` };
@@ -325,7 +326,7 @@ async function checkHook(): Promise<HealthCheck | null> {
   if (!s.hooks) return { ...base, level: "skip", detail: "Turned off (Fleet → Session alerts)." };
   if (h.claude === "no-claude") return { ...base, level: "skip", detail: "Claude Code isn't on this machine." };
   if (h.claude === "installed") return { ...base, level: "ok", detail: `Installed in Claude Code${h.codex === "installed" ? " and Codex" : ""}.` };
-  return { ...base, level: "info", detail: "Not installed yet in Claude Code - Mission Control adds it within 10 minutes.", fix: "Or now: Fleet → Session alerts → install now." };
+  return { ...base, level: "info", detail: `Not installed yet in Claude Code - ${productName()} adds it within 10 minutes.`, fix: "Or now: Fleet → Session alerts → install now." };
 }
 
 async function checkCluster(): Promise<HealthCheck | null> {
@@ -342,7 +343,7 @@ async function checkCluster(): Promise<HealthCheck | null> {
       ...base,
       level: "warn",
       detail: `${offline.length} of ${others.length} other machine(s) offline: ${offline.map((n) => `${n.host} (last seen ${fmtAgo(n.ts)})`).join(", ")}.`,
-      fix: "Wake or start Mission Control on them — or remove a retired machine in Settings → Machines.",
+      fix: `Wake or start ${productName()} on them — or remove a retired machine in Settings → Machines.`,
     };
   }
   return { ...base, level: "ok", detail: `${others.length + 1} machines online; master is ${c.master}.` };
@@ -377,7 +378,11 @@ async function checkDisk(): Promise<HealthCheck> {
 }
 
 function checkAlertsTransport(enabled: boolean): HealthCheck {
-  const viaBot = Boolean(process.env.TELEGRAM_BOT_TOKEN);
+  const net = effectiveNetSettings();
+  const viaBot = Boolean(net.botToken);
+  if (enabled && !net.chatId) {
+    return { id: "alerts", label: "Telegram alerts", level: "warn", detail: "On, but no Telegram chat ID is set for this network.", fix: "Settings → This network → Telegram: find your chat ID and save." };
+  }
   const hasOpenClaw = !viaBot && (process.env.PATH ?? "").split(path.delimiter).some((d) => {
     try {
       return fs.existsSync(path.join(d, "openclaw.cmd")) || fs.existsSync(path.join(d, "openclaw.exe")) || fs.existsSync(path.join(d, "openclaw"));
@@ -389,7 +394,7 @@ function checkAlertsTransport(enabled: boolean): HealthCheck {
   if (!enabled) return { ...base, level: "skip", detail: "Off — turn on to get a message when a check starts failing." };
   if (viaBot) return { ...base, level: "ok", detail: "On, sent through the Telegram Bot API." };
   if (hasOpenClaw) return { ...base, level: "ok", detail: "On, sent through OpenClaw." };
-  return { ...base, level: "warn", detail: "On, but this machine has no way to send: no TELEGRAM_BOT_TOKEN and no openclaw command.", fix: "Set TELEGRAM_BOT_TOKEN in Mission Control's environment." };
+  return { ...base, level: "warn", detail: "On, but this machine has no way to send: no bot token and no openclaw command.", fix: "Settings → This network → Telegram: paste the bot token from @BotFather." };
 }
 
 // ─── companions: optional installs, with instructions + links ───
@@ -411,7 +416,7 @@ async function checkCompanions(): Promise<HealthCheck[]> {
   // Hermes (Nous Research): goal mode + Control Room. Wired up via HERMES_BIN; its dashboard auto-starts.
   const hermesBin = process.env.HERMES_BIN;
   if (hermesBin && fs.existsSync(hermesBin)) {
-    out.push({ id: "hermes", label: "Hermes (companion)", level: "ok", detail: "Installed - its dashboard starts with Mission Control." });
+    out.push({ id: "hermes", label: "Hermes (companion)", level: "ok", detail: `Installed - its dashboard starts with ${productName()}.` });
   } else {
     out.push({
       id: "hermes",
@@ -517,7 +522,7 @@ async function alertTransitions(report: HealthReport): Promise<void> {
   }
   let sent = false;
   if (toSend.length) {
-    sent = await sendTelegram(`🩺 Mission Control on ${report.host}\n\n${toSend.join("\n\n")}`).catch(() => false);
+    sent = await sendTelegram(`🩺 ${productName()} on ${report.host}\n\n${toSend.join("\n\n")}`).catch(() => false);
   }
   await writeHealthFile((h) => {
     h.report = report;

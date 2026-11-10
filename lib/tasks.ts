@@ -1,4 +1,5 @@
 import fs from "fs/promises";
+import { productName } from "@/lib/netSettings";
 import path from "path";
 import crypto from "crypto";
 import { vaultInfo } from "@/lib/vault";
@@ -86,7 +87,7 @@ function parseBoard(raw: string): { tasks: BoardTask[]; preamble: string } {
 function renderBoard(tasks: BoardTask[], preamble: string): string {
   const head =
     preamble ||
-    [`# Task Board`, ``, `#agentic-os/tasks · [[Agentic OS/Home|Agentic OS]]`, ``, `Synced across machines by the vault. Add lines as "- [ ] title" under a lane and Mission Control adopts them.`].join("\n");
+    [`# Task Board`, ``, `#agentic-os/tasks · [[Agentic OS/Home|Agentic OS]]`, ``, `Synced across machines by the vault. Add lines as "- [ ] title" under a lane and ${productName()} adopts them.`].join("\n");
   const lane = (status: BoardStatus) =>
     tasks
       .filter((t) => t.status === status)

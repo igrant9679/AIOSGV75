@@ -9,6 +9,7 @@ import { cleanForSpeech, ttsSupported } from "@/lib/tts";
 import Panel from "./ui/Panel";
 import StatusOrb from "./ui/StatusOrb";
 import EmptyState from "./ui/EmptyState";
+import { useNetSettings, NET_DEFAULTS } from "./useNetSettings";
 
 const EQ_BARS = 24;
 
@@ -129,6 +130,9 @@ interface Line {
 }
 
 export default function JarvisSection() {
+  const net = useNetSettings();
+  const owner = net ? net.ownerName : "Idris";
+  const deckName = net?.appName || NET_DEFAULTS.appName;
   const router = useRouter();
   const [booted, setBooted] = useState(false);
   const [bootStep, setBootStep] = useState(0);
@@ -226,7 +230,7 @@ export default function JarvisSection() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            prompt: `You are JARVIS, a concise spoken assistant for Idris's Mission Control OS. Answer in 1-3 sentences, plain speech, no markdown. Question: ${command}`,
+            prompt: `You are JARVIS, a concise spoken assistant for ${owner ? `${owner}'s` : "the user's"} ${deckName}. Answer in 1-3 sentences, plain speech, no markdown. Question: ${command}`,
           }),
         });
         const json = (await res.json()) as { text?: string; error?: string; routedTo?: string };

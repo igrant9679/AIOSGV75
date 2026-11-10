@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
 import { ACCENTS } from "@/lib/accents";
+import { useNetSettings, NET_DEFAULTS } from "../useNetSettings";
 import { useMission } from "../store";
 
 /** Where a footer-ticker click lands, by event source tag. */
@@ -27,9 +28,10 @@ const SOURCE_HREF: Record<string, string> = {
 /** Latest event as a one-line live ticker (footer). Falls back to the deck tag. */
 export default function EventTicker() {
   const { events } = useMission();
+  const net = useNetSettings();
   const latest = events[0];
 
-  if (!latest) return <span>AI OPERATIONS CONTROL · LOCAL DECK</span>;
+  if (!latest) return <span>{net?.appName || NET_DEFAULTS.appName} · LOCAL DECK</span>;
 
   const c = ACCENTS[latest.accent];
   return (

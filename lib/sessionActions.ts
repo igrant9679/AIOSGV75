@@ -1,4 +1,5 @@
 import { spawn, spawnSync } from "child_process";
+import { productName } from "./netSettings";
 import fs from "fs";
 import fsp from "fs/promises";
 import os from "os";
@@ -685,7 +686,7 @@ async function stopLocal(job: SessionJob): Promise<Partial<SessionJob>> {
     // record the stop first: the run notices its process died and must keep this outcome
     await patchJob(run.id, { status: "error", error: `Stopped${job.requestedByLabel ? ` from ${job.requestedByLabel}` : ""}.`, finishedAt: Date.now(), pid: undefined });
     killTree(run.pid);
-    return { status: "done", reply: "Stopped the Mission Control run." };
+    return { status: "done", reply: `Stopped the ${productName()} run.` };
   }
   if (job.stopJobId) {
     const j = jobs.find((x) => x.id === job.stopJobId);
@@ -720,7 +721,7 @@ export async function sessionJobsTick(minAgeMs = 10_000): Promise<void> {
     await mutate((jobs) => {
       for (const j of jobs) {
         if (j.host === me() && j.status === "running" && Date.now() - (j.startedAt ?? j.createdAt) > RUN_TIMEOUT_MS + 5 * 60_000) {
-          Object.assign(j, { status: "error", error: "Interrupted (Mission Control restarted while it ran).", finishedAt: Date.now(), pid: undefined });
+          Object.assign(j, { status: "error", error: `Interrupted (${productName()} restarted while it ran).`, finishedAt: Date.now(), pid: undefined });
         }
       }
     });
@@ -817,7 +818,7 @@ async function collectOne(j: SessionJob): Promise<void> {
   if (Date.now() - j.createdAt > REMOTE_EXPIRE_MS) {
     await patchJob(j.id, {
       status: "expired",
-      error: `No answer from ${j.hostLabel} in 30 minutes. Is Mission Control running there, with "Replies from my other machines" turned on?`,
+      error: `No answer from ${j.hostLabel} in 30 minutes. Is ${productName()} running there, with "Replies from my other machines" turned on?`,
       finishedAt: Date.now(),
     });
     await fsp.rm(path.join(requestsDir(j.host), `${j.id}.json`), { force: true }).catch(() => {});
@@ -862,7 +863,7 @@ export function openTerminal(cwd: string, command: string): void {
   if (process.platform === "win32") {
     const wt = path.join(process.env.LOCALAPPDATA ?? "", "Microsoft", "WindowsApps", "wt.exe");
     if (fs.existsSync(wt)) launchDetached(wt, ["-d", cwd, "cmd", "/k", command]);
-    else launchDetached("cmd.exe", ["/c", `start "Mission Control" /D "${cwd}" cmd /k ${command}`], { verbatim: true });
+    else launchDetached("cmd.exe", ["/c", `start "${productName()}" /D "${cwd}" cmd /k ${command}`], { verbatim: true });
   } else if (process.platform === "darwin") {
     const sh = `cd '${cwd.replace(/'/g, `'\\''`)}' && ${command}`;
     const as = sh.replace(/\\/g, "\\\\").replace(/"/g, '\\"');

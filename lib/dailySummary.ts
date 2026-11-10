@@ -1,4 +1,5 @@
 import fsp from "fs/promises";
+import { productName } from "./netSettings";
 import os from "os";
 import path from "path";
 import { readConfig } from "./cluster";
@@ -66,7 +67,7 @@ export async function buildDailySummary(day: Date): Promise<{ markdown: string; 
   const mc = jobs.filter((j) => j.createdAt >= from && j.createdAt < to && !j.requestedBy);
   if (mc.length) {
     lines.push(
-      "## Started from Mission Control",
+      `## Started from ${productName()}`,
       "",
       ...mc.map((j) => `- ${j.mode === "new" ? "New session" : j.mode === "reply" ? "Reply" : j.mode} on ${j.hostLabel}: ${(j.title ?? j.prompt).slice(0, 80)} - ${j.status}`),
       "",
@@ -84,7 +85,7 @@ export async function buildDailySummary(day: Date): Promise<{ markdown: string; 
     "",
     `# ${start.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric", year: "numeric" })} - your machines`,
     "",
-    "Written by Mission Control from session summaries and session alerts.",
+    `Written by ${productName()} from session summaries and session alerts.`,
     "",
     ...lines,
   ].join("\n");

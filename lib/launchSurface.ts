@@ -11,7 +11,7 @@ export const LAUNCH_SURFACE_META: Record<LaunchSurface, { label: string; hint: s
   ide: { label: "IDE", hint: "Started from a VS Code or JetBrains extension" },
   background: {
     label: "Background",
-    hint: "Headless runs (claude -p, codex exec, SDK) — Mission Control's agents and schedules, plus any scripts",
+    hint: "Headless runs (claude -p, codex exec, SDK) — this app's agents and schedules, plus any scripts",
   },
   other: { label: "Other", hint: "Launch point not recorded in the session file" },
 };

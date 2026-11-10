@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useProductName } from "../useNetSettings";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Panel from "../ui/Panel";
 import EmptyState from "../ui/EmptyState";
@@ -180,6 +181,7 @@ export function useSessionAlerts(): { items: AlertItem[]; dismiss: (ids: string[
 // ─── run somewhere ───
 
 export function RunSomewherePanel({ hub }: { hub: HubSnapshot | null }) {
+  const product = useProductName(); // this network's product name
   const [prompt, setPrompt] = useState("");
   const [project, setProject] = useState("");
   const [tool, setTool] = useState<"claude" | "codex">("claude");
@@ -249,7 +251,7 @@ export function RunSomewherePanel({ hub }: { hub: HubSnapshot | null }) {
             }
           }}
           rows={3}
-          placeholder="Describe a task - Mission Control picks the machine that's free, has the project, and has room on its subscription."
+          placeholder={`Describe a task - ${product} picks the machine that's free, has the project, and has room on its subscription.`}
           aria-label="Task"
           className="min-h-[70px] w-full resize-y rounded-lg border border-line bg-transparent px-3 py-2 text-sm text-ink outline-none placeholder:text-ink-faint focus:border-line-bright"
         />

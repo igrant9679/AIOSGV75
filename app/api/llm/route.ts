@@ -1,4 +1,5 @@
 import { findLlm, isLocalEndpoint } from "@/lib/registry";
+import { productName } from "@/lib/netSettings";
 import { gatherContext, memorySystemBlock, type AgentContext } from "@/lib/retrieval";
 import { toolDefs, executeTool } from "@/lib/llmTools";
 
@@ -18,7 +19,7 @@ interface AccumulatedToolCall {
 const MAX_TOOL_ROUNDS = 5;
 
 function buildSystemPrompt(agentName: string, custom: string | undefined, ctx: AgentContext, summary?: string): string {
-  const persona = custom?.trim() || `You are ${agentName}, an AI agent on the user's local Mission Control dashboard.`;
+  const persona = custom?.trim() || `You are ${agentName}, an AI agent on the user's local ${productName()} dashboard.`;
   const compacted = summary?.trim()
     ? `\n\nEARLIER CONVERSATION (older messages, summarized):\n${summary.trim()}`
     : "";

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useProductName } from "../useNetSettings";
 import { useCallback, useEffect, useState } from "react";
 import Panel from "../ui/Panel";
 import StatusOrb from "../ui/StatusOrb";
@@ -74,6 +75,7 @@ function Toggle({ on, label, hint, onClick, disabled }: { on: boolean; label: st
  * result to Bridge/Outbox.
  */
 export default function BridgePanel() {
+  const product = useProductName(); // this network's product name
   const [view, setView] = useState<BridgeView | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -113,7 +115,7 @@ export default function BridgePanel() {
 
   const s = view.settings;
   const rel = view.folder.split(/[\\/]/).slice(-3).join("/"); // .../IdrisGV75/Agentic OS/Bridge
-  const instruction = `Use the Mission Control bridge in my OneDrive folder "${rel}". Read README.md there first. Check Status.md for what my AI tools are doing and what needs me. To hand Mission Control a task, create a new .md file in its Inbox folder exactly as the README describes, then check Outbox for the result.`;
+  const instruction = `Use the ${product} bridge in my OneDrive folder "${rel}". Read README.md there first. Check Status.md for what my AI tools are doing and what needs me. To hand ${product} a task, create a new .md file in its Inbox folder exactly as the README describes, then check Outbox for the result.`;
   const pending = view.tasks.filter((t) => t.status === "awaiting-approval").length;
 
   return (
@@ -136,7 +138,7 @@ export default function BridgePanel() {
       <div className="grid gap-4 p-4 lg:grid-cols-2">
         <div className="flex flex-col gap-3">
           <p className="text-[11px] leading-4 text-ink-dim">
-            Cloud agents like <b>Claude Duet</b> and <b>OpenAI Dots</b> have no API, but they can read and write your OneDrive. Mission Control writes
+            Cloud agents like <b>Claude Duet</b> and <b>OpenAI Dots</b> have no API, but they can read and write your OneDrive. {product} writes
             a status note for them there every 10 minutes, and runs the tasks they drop in its Inbox
             {s.requireApproval ? " after you approve them" : ""}, writing each result back to the Outbox. Give the agent your OneDrive / SharePoint
             connector, then tell it:

@@ -1,4 +1,5 @@
 import { spawn } from "child_process";
+import { effectiveNetSettings } from "./netSettings";
 
 /**
  * Telegram delivery to the owner. Two transports, in preference order:
@@ -17,7 +18,10 @@ import { spawn } from "child_process";
  * on `getUpdates` (long-polling), which only one consumer may hold. Receiving —
  * i.e. answering approvals from the phone — still requires the gateway.
  */
-const TELEGRAM_TARGET = process.env.TELEGRAM_TARGET ?? "7284896916";
+/** The chat messages go to: TELEGRAM_TARGET in .env.local, else the network settings in the vault. */
+function target(): string {
+  return effectiveNetSettings().chatId;
+}
 
 /** Bot API rejects a sendMessage payload over 4096 chars. Mission reports run long. */
 const MAX_TELEGRAM_CHARS = 4096;
@@ -38,7 +42,7 @@ async function sendViaBotApi(token: string, text: string): Promise<boolean> {
         headers: { "Content-Type": "application/json" },
         // No parse_mode: report bodies contain arbitrary Markdown-ish text and a
         // stray `*` or `_` would make Telegram 400 the whole message.
-        body: JSON.stringify({ chat_id: TELEGRAM_TARGET, text: part, disable_web_page_preview: true }),
+        body: JSON.stringify({ chat_id: target(), text: part, disable_web_page_preview: true }),
         signal: AbortSignal.timeout(30_000),
       });
       if (!res.ok) {
@@ -58,7 +62,7 @@ function sendViaOpenClaw(text: string): Promise<boolean> {
   return new Promise((resolve) => {
     const child = spawn(
       "openclaw",
-      ["message", "send", "--channel", "telegram", "--target", TELEGRAM_TARGET, "--message", JSON.stringify(text)],
+      ["message", "send", "--channel", "telegram", "--target", target(), "--message", JSON.stringify(text)],
       { shell: true },
     );
     const timer = setTimeout(() => {
@@ -82,6 +86,64 @@ function sendViaOpenClaw(text: string): Promise<boolean> {
 }
 
 export function sendTelegram(text: string): Promise<boolean> {
-  const token = process.env.TELEGRAM_BOT_TOKEN?.trim();
-  return token ? sendViaBotApi(token, text) : sendViaOpenClaw(text);
+  const { botToken, chatId } = effectiveNetSettings();
+  if (!chatId) {
+    console.error("[telegram] no chat ID set - Settings -> This network -> Telegram");
+    return Promise.resolve(false);
+  }
+  return botToken ? sendViaBotApi(botToken, text) : sendViaOpenClaw(text);
+}
+
+/** How this machine would send right now (for Health and the settings page). */
+export function telegramTransport(): "bot" | "openclaw-or-none" {
+  return effectiveNetSettings().botToken ? "bot" : "openclaw-or-none";
+}
+
+export interface BotChat {
+  id: string;
+  title: string;
+  type: string;
+}
+
+/**
+ * Who the bot is and which chats have messaged it lately - so the settings page can
+ * fill in the chat ID after "send your bot any message". Uses getUpdates, which fails
+ * with 409 while a gateway (OpenClaw) is long-polling the same bot.
+ */
+export async function inspectBot(token: string): Promise<{ ok: true; bot: string; chats: BotChat[] } | { ok: false; error: string }> {
+  const t = token.trim();
+  if (!t) return { ok: false, error: "No bot token set." };
+  const call = async (method: string) => {
+    const res = await fetch(`https://api.telegram.org/bot${t}/${method}`, { signal: AbortSignal.timeout(15_000) });
+    const j = (await res.json().catch(() => ({}))) as { ok?: boolean; result?: unknown; description?: string };
+    return { status: res.status, ...j };
+  };
+  try {
+    const me = await call("getMe");
+    if (!me.ok) {
+      return { ok: false, error: me.status === 401 || me.status === 404 ? "Telegram rejected the bot token - copy it again from @BotFather." : (me.description ?? `Telegram error ${me.status}`) };
+    }
+    const bot = (me.result as { username?: string; first_name?: string }) ?? {};
+    const up = await call("getUpdates");
+    if (!up.ok) {
+      if (up.status === 409) {
+        return { ok: false, error: `@${bot.username}: another program (likely OpenClaw's gateway) is reading this bot's messages, so chats can't be listed here. Get the chat ID from OpenClaw, or stop its gateway for a minute and try again.` };
+      }
+      return { ok: false, error: up.description ?? `Telegram error ${up.status}` };
+    }
+    type Chat = { id: number; type: string; title?: string; first_name?: string; last_name?: string; username?: string };
+    type Upd = { message?: { chat?: Chat }; my_chat_member?: { chat?: Chat } };
+    const seen = new Map<string, BotChat>();
+    for (const u of (up.result as Upd[]) ?? []) {
+      const c = u.message?.chat ?? u.my_chat_member?.chat;
+      if (!c) continue;
+      const title = c.title || [c.first_name, c.last_name].filter(Boolean).join(" ") || (c.username ? `@${c.username}` : String(c.id));
+      seen.set(String(c.id), { id: String(c.id), title, type: c.type });
+    }
+    return { ok: true, bot: bot.username ? `@${bot.username}` : (bot.first_name ?? "bot"), chats: [...seen.values()].reverse() };
+  } catch (e) {
+    const cause = (e as Error & { cause?: { code?: string; message?: string } }).cause;
+    const why = cause?.code || cause?.message || (e as Error).message;
+    return { ok: false, error: `Couldn't reach Telegram (${why}). Check this machine's internet connection.` };
+  }
 }

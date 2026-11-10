@@ -39,6 +39,7 @@ $TaskName = 'Mission Control Watchdog'
 $DataDir  = Join-Path $Repo 'data'
 $LogFile  = Join-Path $DataDir 'watchdog.log'
 $PauseFile = Join-Path $DataDir 'watchdog.pause'
+$RestartFile = Join-Path $DataDir 'watchdog.restart'   # written by the app to ask for a restart
 $ServerCmd = Join-Path $Repo 'server.cmd'
 
 function Write-Log([string]$msg) {
@@ -156,6 +157,21 @@ function Invoke-Check {
     if ($age.TotalHours -lt 2) { return }           # deliberately paused
     Remove-Item $PauseFile -Force -ErrorAction SilentlyContinue
     Write-Log "pause file was $([int]$age.TotalHours)h old - expired, resuming checks"
+  }
+
+  # Restart requested by the app (Settings -> This network -> Restart now, e.g. after changing
+  # the vault): stop the running server so the relaunch below picks up .env.local changes.
+  # The app can't restart itself reliably - a helper it spawns dies with it.
+  if (Test-Path $RestartFile) {
+    $age = (Get-Date) - (Get-Item $RestartFile).LastWriteTime
+    Remove-Item $RestartFile -Force -ErrorAction SilentlyContinue
+    if ($age.TotalMinutes -lt 10) {
+      $pids = @(Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique)
+      foreach ($p in $pids) { Stop-Process -Id $p -Force -ErrorAction SilentlyContinue }
+      Write-Log "restart requested by the app - stopped the server (pid $($pids -join ', '))"
+      $wait = (Get-Date).AddSeconds(15)
+      while ((Test-PortListening) -and (Get-Date) -lt $wait) { Start-Sleep -Milliseconds 500 }
+    }
   }
 
   if (Test-PortListening) {

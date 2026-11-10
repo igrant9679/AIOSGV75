@@ -1,4 +1,5 @@
 import fsp from "fs/promises";
+import { productName } from "./netSettings";
 import os from "os";
 import path from "path";
 import { vaultAvailable, vaultInfo } from "./vault";
@@ -109,20 +110,20 @@ function readmeText(): string {
 bridge-version: ${README_VERSION}
 ---
 
-# Mission Control bridge
+# ${productName()} bridge
 
 This folder connects AI agents that can read and write files here (Claude Duet,
 OpenAI Dots, or any assistant with access to this OneDrive folder) to
-**Mission Control**, the owner's AI operations dashboard. Mission Control runs
+**${productName()}**, the owner's AI operations dashboard. ${productName()} runs
 on the owner's own computers and Claude / ChatGPT subscriptions.
 
 ## 1. Read the current status
 
-Open **Status.md** in this folder. Mission Control rewrites it every 10 minutes
+Open **Status.md** in this folder. ${productName()} rewrites it every 10 minutes
 with: what needs the owner, sessions running on each machine, health problems,
 recent results, and scheduled jobs. The time it was written is at the top.
 
-## 2. Send Mission Control a task
+## 2. Send ${productName()} a task
 
 Create a new Markdown file in **Inbox/** - one file per task, any file name
 ending in \`.md\` (for example \`2026-11-08 summarize-pipeline.md\`):
@@ -134,7 +135,7 @@ title: Summarize this week's Velocity pipeline changes
 ---
 
 What you want done, in plain language. Include any links, file paths
-or context Mission Control needs. Keep it under ${MAX_BODY.toLocaleString()} characters.
+or context ${productName()} needs. Keep it under ${MAX_BODY.toLocaleString()} characters.
 \`\`\`
 
 - \`from\` - who is asking (e.g. \`duet\`, \`dots\`). Optional.
@@ -143,10 +144,10 @@ or context Mission Control needs. Keep it under ${MAX_BODY.toLocaleString()} cha
 
 ## 3. Get the result
 
-Mission Control writes **Outbox/<the same file name>** and keeps it updated.
+${productName()} writes **Outbox/<the same file name>** and keeps it updated.
 Its \`status\` field moves through:
 
-- \`awaiting-approval\` - the owner must approve it in Mission Control (or Telegram) first
+- \`awaiting-approval\` - the owner must approve it in ${productName()} (or Telegram) first
 - \`running\` - it's being worked on
 - \`done\` - the answer is in the file
 - \`failed\` / \`rejected\` / \`expired\` - the file says why
@@ -156,11 +157,11 @@ The original task file moves to Inbox/Processed/.
 
 ## Rules
 
-- Tasks run as a Mission Control mission on the owner's machines. They're
+- Tasks run as a ${productName()} mission on the owner's machines. They're
   meant for research, writing, summarizing and analysis - not for payments,
   sending messages, or deleting anything.
 - There's a daily limit; extra tasks are rejected with a note in the Outbox.
-- Don't edit Status.md or files in Outbox/ - Mission Control overwrites them.
+- Don't edit Status.md or files in Outbox/ - ${productName()} overwrites them.
 `;
 }
 
@@ -187,7 +188,7 @@ async function listMd(dir: string): Promise<string[]> {
 
 function taskPrompt(from: string, title: string, body: string): string {
   return [
-    `This task came to Mission Control through the vault bridge from ${from || "an external assistant"} (for example Claude Duet or an OpenAI Dot).`,
+    `This task came to ${productName()} through the vault bridge from ${from || "an external assistant"} (for example Claude Duet or an OpenAI Dot).`,
     "Do the task and reply with the finished result in Markdown - it is written back to the assistant that asked.",
     "Don't send messages, make payments or delete anything; if the task needs that, say what should be done instead.",
     "",
@@ -248,7 +249,7 @@ async function intake(settings: BridgeSettings): Promise<number> {
       meta.status = "rejected";
       await writeAtomic(outFile, note(meta, `# ${title}\n\nNot run: ${why}`));
     };
-    if (!settings.enabled) await reject("the Mission Control bridge is turned off.");
+    if (!settings.enabled) await reject(`the ${productName()} bridge is turned off.`);
     else if (!body) await reject("the task file had no request text.");
     else if (body.length > MAX_BODY) await reject(`the request is longer than ${MAX_BODY} characters - shorten it and send it again.`);
     else if ((await acceptedToday()) >= settings.dailyLimit) await reject(`the daily limit of ${settings.dailyLimit} bridge tasks is reached - try again tomorrow.`);
@@ -262,7 +263,7 @@ async function intake(settings: BridgeSettings): Promise<number> {
         });
         meta.status = "awaiting-approval";
         meta.approval = ap.id;
-        await writeAtomic(outFile, note(meta, `# ${title}\n\nWaiting for the owner to approve it in Mission Control (approval ${ap.id}). This file updates when it runs.\n\n## Request\n\n${body}`));
+        await writeAtomic(outFile, note(meta, `# ${title}\n\nWaiting for the owner to approve it in ${productName()} (approval ${ap.id}). This file updates when it runs.\n\n## Request\n\n${body}`));
       } else {
         await launch(task, settings);
       }
@@ -293,7 +294,7 @@ async function advance(settings: BridgeSettings): Promise<void> {
       else if (ap?.status === "rejected") {
         meta.status = "rejected";
         meta.updated = new Date().toISOString();
-        await writeAtomic(file, note(meta, `# ${title}\n\nThe owner declined this task in Mission Control.\n\n## Request\n\n${request}`));
+        await writeAtomic(file, note(meta, `# ${title}\n\nThe owner declined this task in ${productName()}.\n\n## Request\n\n${request}`));
       } else if (!ap || Date.now() - updatedAt > 7 * 24 * 60 * 60_000) {
         meta.status = "expired";
         meta.updated = new Date().toISOString();
@@ -314,7 +315,7 @@ async function advance(settings: BridgeSettings): Promise<void> {
       } else if (!m && meta.machine === os.hostname() && Date.now() - updatedAt > 2 * 60 * 60_000) {
         meta.status = "failed";
         meta.updated = new Date().toISOString();
-        await writeAtomic(file, note(meta, `# ${title}\n\nFailed: the run was lost (Mission Control restarted mid-task). Send it again.\n\n## Request\n\n${request}`));
+        await writeAtomic(file, note(meta, `# ${title}\n\nFailed: the run was lost (${productName()} restarted mid-task). Send it again.\n\n## Request\n\n${request}`));
       }
     }
   }
@@ -361,7 +362,7 @@ async function writeStatus(): Promise<void> {
     `by: ${yamlSafe(cfg?.label || os.hostname())}`,
     "---",
     "",
-    "# Mission Control status",
+    `# ${productName()} status`,
     "",
     `_Written ${fmtTime(Date.now())} by ${cfg?.label || os.hostname()} (the master machine). Refreshed every 10 minutes. To send a task, see README.md._`,
     "",
