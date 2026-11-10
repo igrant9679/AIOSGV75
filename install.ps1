@@ -1,6 +1,6 @@
 <#
   Mission Control - Windows installer, updater, modifier and uninstaller.
-  MC-INSTALLER-VERSION: 2026.11.09.2   (bump on every change; setup.exe runs the newer of its bundled copy and GitHub's)
+  MC-INSTALLER-VERSION: 2026.11.10.1   (bump on every change; setup.exe runs the newer of its bundled copy and GitHub's)
 
   Run it any time. On a machine without Mission Control it installs everything;
   on a machine that has it, it asks what you want:
@@ -98,7 +98,31 @@ function Have($cmd) { return [bool](Get-Command $cmd -ErrorAction SilentlyContin
 function Update-SessionPath {
   $m = [Environment]::GetEnvironmentVariable('Path', 'Machine')
   $u = [Environment]::GetEnvironmentVariable('Path', 'User')
-  $env:Path = (@($m, $u, "$env:USERPROFILE\.local\bin", "$env:APPDATA\npm") | Where-Object { $_ }) -join ';'
+  $env:Path = (@($m, $u, "$env:LOCALAPPDATA\Microsoft\WindowsApps", "$env:USERPROFILE\.local\bin", "$env:APPDATA\npm") | Where-Object { $_ }) -join ';'
+}
+# winget ships in Microsoft's "App Installer". It can be installed yet not found: its
+# folder dropped from PATH, the app-execution alias turned off, or the package not
+# registered for this user. Try each fix before giving up.
+function Find-Winget {
+  if (Have winget) { return $true }
+  $alias = Join-Path $env:LOCALAPPDATA "Microsoft\WindowsApps"
+  if (Test-Path (Join-Path $alias "winget.exe")) { $env:Path = "$alias;$env:Path"; if (Have winget) { return $true } }
+  try {
+    Info "winget not found - re-registering App Installer for this user..."
+    Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe -ErrorAction Stop
+    Start-Sleep -Seconds 2
+    if (Test-Path (Join-Path $alias "winget.exe")) { $env:Path = "$alias;$env:Path" }
+    if (Have winget) { return $true }
+  } catch { Info "re-register didn't help: $($_.Exception.Message)" }
+  try {
+    $pkg = Get-AppxPackage Microsoft.DesktopAppInstaller -ErrorAction Stop | Sort-Object Version -Descending | Select-Object -First 1
+    if ($pkg -and $pkg.InstallLocation -and (Test-Path (Join-Path $pkg.InstallLocation "winget.exe"))) {
+      $env:Path = "$($pkg.InstallLocation);$env:Path"
+      if (Have winget) { try { & winget --version | Out-Null; if ($LASTEXITCODE -eq 0) { return $true } } catch { } }
+    }
+    if ($pkg) { Info "App Installer $($pkg.Version) is installed, but winget isn't usable from it" }
+  } catch { }
+  return $false
 }
 function Ask($question, $default) {
   if ($Yes -or $DryRun) { return $default }
@@ -425,9 +449,14 @@ do { if (-not (Should "prereqs")) { break }
 Section "Windows + package manager"
 if ([Environment]::OSVersion.Platform -ne "Win32NT") { Write-Host "This installer is for Windows." -ForegroundColor Red; exit 1 }
 Ok "Windows $([Environment]::OSVersion.Version)"
-if (Have winget) { Ok "winget present" }
+if (Find-Winget) { Ok "winget present ($((Get-Command winget).Source))" }
 else {
-  Todo "winget (App Installer) is missing - install 'App Installer' from the Microsoft Store, then run this installer again."
+  Todo "winget can't be started, even though App Installer may be installed. Fix, then run this installer again:"
+  Write-Host "    1. Settings > Apps > Advanced app settings > App execution aliases: turn ON 'Windows Package Manager Client' (winget.exe)." -ForegroundColor Yellow
+  Write-Host "    2. Microsoft Store > Library > Get updates (App Installer must be up to date)." -ForegroundColor Yellow
+  Write-Host "       Store page: press Win+R, paste  ms-windows-store://pdp/?productid=9NBLGGH4NNS1" -ForegroundColor Yellow
+  Write-Host "    3. Open a NEW PowerShell window and check that 'winget --version' prints a version." -ForegroundColor Yellow
+  Write-Host "    (Run this installer as your normal user, not 'Run as administrator' under another account.)" -ForegroundColor Yellow
   if (-not $DryRun) { try { Stop-Transcript | Out-Null } catch { }; Read-Host "Press Enter to close"; exit 1 }
 }
 
