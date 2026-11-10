@@ -29,7 +29,7 @@ export default function EventTicker() {
   const { events } = useMission();
   const latest = events[0];
 
-  if (!latest) return <span>MISSION CONTROL · LOCAL DECK</span>;
+  if (!latest) return <span>AI OPERATIONS CONTROL · LOCAL DECK</span>;
 
   const c = ACCENTS[latest.accent];
   return (

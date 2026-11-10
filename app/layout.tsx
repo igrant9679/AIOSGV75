@@ -39,7 +39,7 @@ const firaCode = Fira_Code({ variable: "--font-fira-code", subsets: ["latin"], p
 const FONT_VARS = [jakarta, spaceGrotesk, jetbrains, inter, plexSans, plexMono, atkinson, sourceSerif, firaCode].map((f) => f.variable).join(" ");
 
 export const metadata: Metadata = {
-  title: "MISSION CONTROL // AI Operations",
+  title: "AI OPERATIONS CONTROL // Local AI Operations Deck",
   description: "Local mission control for Claude Code and companion AI agents",
 };
 

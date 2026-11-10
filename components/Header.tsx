@@ -116,7 +116,7 @@ export default function Header() {
         </div>
         <div>
           <h1 className="font-display text-2xl font-bold tracking-[0.14em] md:text-4xl">
-            <span className="logo-title">MISSIONCONTROL</span>
+            <span className="logo-title">AI OPERATIONS CONTROL</span>
           </h1>
           <p className="mt-1 font-mono text-[11px] tracking-[0.3em] text-ink-faint md:text-[13px]">
             LOCAL AI OPERATIONS DECK

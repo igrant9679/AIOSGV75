@@ -88,6 +88,14 @@ export default function ScheduleSection() {
     load();
   };
 
+  const [renaming, setRenaming] = useState<{ id: string; title: string } | null>(null);
+  const saveRename = async () => {
+    if (!renaming) return;
+    const t = renaming.title.trim();
+    setRenaming(null);
+    if (t) await patch(renaming.id, { title: t });
+  };
+
   const enabled = schedules.filter((s) => s.enabled);
   const next = useMemo(() => {
     const due = enabled.filter((s) => s.nextRun > 0);
@@ -215,7 +223,38 @@ export default function ScheduleSection() {
                         <StatusOrb accent={s.enabled ? "lime" : "rose"} pulsing={false} size={7} />
                       </span>
                     </div>
-                    <p className="pt-1 text-sm font-semibold text-ink">{s.title}</p>
+                    {renaming?.id === s.id ? (
+                      <form
+                        className="pt-1"
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          void saveRename();
+                        }}
+                      >
+                        <input
+                          autoFocus
+                          value={renaming.title}
+                          maxLength={120}
+                          aria-label="New name"
+                          onChange={(e) => setRenaming({ id: s.id, title: e.target.value })}
+                          onKeyDown={(e) => e.key === "Escape" && setRenaming(null)}
+                          onBlur={() => void saveRename()}
+                          className="w-full rounded-md border border-line bg-transparent px-1.5 py-0.5 text-sm font-semibold text-ink outline-none focus:border-ink-faint"
+                        />
+                      </form>
+                    ) : (
+                      <p className="group flex items-center gap-1.5 pt-1 text-sm font-semibold text-ink">
+                        <span>{s.title}</span>
+                        <button
+                          onClick={() => setRenaming({ id: s.id, title: s.title })}
+                          aria-label={`Rename ${s.title}`}
+                          title="Rename"
+                          className="cursor-pointer rounded px-1 text-[11px] font-normal text-ink-faint opacity-60 transition-opacity hover:opacity-100 group-hover:opacity-100"
+                        >
+                          ✎
+                        </button>
+                      </p>
+                    )}
                     <p className="line-clamp-2 pt-0.5 text-[11px] leading-4 text-ink-faint">{s.prompt}</p>
                     <div className="flex items-center justify-between pt-2">
                       <span className="font-mono text-[10px] text-ink-faint">

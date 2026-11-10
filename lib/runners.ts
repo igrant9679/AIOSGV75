@@ -1,5 +1,7 @@
 import { spawn } from "child_process";
+import { existsSync } from "fs";
 import os from "os";
+import { vaultInfo } from "./vault";
 import { AGENT_DEFS } from "./agents-config";
 import { readRegistry, isLocalEndpoint, type LlmConfig } from "./registry";
 import { gatherContext, memoryBlock, memorySystemBlock, EMPTY_CONTEXT } from "./retrieval";
@@ -38,13 +40,25 @@ export function cleanEnv(headless = true): NodeJS.ProcessEnv {
   return env;
 }
 
+/**
+ * Folder agent CLIs start in: the vault when this machine has it, else the home folder.
+ * Prompts name notes by vault-relative paths ("Workspaces/.../Project Overview.md"),
+ * and a headless `claude -p` can only read files under the folder it starts in - from
+ * the home folder every scheduled mission reported "the vault isn't present".
+ */
+export function agentCwd(): string {
+  const root = vaultInfo().root;
+  try { if (root && existsSync(root)) return root; } catch { /* fall through */ }
+  return os.homedir();
+}
+
 /** extraArgs: e.g. ["--model", "haiku", "--no-session-persistence"] for light housekeeping runs. */
 export function runClaudeText(prompt: string, extraArgs: string[] = []): Promise<RunResult> {
   const started = Date.now();
   return new Promise((resolve) => {
     const child = spawn("claude", ["-p", "--output-format", "json", ...extraArgs], {
       shell: true,
-      cwd: os.homedir(),
+      cwd: agentCwd(),
       env: cleanEnv(),
     });
     let out = "";
@@ -92,7 +106,7 @@ export function runCommandText(def: { commandTemplate: string }, input: string):
   const command = useStdin ? def.commandTemplate : def.commandTemplate.replace("{input}", JSON.stringify(input));
 
   return new Promise((resolve) => {
-    const child = spawn(command, [], { cwd: os.homedir(), shell: true, env: cleanEnv() });
+    const child = spawn(command, [], { cwd: agentCwd(), shell: true, env: cleanEnv() });
     let out = "";
     let err = "";
     const timer = setTimeout(() => {

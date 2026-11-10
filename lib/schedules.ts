@@ -144,6 +144,17 @@ export async function createSchedule(input: {
   return schedule;
 }
 
+export async function renameSchedule(id: string, title: string): Promise<boolean> {
+  const t = title.replace(/\s+/g, " ").trim().slice(0, 120);
+  if (!t) return false;
+  const schedules = await load();
+  const s = schedules.find((x) => x.id === id);
+  if (!s) return false;
+  s.title = t;
+  await save(schedules);
+  return true;
+}
+
 export async function setEnabled(id: string, enabled: boolean): Promise<boolean> {
   const schedules = await load();
   const s = schedules.find((x) => x.id === id);

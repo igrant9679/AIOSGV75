@@ -6,6 +6,7 @@ import {
   runScheduleNow,
   type Frequency,
   type Delivery,
+  renameSchedule,
 } from "@/lib/schedules";
 import type { MissionStrategy } from "@/lib/missions";
 import { readRegistry } from "@/lib/registry";
@@ -82,11 +83,15 @@ export async function POST(request: Request) {
 }
 
 export async function PATCH(request: Request) {
-  const body = (await request.json()) as { id?: string; enabled?: boolean; runNow?: boolean };
+  const body = (await request.json()) as { id?: string; enabled?: boolean; runNow?: boolean; title?: string };
   if (!body.id) return Response.json({ error: "id required" }, { status: 400 });
   if (body.runNow) {
     const ok = await runScheduleNow(body.id);
     return Response.json(ok ? { ok: true } : { error: "not found or already running" }, { status: ok ? 200 : 400 });
+  }
+  if (typeof body.title === "string") {
+    const ok = await renameSchedule(body.id, body.title);
+    return Response.json(ok ? { ok: true } : { error: "not found or empty name" }, { status: ok ? 200 : 400 });
   }
   if (typeof body.enabled === "boolean") {
     const ok = await setEnabled(body.id, body.enabled);
