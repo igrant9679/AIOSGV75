@@ -155,6 +155,32 @@ Settings are stored in this browser (\`localStorage\`: \`mc-appearance\`, theme 
 **Daily summary** — each morning the master writes what every machine did yesterday to Agentic OS/Daily Summaries/<date> Machines.md (sessions per machine, projects, long runs, times sessions waited on you, runs started here). Preview it on Fleet → Session alerts; Telegram copy optional.`,
   },
   {
+    id: "remote-control",
+    title: "Remote Control: Live Sessions, Permission Prompts & Phone Access",
+    keywords: "remote control live stream streaming watch session real time permission prompt approve allow deny always allow hook PermissionRequest phone mobile pin tailscale lan 3101 sign in drawer menu",
+    body: `Manage Claude Code sessions on any machine as they run - from any machine on the LAN, or your phone.
+
+**Watch live**
+- A reply or new session started from Mission Control streams while it runs: the reply bubble shows each step (\`$ npm test\`, \`Edit page.tsx\`, searches) and the text Claude has written so far, updated about every second - on this machine or another one over the LAN.
+- Open any session (Projects): if it's still running, the thread refreshes every few seconds ("● live"). Sessions on another machine are read straight over the LAN when it's reachable ("live from <machine> over the LAN"); otherwise use *Load full thread* (through OneDrive).
+
+**Answer permission prompts from the app** (Fleet → Session alerts → *Permission prompts from the app*, shared by every machine)
+- When Claude Code wants permission (run a command, edit a file…), a card pops up on every page of every machine's app: **Allow**, **Always allow** (adds Claude Code's suggested rule so it stops asking for that), or **Deny** - with a countdown and the full details.
+- *Off* - answer at the machine; the app's own runs can't ask (anything needing permission is denied).
+- *Mission Control's own runs* (default) - replies and new sessions started from the app wait up to 10 minutes for your answer. Terminal sessions answer in the terminal as usual.
+- *All sessions, terminals too* - a terminal session waits the chosen time (15 s - 10 min) for your answer from the app, then shows its normal prompt. While it waits, the prompt isn't shown at the machine.
+- Answering a session on another machine needs that machine's *Replies from my other machines* on (Fleet → Sharing). Optional Telegram ping when a prompt is waiting.
+- How: Claude Code's PermissionRequest hook (installed with the alert hook, \`~/.claude/settings.json\`). If Mission Control isn't running, the hook steps aside at once.
+
+**Phone access** (Settings → Phone access, per machine, off by default)
+- Set a PIN (6+ characters), turn it on, and open the address it shows on your phone - e.g. \`http://192.168.4.28:3101/\` - on the same Wi-Fi/LAN. Sign in with the PIN; "Add to Home Screen" gives it an icon. On a phone the menu is a ☰ drawer.
+- It uses the LAN link's port 3101 (already allowed in the firewall), so nothing new is opened. Every page works: sessions, live threads, replies, permission cards.
+- Safety: sign-ins last 30 days in an HttpOnly cookie (only a hash is stored); five wrong PINs lock that address out for 15 minutes; a new PIN or *Sign out all devices* signs every phone out; turning it off answers "phone access is off".
+- Away from home: install Tailscale on the computer and the phone and open \`http://<the computer's Tailscale IP>:3101/\` - no ports opened to the internet. (If Windows treats the Tailscale network as Public, allow port 3101 for it.)
+
+**Compared with Claude's own Remote Control**: Remote Control attaches to one running terminal session (live typing, interrupt). Mission Control covers the whole fleet - every machine's sessions, live progress, permission prompts, replies, moving sessions - but a reply from here is a new turn in the session (\`claude --resume\`), not a keystroke into an open terminal. If a session is open in a terminal, reply with *Fork* or wait until it's idle.`,
+  },
+  {
     id: "agents",
     title: "The Agent Fleet",
     keywords: "agents fleet status orb online offline claude openclaw hermes deepseek llm sidebar",

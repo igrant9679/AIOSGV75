@@ -44,7 +44,7 @@ export function useSessionJobs() {
   const active = jobs.some((j) => ACTIVE.includes(j.status));
   useEffect(() => {
     load();
-    const t = setInterval(load, active ? 3_000 : 30_000);
+    const t = setInterval(load, active ? 1_500 : 30_000);
     window.addEventListener("mc-session-jobs", load);
     return () => {
       clearInterval(t);
@@ -183,9 +183,23 @@ function ThreadView({ s, local, level, machineLabel, refresh, jobs, reloadJobs }
     [jobs, s.key],
   );
 
+  // another machine's session: read it straight over the LAN when that works (live)
+  const [lan, setLan] = useState<"unknown" | "up" | "down">("unknown");
+  useEffect(() => setLan("unknown"), [s.key]);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
+      if (!local && lan !== "down") {
+        const r = await fetch(`/api/hub/sessions?lanThread=${encodeURIComponent(s.key)}&host=${encodeURIComponent(s.host)}&limit=600`);
+        if (r.ok) {
+          setThread((await r.json()) as Thread);
+          setError(null);
+          setLan("up");
+          return;
+        }
+        setLan("down");
+      }
       const url = local
         ? `/api/hub/sessions?thread=${encodeURIComponent(s.key)}&limit=${all ? 0 : 600}`
         : fetched?.status === "done"
@@ -206,7 +220,7 @@ function ThreadView({ s, local, level, machineLabel, refresh, jobs, reloadJobs }
     } finally {
       setLoading(false);
     }
-  }, [local, s.key, all, fetched?.id, fetched?.status]);
+  }, [local, lan, s.key, s.host, all, fetched?.id, fetched?.status]);
 
   useEffect(() => {
     scrolled.current = false;
@@ -214,12 +228,20 @@ function ThreadView({ s, local, level, machineLabel, refresh, jobs, reloadJobs }
   useEffect(() => {
     load();
   }, [load, refresh]);
-  // live sessions on this machine: keep the thread current
+  // live sessions - on this machine, or another one over the LAN: keep the thread current
+  const live = s.status !== "ended" && (local || lan === "up");
   useEffect(() => {
-    if (!local || s.status === "ended") return;
-    const t = setInterval(load, 10_000);
+    if (!live) return;
+    const t = setInterval(() => {
+      if (document.visibilityState === "visible") void load();
+    }, 4_000);
     return () => clearInterval(t);
-  }, [local, s.status, load]);
+  }, [live, load]);
+  // follow new entries while the reader is at the bottom
+  useEffect(() => {
+    const el = box.current;
+    if (el && el.scrollHeight - el.scrollTop - el.clientHeight < 120) el.scrollTop = el.scrollHeight;
+  }, [thread?.entries.length]);
   useEffect(() => {
     if (thread && box.current && !scrolled.current) {
       box.current.scrollTop = box.current.scrollHeight;
@@ -245,10 +267,16 @@ function ThreadView({ s, local, level, machineLabel, refresh, jobs, reloadJobs }
           <span>
             {msgs} messages · {tools} tool calls
             {thread.truncated ? ` · newest ${thread.entries.length} of ${thread.total}` : ""}
-            {!local && fetched?.finishedAt ? ` · fetched from ${machineLabel} ${ago(fetched.finishedAt)} ago` : ""}
+            {!local && lan !== "up" && fetched?.finishedAt ? ` · fetched from ${machineLabel} ${ago(fetched.finishedAt)} ago` : ""}
           </span>
         )}
-        {loading && <span>loading…</span>}
+        {live && (
+          <span className="flex items-center gap-1" style={{ color: ACCENTS.cyan.base }} title="Refreshes every few seconds while the session is open">
+            <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full" style={{ background: ACCENTS.cyan.base }} />
+            live{!local ? ` from ${machineLabel} over the LAN` : ""}
+          </span>
+        )}
+        {loading && !live && <span>loading…</span>}
         <span className="flex-1" />
         {thread && (
           <label className="flex cursor-pointer items-center gap-1">
@@ -257,7 +285,8 @@ function ThreadView({ s, local, level, machineLabel, refresh, jobs, reloadJobs }
         )}
         {local && thread?.truncated && <SmallButton onClick={() => setAll(true)}>Load all {thread.total}</SmallButton>}
         {local && <SmallButton onClick={load}>Refresh</SmallButton>}
-        {!local && level !== "off" && (
+        {!local && lan === "up" && <SmallButton onClick={load}>Refresh</SmallButton>}
+        {!local && level !== "off" && lan !== "up" && (
           <SmallButton onClick={askRemote} disabled={Boolean(fetched && ACTIVE.includes(fetched.status))}>
             {fetched && ACTIVE.includes(fetched.status) ? "Fetching…" : thread ? "Fetch again" : `Load full thread from ${machineLabel}`}
           </SmallButton>
@@ -292,6 +321,30 @@ function ThreadView({ s, local, level, machineLabel, refresh, jobs, reloadJobs }
 }
 
 // ─── jobs (replies / new sessions) ───
+
+/** A running reply, live: the tools used so far and the text written so far (streamed). */
+function LiveProgress({ progress }: { progress: NonNullable<SessionJob["progress"]> }) {
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (box.current) box.current.scrollTop = box.current.scrollHeight;
+  }, [progress.updatedAt]);
+  return (
+    <div ref={box} className="max-h-64 overflow-y-auto rounded-lg bg-white/[0.03] px-2.5 py-2">
+      {progress.steps.length > 0 && (
+        <div className="mb-1.5 flex flex-col gap-0.5">
+          {progress.steps.slice(-8).map((s, i, arr) => (
+            <p key={`${i}-${s}`} className="truncate font-mono text-[10px]" style={{ color: i === arr.length - 1 ? ACCENTS.cyan.base : undefined }}>
+              <span className="text-ink-faint">{i === arr.length - 1 ? "▸" : "·"}</span> {s}
+            </p>
+          ))}
+          {progress.steps.length > 8 && <p className="font-mono text-[10px] text-ink-faint">+ {progress.steps.length - 8} earlier steps</p>}
+        </div>
+      )}
+      {progress.text && <p className="whitespace-pre-wrap text-xs leading-5 text-ink-dim">{progress.text.slice(-2500)}</p>}
+      <p className="pt-1 font-mono text-[9px] text-ink-faint">live · updated {Math.max(0, Math.round((Date.now() - progress.updatedAt) / 1000))}s ago</p>
+    </div>
+  );
+}
 
 export function JobBubble({ job, onOpenSession, knownKeys }: { job: SessionJob; onOpenSession?: (key: string) => void; knownKeys?: Set<string> }) {
   const product = useProductName(); // this network's product name
@@ -348,6 +401,7 @@ export function JobBubble({ job, onOpenSession, knownKeys }: { job: SessionJob; 
           <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full" style={{ background: ACCENTS.cyan.base }} /> {status}
         </p>
       )}
+      {job.status === "running" && job.progress && (job.progress.steps.length > 0 || job.progress.text) && <LiveProgress progress={job.progress} />}
       {(job.status === "error" || job.status === "expired") && (
         <p className="text-[11px]" style={{ color: ACCENTS.rose.base }}>
           {job.error}

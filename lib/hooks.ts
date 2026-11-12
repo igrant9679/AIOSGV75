@@ -5,7 +5,8 @@ import path from "path";
 /**
  * Installs / removes Mission Control's session-alert hook (scripts/mc-hook.mjs):
  *
- *  - Claude Code: ~/.claude/settings.json → hooks.Notification / Stop / SessionEnd
+ *  - Claude Code: ~/.claude/settings.json → hooks.Notification / Stop / SessionEnd, and
+ *    PermissionRequest (answer permission prompts from the app - lib/permissions.ts)
  *  - Codex:       ~/.codex/config.toml    → notify = ["node", ".../mc-hook.mjs", "codex"]
  *
  * Your own hooks are kept; ours are recognized by "mc-hook.mjs" in the command.
@@ -14,12 +15,16 @@ import path from "path";
  */
 
 const MARK = "mc-hook.mjs";
-const EVENTS = ["Notification", "Stop", "SessionEnd"] as const;
+const EVENTS = ["Notification", "Stop", "SessionEnd", "PermissionRequest"] as const;
+/** PermissionRequest may wait for your answer in the app (lib/permissions.ts) - up to 15 min */
+const PERMISSION_TIMEOUT_S = 900;
 const CLAUDE_SETTINGS = path.join(os.homedir(), ".claude", "settings.json");
 const CODEX_CONFIG = path.join(os.homedir(), ".codex", "config.toml");
 
 const scriptPath = () => path.join(process.cwd(), "scripts", "mc-hook.mjs").replace(/\\/g, "/");
 const claudeCommand = () => `node "${scriptPath()}" claude`;
+const permissionCommand = () => `node "${scriptPath()}" permission`;
+const commandFor = (ev: (typeof EVENTS)[number]) => (ev === "PermissionRequest" ? permissionCommand() : claudeCommand());
 
 export interface HookStatus {
   claude: "installed" | "missing" | "outdated" | "no-claude";
@@ -69,7 +74,7 @@ function claudeState(s: Settings): HookStatus["claude"] {
   for (const ev of EVENTS) {
     const all = (s.hooks?.[ev] ?? []).flatMap((g) => g.hooks ?? []);
     if (all.some(ours)) found++;
-    if (all.some((h) => ours(h) && h.command === claudeCommand())) current++;
+    if (all.some((h) => ours(h) && h.command === commandFor(ev))) current++;
   }
   if (found === 0) return "missing";
   return current === EVENTS.length ? "installed" : "outdated";
@@ -116,7 +121,7 @@ export async function installHooks(): Promise<HookStatus> {
       stripOurs(s);
       s.hooks ??= {};
       for (const ev of EVENTS) {
-        (s.hooks[ev] ??= []).push({ hooks: [{ type: "command", command: claudeCommand(), timeout: 5 }] });
+        (s.hooks[ev] ??= []).push({ hooks: [{ type: "command", command: commandFor(ev), timeout: ev === "PermissionRequest" ? PERMISSION_TIMEOUT_S : 5 }] });
       }
       await writeAtomic(CLAUDE_SETTINGS, JSON.stringify(s, null, 2) + "\n");
     }

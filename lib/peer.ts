@@ -6,6 +6,7 @@ import path from "path";
 import { clusterStatus, readConfig } from "./cluster";
 import { vaultAvailable, vaultInfo } from "./vault";
 import { PEER_PORT } from "./netAddrs";
+import { handlePhone } from "./phoneAccess";
 
 /**
  * Direct machine-to-machine link over the local network, so the machine group
@@ -179,6 +180,7 @@ async function routes(): Promise<Record<string, Handler>> {
   const events = await import("./sessionEvents");
   const search = await import("./sessionSearch");
   const handoff = await import("./handoff");
+  const perms = await import("./permissions");
   const cfg = await readConfig();
   const gate = async () => {
     const s = await share.readShareSettings();
@@ -208,6 +210,17 @@ async function routes(): Promise<Record<string, Handler>> {
       await gate();
       return handoff.exportSession(q.get("key") ?? "");
     },
+    // permission prompts waiting on this machine, and answering one (lib/permissions.ts)
+    "GET /peer/permissions": async () => {
+      await gate();
+      return { items: await perms.pendingLocal() };
+    },
+    "POST /peer/permission": async (_q, body) => {
+      await gate();
+      const b = body as { id?: string; behavior?: string; always?: boolean; message?: string; by?: string };
+      if (!b.id || (b.behavior !== "allow" && b.behavior !== "deny")) throw Object.assign(new Error("id and behavior (allow/deny) required"), { status: 400 });
+      return { request: await perms.decideLocal(b.id, b.behavior, { always: b.always, message: b.message, by: b.by }) };
+    },
   };
 }
 
@@ -236,6 +249,13 @@ export function startPeerServer(): void {
       res.writeHead(status, { "Content-Type": "application/json" });
       res.end(JSON.stringify(data));
     };
+    // everything else on this port is Phone access (off unless turned on, PIN-protected)
+    if (!(req.url ?? "/").startsWith("/peer/")) {
+      return void handlePhone(req, res).catch((e) => {
+        if (!res.headersSent) send(500, { error: (e as Error).message });
+        else res.end();
+      });
+    }
     try {
       const key = await peerKey();
       const given = String(req.headers["x-mc-peer-key"] ?? "");

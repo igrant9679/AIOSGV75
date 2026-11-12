@@ -123,7 +123,7 @@ export default function Header() {
           </svg>
         </div>
         <div>
-          <h1 className="font-display text-2xl font-bold tracking-[0.14em] md:text-4xl">
+          <h1 className="font-display text-lg font-bold tracking-[0.08em] sm:text-2xl sm:tracking-[0.14em] md:text-4xl">
             <span className="logo-title">{appName}</span>
           </h1>
           <p className="mt-1 font-mono text-[11px] tracking-[0.3em] text-ink-faint md:text-[13px]">

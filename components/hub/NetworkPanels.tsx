@@ -297,6 +297,52 @@ export function AlertsPanel() {
                 </select>
                 <span>minutes</span>
               </div>
+              <div className="flex flex-col gap-1.5 rounded-xl border border-line px-3 py-2 text-[11px] text-ink-dim">
+                <p className="font-semibold text-ink">Permission prompts from the app</p>
+                <p className="leading-4 text-ink-faint">
+                  When Claude Code asks permission (run a command, edit a file…), you can Allow or Deny it here - on any machine on the LAN, or your phone. For
+                  sessions on another machine, that machine also needs &quot;Replies from my other machines&quot; on (Fleet → Sharing).
+                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <select
+                    value={s.permissions.mode}
+                    onChange={(e) => post({ action: "settings", permissions: { mode: e.target.value } })}
+                    aria-label="Permission prompts"
+                    className="rounded-md border border-line bg-transparent px-1.5 py-0.5 font-mono text-[11px] text-ink"
+                    disabled={busy}
+                  >
+                    <option value="off" style={{ background: "var(--color-panel)" }}>Off - always answer at the machine</option>
+                    <option value="app" style={{ background: "var(--color-panel)" }}>{`${product}'s own runs (replies, new sessions)`}</option>
+                    <option value="all" style={{ background: "var(--color-panel)" }}>All sessions, terminals too</option>
+                  </select>
+                  {s.permissions.mode === "all" && (
+                    <>
+                      <span>terminal waits</span>
+                      <select
+                        value={s.permissions.waitSeconds}
+                        onChange={(e) => post({ action: "settings", permissions: { waitSeconds: Number(e.target.value) } })}
+                        aria-label="Seconds a terminal waits for an answer from the app"
+                        className="rounded-md border border-line bg-transparent px-1.5 py-0.5 font-mono text-[11px] text-ink"
+                        disabled={busy}
+                      >
+                        {[15, 30, 60, 120, 300, 600].map((n) => (
+                          <option key={n} value={n} style={{ background: "var(--color-panel)" }}>
+                            {n < 60 ? `${n} s` : `${n / 60} min`}
+                          </option>
+                        ))}
+                      </select>
+                      <span>for an answer, then asks in the terminal</span>
+                    </>
+                  )}
+                </div>
+                <p className="leading-4 text-ink-faint">
+                  {s.permissions.mode === "off"
+                    ? `${product}'s own runs can't ask: anything that needs permission is denied.`
+                    : s.permissions.mode === "app"
+                      ? `Replies and new sessions started from ${product} wait up to 10 minutes for your answer. Terminal sessions answer in the terminal.`
+                      : "While a terminal session waits, its prompt isn't shown at the machine - answer here, or wait it out and answer there."}
+                </p>
+              </div>
             </>
           )}
         </div>
@@ -321,6 +367,13 @@ export function AlertsPanel() {
                 label="Telegram: a long run finished"
                 hint={`When a turn that ran ${s.longMinutes}+ minutes finishes, on any machine.`}
                 onClick={() => post({ action: "settings", telegram: { longFinished: !s.telegram.longFinished } })}
+                disabled={busy}
+              />
+              <Toggle
+                on={Boolean(s.telegram.permissions)}
+                label="Telegram: a permission prompt is waiting"
+                hint={`Sent by the machine that's asking, as soon as it asks. Answer in ${product} (any page, or Phone access).`}
+                onClick={() => post({ action: "settings", telegram: { permissions: !s.telegram.permissions } })}
                 disabled={busy}
               />
               <Toggle

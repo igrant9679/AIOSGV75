@@ -84,6 +84,14 @@ export interface SessionJob {
   /** set on the TARGET machine for a job another machine asked for */
   requestedBy?: string;
   requestedByLabel?: string;
+  /** while it runs: what Claude has written so far and the tools it used (streamed) */
+  progress?: JobProgress;
+}
+
+export interface JobProgress {
+  text: string;
+  steps: string[];
+  updatedAt: number;
 }
 
 const JOBS_FILE = path.join(process.cwd(), "data", "session-jobs.json");
@@ -182,6 +190,7 @@ const resultOf = (job: SessionJob) => ({
   error: job.error,
   resultKey: job.resultKey,
   costUsd: job.costUsd,
+  progress: job.progress,
 });
 
 async function writeVaultResult(job: SessionJob): Promise<void> {
@@ -547,9 +556,11 @@ function runCli(
   cwd: string,
   stdin: string,
   onSpawn: (pid?: number) => void,
+  onOut?: (chunk: string) => void,
+  extraEnv?: Record<string, string>,
 ): Promise<{ out: string; err: string; code: number | null; timedOut: boolean }> {
   return new Promise((resolve) => {
-    const child = spawn(cmd, args.map(q), { cwd, shell: true, env: cleanEnv(), detached: process.platform !== "win32" });
+    const child = spawn(cmd, args.map(q), { cwd, shell: true, env: { ...cleanEnv(), ...extraEnv }, detached: process.platform !== "win32" });
     onSpawn(child.pid);
     let out = "";
     let err = "";
@@ -558,7 +569,11 @@ function runCli(
       timedOut = true;
       killTree(child.pid);
     }, RUN_TIMEOUT_MS);
-    child.stdout.on("data", (c: Buffer) => (out += c.toString("utf8")));
+    child.stdout.on("data", (c: Buffer) => {
+      const s = c.toString("utf8");
+      out += s;
+      onOut?.(s);
+    });
     child.stderr.on("data", (c: Buffer) => (err = (err + c.toString("utf8")).slice(-3000)));
     child.on("error", (e) => {
       clearTimeout(timer);
@@ -575,6 +590,85 @@ function runCli(
 
 const homeOr = (cwd: string) => (cwd === "~" ? os.homedir() : cwd);
 
+type ClaudeResult = { result?: string; is_error?: boolean; session_id?: string; total_cost_usd?: number };
+
+/** One line per tool call, e.g. "Read page.tsx", "$ npm test", "Search: weather Leesburg". */
+function describeTool(name: string, input: Record<string, unknown> = {}): string {
+  const s = (v: unknown) => (typeof v === "string" ? v : "");
+  const base = (p: string) => p.split(/[\\/]/).pop() || p;
+  const clip = (t: string, n = 90) => (t.length > n ? t.slice(0, n - 1) + "…" : t);
+  if (name === "Bash" || name === "PowerShell") return clip(`$ ${s(input.command).replace(/\s+/g, " ")}`);
+  if (["Read", "Edit", "Write", "MultiEdit", "NotebookEdit"].includes(name)) return `${name} ${base(s(input.file_path) || s(input.notebook_path))}`;
+  if (name === "Grep" || name === "Glob") return clip(`${name} ${s(input.pattern)}`);
+  if (name === "WebSearch") return clip(`Search: ${s(input.query)}`);
+  if (name === "WebFetch") return clip(`Fetch ${s(input.url)}`);
+  if (name === "Task" || name === "Agent") return clip(`Agent: ${s(input.description)}`);
+  return name.replace(/^mcp__[^_]+__/, "");
+}
+
+/**
+ * Reads `claude -p --output-format stream-json` as it arrives: keeps the text written so
+ * far and the tools used, saves them on the job about once a second (the UI and other
+ * machines poll it), and picks out the final `result` event.
+ */
+function streamParser(jobId: string) {
+  let buf = "";
+  let text = "";
+  const steps: string[] = [];
+  let result: ClaudeResult | null = null;
+  let dirty = false;
+  let saving: Promise<unknown> = Promise.resolve();
+  const save = () => {
+    if (!dirty) return saving;
+    dirty = false;
+    const progress: JobProgress = { text: text.slice(-6000), steps: steps.slice(-40), updatedAt: Date.now() };
+    saving = saving.then(() => patchJob(jobId, { progress })).catch(() => {});
+    return saving;
+  };
+  const timer = setInterval(save, 1000);
+  const onEvent = (e: { type?: string; message?: { content?: unknown }; [k: string]: unknown }) => {
+    if (e.type === "assistant" && Array.isArray(e.message?.content)) {
+      for (const b of e.message.content as { type?: string; text?: string; name?: string; input?: Record<string, unknown> }[]) {
+        if (b.type === "text" && b.text?.trim()) text += (text ? "\n\n" : "") + b.text.trim();
+        else if (b.type === "tool_use" && b.name) steps.push(describeTool(b.name, b.input));
+        dirty = true;
+      }
+    } else if (e.type === "result") {
+      result = e as ClaudeResult;
+    }
+  };
+  return {
+    push: (chunk: string) => {
+      buf += chunk;
+      let i: number;
+      while ((i = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, i).trim();
+        buf = buf.slice(i + 1);
+        if (!line.startsWith("{")) continue;
+        try {
+          onEvent(JSON.parse(line));
+        } catch {
+          /* partial or non-JSON line */
+        }
+      }
+    },
+    end: () => {
+      clearInterval(timer);
+      if (buf.trim().startsWith("{")) {
+        try {
+          onEvent(JSON.parse(buf.trim()));
+        } catch {
+          /* ignore */
+        }
+      }
+      buf = "";
+    },
+    flush: () => save(),
+    text: () => text,
+    result: () => result,
+  };
+}
+
 async function execute(job: SessionJob): Promise<Partial<SessionJob>> {
   const done = (p: Partial<SessionJob>) => ({ finishedAt: Date.now(), pid: undefined, ...p });
   const cwd = homeOr(job.cwd);
@@ -583,29 +677,32 @@ async function execute(job: SessionJob): Promise<Partial<SessionJob>> {
   const setPid = (pid?: number) => void patchJob(job.id, { pid }).catch(() => {});
 
   if (job.tool === "claude") {
-    const args = ["-p", "--output-format", "json"];
+    // stream-json: one event per line, so the run can be watched live (text + tool calls)
+    const args = ["-p", "--output-format", "stream-json", "--verbose"];
     if (job.mode === "reply") {
       args.push("--resume", job.sessionId!);
       if (job.fork) args.push("--fork-session");
     }
     if (job.access === "edit") args.push("--permission-mode", "acceptEdits");
-    const r = await runCli("claude", args, cwd, job.prompt, setPid);
+    const live = streamParser(job.id);
+    const r = await runCli("claude", args, cwd, job.prompt, setPid, live.push, { MC_JOB_ID: job.id });
+    live.end();
+    await live.flush();
     const cur = (await listJobs()).find((x) => x.id === job.id);
     if (cur && !isActive(cur)) return {}; // stopped meanwhile - keep that outcome
     if (r.timedOut) return done({ status: "error", error: "Stopped after 20 minutes." });
-    try {
-      const j = JSON.parse(r.out) as { result?: string; is_error?: boolean; session_id?: string; total_cost_usd?: number };
+    const j = live.result();
+    if (j) {
       return done({
         status: j.is_error ? "error" : "done",
-        reply: j.result ?? "",
+        reply: j.result ?? live.text(),
         error: j.is_error ? j.result || "Claude reported an error" : undefined,
         resultKey: j.session_id ? `claude:${j.session_id}` : job.key,
         costUsd: j.total_cost_usd,
       });
-    } catch {
-      const text = r.out.trim();
-      return done({ status: "error", error: (text || r.err.trim() || `claude exited with code ${r.code}`).slice(-800) });
     }
+    const text = live.text() || r.out.trim();
+    return done({ status: "error", error: (r.err.trim() || text || `claude exited with code ${r.code}`).slice(-800) });
   }
 
   // Codex
@@ -798,6 +895,7 @@ async function collectOne(j: SessionJob): Promise<void> {
       error: res.error,
       resultKey: res.resultKey,
       costUsd: res.costUsd,
+      progress: res.progress,
     };
     // a pulled session waits in the vault: import it here
     if (j.mode === "export" && res.status === "done" && j.via === "vault") {

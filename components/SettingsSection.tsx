@@ -11,6 +11,7 @@ import ServiceKeysPanel from "./ServiceKeysPanel";
 import PublishingPanel from "./PublishingPanel";
 import ClusterPanel from "./ClusterPanel";
 import NetworkSettingsPanel from "./NetworkSettingsPanel";
+import PhoneAccessPanel from "./PhoneAccessPanel";
 import UserProfilePanel from "./UserProfilePanel";
 import Avatar from "./Avatar";
 import StatusOrb from "./ui/StatusOrb";
@@ -256,6 +257,8 @@ export default function SettingsSection() {
       )}
 
       <NetworkSettingsPanel />
+
+      <PhoneAccessPanel />
 
       <Panel title="LLM Connections">
         <div className="grid gap-5 p-5 lg:grid-cols-2">

@@ -15,6 +15,7 @@ import PageHero from "./ui/PageHero";
 import EventTicker from "./ui/EventTicker";
 import Celebration from "./ui/Celebration";
 import { SessionAlertsWatcher } from "./hub/NetworkPanels";
+import PermissionPrompts from "./hub/PermissionPrompts";
 
 /** Agent chat routes get a FULL theme takeover — the whole sky in their color. */
 const TAKEOVER_ROUTES = new Set(["/auto", "/claude", "/openclaw", "/hermes"]);
@@ -84,6 +85,7 @@ export default function Shell({ children }: { children: ReactNode }) {
       <MissionProvider>
         <DeckFrame>{children}</DeckFrame>
         <SessionAlertsWatcher />
+        <PermissionPrompts />
       </MissionProvider>
     </MotionConfig>
   );

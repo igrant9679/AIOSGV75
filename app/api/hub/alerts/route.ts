@@ -16,12 +16,13 @@ export async function GET() {
 }
 
 /**
- * { action: "settings", hooks?, longMinutes?, telegram?: { waiting?, longFinished?, daily? } }
+ * { action: "settings", hooks?, longMinutes?, telegram?: { waiting?, longFinished?, daily?, permissions? },
+ *   permissions?: { mode?: "off" | "app" | "all", waitSeconds? } }
  * { action: "install" | "remove" }        the hook on this machine only
  * { action: "summary", days?: number }     preview a daily summary (default: yesterday)
  */
 export async function POST(req: Request) {
-  let b: { action?: string; hooks?: unknown; longMinutes?: unknown; telegram?: Record<string, unknown>; days?: number };
+  let b: { action?: string; hooks?: unknown; longMinutes?: unknown; telegram?: Record<string, unknown>; permissions?: Record<string, unknown>; days?: number };
   try {
     b = await req.json();
   } catch {
@@ -31,9 +32,15 @@ export async function POST(req: Request) {
     if (b.action === "settings") {
       const telegram: Partial<AlertSettings["telegram"]> = {};
       if (b.telegram && typeof b.telegram === "object") {
-        for (const k of ["waiting", "longFinished", "daily"] as const) if (typeof b.telegram[k] === "boolean") telegram[k] = b.telegram[k] as boolean;
+        for (const k of ["waiting", "longFinished", "daily", "permissions"] as const) if (typeof b.telegram[k] === "boolean") telegram[k] = b.telegram[k] as boolean;
       }
-      const patch: Omit<Partial<AlertSettings>, "telegram"> & { telegram?: Partial<AlertSettings["telegram"]> } = { telegram };
+      const permissions: Partial<AlertSettings["permissions"]> = {};
+      if (b.permissions && typeof b.permissions === "object") {
+        const m = b.permissions.mode;
+        if (m === "off" || m === "app" || m === "all") permissions.mode = m;
+        if (typeof b.permissions.waitSeconds === "number") permissions.waitSeconds = b.permissions.waitSeconds;
+      }
+      const patch: Omit<Partial<AlertSettings>, "telegram" | "permissions"> & { telegram?: Partial<AlertSettings["telegram"]>; permissions?: Partial<AlertSettings["permissions"]> } = { telegram, permissions };
       if (typeof b.hooks === "boolean") patch.hooks = b.hooks;
       if (typeof b.longMinutes === "number") patch.longMinutes = b.longMinutes;
       const settings = await writeAlertSettings(patch);

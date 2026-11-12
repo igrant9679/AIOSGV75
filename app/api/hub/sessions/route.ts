@@ -1,4 +1,5 @@
 import os from "os";
+import { PeerUnavailable, peerFetch } from "@/lib/peer";
 import { sessionsSnapshot } from "@/lib/sessions";
 import { readThread } from "@/lib/sessionThread";
 import { readShareSettings } from "@/lib/sessionShare";
@@ -29,6 +30,18 @@ export async function GET(req: Request) {
       const t = await readThread(s, limit);
       if (!t) return Response.json({ error: "The session file couldn't be found." }, { status: 404 });
       return Response.json(t);
+    }
+    // another machine's session, read straight over the LAN (refreshed live by the UI)
+    const lanThread = url.searchParams.get("lanThread");
+    if (lanThread) {
+      const host = url.searchParams.get("host") ?? "";
+      if (!KEY_RE.test(lanThread) || !/^[\w.-]{1,64}$/.test(host)) return Response.json({ error: "bad key or host" }, { status: 400 });
+      try {
+        return Response.json(await peerFetch(host, `/peer/thread?key=${encodeURIComponent(lanThread)}`, { timeoutMs: 8_000 }));
+      } catch (e) {
+        const lan = e instanceof PeerUnavailable;
+        return Response.json({ error: (e as Error).message, lan: !lan }, { status: lan ? 503 : 502 });
+      }
     }
     const jobThread = url.searchParams.get("jobThread");
     if (jobThread) {

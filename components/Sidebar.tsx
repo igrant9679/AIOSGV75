@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion } from "framer-motion";
@@ -66,6 +68,9 @@ const WORKSPACE_NAV: NavItem[] = [
 export default function Sidebar() {
   const pathname = usePathname();
   const { system, agents, busy, vaultOk, registry } = useMission();
+  // phones: the menu is a drawer behind a button, closed again after picking a page
+  const [open, setOpen] = useState(false);
+  useEffect(() => setOpen(false), [pathname]);
 
   const dynamicNav: NavItem[] = [
     ...registry.llms.map((l) => ({
@@ -147,14 +152,9 @@ export default function Sidebar() {
     );
   };
 
-  return (
-    <motion.nav
-      initial={{ opacity: 0, x: -18 }}
-      animate={{ opacity: 1, x: 0 }}
-      transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-      className="mc-sidebar panel flex w-60 shrink-0 flex-col gap-1 overflow-hidden p-3"
-      aria-label="Agents"
-    >
+  const current = [...BRAIN_NAV, ...AGENT_NAV, ...dynamicNav, ...WORKSPACE_NAV].find((i) => i.href === pathname);
+  const items = (
+    <>
       <span className="sb-section panel-title px-2 pb-2 pt-1">Second brain</span>
       {BRAIN_NAV.map((item) => renderItem(item))}
 
@@ -180,6 +180,44 @@ export default function Sidebar() {
           {system?.platform ?? "detecting…"}
         </p>
       </div>
-    </motion.nav>
+    </>
+  );
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        aria-expanded={open}
+        aria-controls="mc-nav-drawer"
+        className="panel flex items-center gap-3 px-4 py-3 text-left md:hidden"
+      >
+        <span aria-hidden className="font-mono text-lg leading-none text-ink">☰</span>
+        <span className="min-w-0 flex-1 truncate text-sm font-semibold text-ink">{current?.label ?? "Menu"}</span>
+        <span className="font-mono text-[10px] tracking-[0.14em] text-ink-faint">MENU</span>
+      </button>
+      {open &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <div className="md:hidden">
+            <div aria-hidden onClick={() => setOpen(false)} className="fixed inset-0 z-[60] bg-black/40" />
+            <nav id="mc-nav-drawer" aria-label="Menu" className="mc-sidebar panel !fixed inset-y-0 left-0 z-[61] flex w-[82vw] max-w-xs flex-col gap-1 overflow-y-auto rounded-none p-3">
+              <button type="button" onClick={() => setOpen(false)} className="self-end px-2 py-1 font-mono text-[11px] text-ink-faint" aria-label="Close menu">
+                close ✕
+              </button>
+              {items}
+            </nav>
+          </div>,
+          document.body,
+        )}
+      <motion.nav
+        initial={{ opacity: 0, x: -18 }}
+        animate={{ opacity: 1, x: 0 }}
+        transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+        className="mc-sidebar panel hidden w-60 shrink-0 flex-col gap-1 overflow-hidden p-3 md:flex"
+        aria-label="Agents"
+      >
+        {items}
+      </motion.nav>
+    </>
   );
 }

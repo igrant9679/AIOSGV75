@@ -52,10 +52,22 @@ export interface AlertSettings {
   hooks: boolean;
   /** a finished turn this long (minutes) is worth telling you about */
   longMinutes: number;
-  telegram: { waiting: boolean; longFinished: boolean; daily: boolean };
+  telegram: { waiting: boolean; longFinished: boolean; daily: boolean; permissions?: boolean };
+  /**
+   * Permission prompts answered from the app (Claude Code's PermissionRequest hook):
+   *  off - never; app - the app's own runs (replies, new sessions) wait for your answer;
+   *  all - terminal sessions too: they wait waitSeconds for an answer from the app, then
+   *        fall back to the normal prompt in the terminal.
+   */
+  permissions: { mode: "off" | "app" | "all"; waitSeconds: number };
 }
 
-const DEFAULTS: AlertSettings = { hooks: true, longMinutes: 5, telegram: { waiting: false, longFinished: false, daily: false } };
+const DEFAULTS: AlertSettings = {
+  hooks: true,
+  longMinutes: 5,
+  telegram: { waiting: false, longFinished: false, daily: false, permissions: false },
+  permissions: { mode: "app", waitSeconds: 60 },
+};
 const STORE = path.join(process.cwd(), "data", "session-events.json");
 const SPOOL = path.join(process.cwd(), "data", "hook-spool.jsonl");
 const SENT = path.join(process.cwd(), "data", "alerts-sent.json");
@@ -72,18 +84,25 @@ const eventsDir = () => path.join(clusterDir(), "events");
 export async function readAlertSettings(): Promise<AlertSettings> {
   try {
     const f = JSON.parse(await fsp.readFile(settingsFile(), "utf8")) as Partial<AlertSettings>;
-    return { ...DEFAULTS, ...f, telegram: { ...DEFAULTS.telegram, ...(f.telegram ?? {}) } };
+    return { ...DEFAULTS, ...f, telegram: { ...DEFAULTS.telegram, ...(f.telegram ?? {}) }, permissions: { ...DEFAULTS.permissions, ...(f.permissions ?? {}) } };
   } catch {
-    return { ...DEFAULTS, telegram: { ...DEFAULTS.telegram } };
+    return { ...DEFAULTS, telegram: { ...DEFAULTS.telegram }, permissions: { ...DEFAULTS.permissions } };
   }
 }
 
-export async function writeAlertSettings(patch: Omit<Partial<AlertSettings>, "telegram"> & { telegram?: Partial<AlertSettings["telegram"]> }): Promise<AlertSettings> {
+export async function writeAlertSettings(
+  patch: Omit<Partial<AlertSettings>, "telegram" | "permissions"> & { telegram?: Partial<AlertSettings["telegram"]>; permissions?: Partial<AlertSettings["permissions"]> },
+): Promise<AlertSettings> {
   const cur = await readAlertSettings();
+  const p = patch.permissions ?? {};
   const next: AlertSettings = {
     hooks: typeof patch.hooks === "boolean" ? patch.hooks : cur.hooks,
     longMinutes: typeof patch.longMinutes === "number" && patch.longMinutes >= 1 && patch.longMinutes <= 240 ? Math.round(patch.longMinutes) : cur.longMinutes,
     telegram: { ...cur.telegram, ...(patch.telegram ?? {}) },
+    permissions: {
+      mode: p.mode === "off" || p.mode === "app" || p.mode === "all" ? p.mode : cur.permissions.mode,
+      waitSeconds: typeof p.waitSeconds === "number" && p.waitSeconds >= 10 && p.waitSeconds <= 600 ? Math.round(p.waitSeconds) : cur.permissions.waitSeconds,
+    },
   };
   if (!(await vaultAvailable())) throw new Error("The vault isn't available, so the shared alert settings can't be saved.");
   await fsp.mkdir(clusterDir(), { recursive: true });
