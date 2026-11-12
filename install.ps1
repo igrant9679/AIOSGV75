@@ -1,6 +1,6 @@
 <#
   Mission Control - Windows installer, updater, modifier and uninstaller.
-  MC-INSTALLER-VERSION: 2026.11.10.3   (bump on every change; setup.exe runs the newer of its bundled copy and GitHub's)
+  MC-INSTALLER-VERSION: 2026.11.11.1   (bump on every change; setup.exe runs the newer of its bundled copy and GitHub's)
 
   Run it any time. On a machine without Mission Control it installs everything;
   on a machine that has it, it asks what you want:
@@ -18,7 +18,8 @@
     .env.local, the machine group (name + role), Hermes and OpenClaw (optional,
     official installers, with links), Claude / Codex sign-in (browser),
     start-at-login + watchdog for Mission Control and Ollama, then it starts
-    everything, runs the health check and opens the dashboard.
+    everything, runs the health check, offers phone access (optional, with a
+    PIN you choose) and opens the dashboard.
 
   Fresh machine (the repo is public), in PowerShell:
     irm https://raw.githubusercontent.com/igrant9679/AIOSGV75/main/install.ps1 -OutFile "$env:TEMP\mc-install.ps1"; powershell -ExecutionPolicy Bypass -File "$env:TEMP\mc-install.ps1"
@@ -50,6 +51,7 @@
     -NoCompanions    don't offer Hermes / OpenClaw
     -NoFirewall      don't add the LAN link firewall rule (port 3101)
     -NoLogin         don't offer the Claude / Codex browser sign-ins
+    -NoPhone         don't offer phone access (the app on your phone over the LAN, PIN)
     -NoStart         don't start the server or open the browser at the end
     -RepairOnly      only fix/update the code (git link, hand-copied files) and stop
 
@@ -86,6 +88,7 @@ param(
   [switch]$NoOpenClaw,
   [switch]$NoFirewall,
   [switch]$NoLogin,
+  [switch]$NoPhone,
   [switch]$NoStart,
   [switch]$RepairOnly
 )
@@ -309,9 +312,10 @@ if ($Mode -eq "modify") {
   Write-Host "  5  Sign-ins (Claude Code, Codex)"
   Write-Host "  6  Auto-start at login + watchdog (on/off)"
   Write-Host "  7  Update the code too"
+  Write-Host "  8  Phone access (use the app from your phone over the LAN, with a PIN)"
   $picks = if ($Yes -or $DryRun) { "1,2,3,4,5,6" } else { Read-Host "Change" }
   foreach ($p in ($picks -split '[,\s]+' | Where-Object { $_ })) {
-    switch ($p) { "1" { $sel.group = $true } "2" { $sel.vault = $true } "3" { $sel.tools = $true } "4" { $sel.companions = $true } "5" { $sel.signin = $true } "6" { $sel.autostart = $true } "7" { $sel.app = $true } }
+    switch ($p) { "1" { $sel.group = $true } "2" { $sel.vault = $true } "3" { $sel.tools = $true } "4" { $sel.companions = $true } "5" { $sel.signin = $true } "6" { $sel.autostart = $true } "7" { $sel.app = $true } "8" { $sel.phone = $true } }
   }
   if ($sel.Count -eq 0) { Write-Host "Nothing selected - no changes made." -ForegroundColor Yellow; try { Stop-Transcript | Out-Null } catch { }; exit 0 }
   if ($sel.vault) { $vaultDir = $Vault }          # re-detect / re-ask
@@ -1026,6 +1030,54 @@ else {
 } while ($false)
 
 # ---- 14. Start + verify -----------------------------------------------------
+function Read-Secret($q) {
+  $sec = Read-Host $q -AsSecureString
+  $p = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($sec)
+  try { return [Runtime.InteropServices.Marshal]::PtrToStringBSTR($p) } finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($p) }
+}
+function Send-Phone($body) {
+  return Invoke-RestMethod -Method Post -TimeoutSec 20 -ContentType "application/json" -Body ($body | ConvertTo-Json -Compress) http://127.0.0.1:3000/api/phone
+}
+# Phone access (optional): the whole app on the LAN port 3101 behind a PIN - the same as
+# Settings -> Phone access in the app. The PIN is typed hidden and only its hash is stored.
+function Set-PhoneAccess {
+  if ($NoPhone -or $Yes -or $DryRun) { return }
+  if ($Mode -eq "modify" -and -not $sel.phone) { return }
+  try { $st = Invoke-RestMethod -TimeoutSec 10 http://127.0.0.1:3000/api/phone } catch { Warn "phone access: couldn't reach the app ($($_.Exception.Message))"; return }
+  $url = @($st.urls)[0]
+  if ($st.enabled) {
+    if ($Mode -ne "modify") { Ok "Phone access is on - $url"; return }
+    Info "Phone access is on - $url"
+    if (-not (YesNo "Change the phone PIN (signs every phone out)?" $false)) {
+      if (YesNo "Turn phone access off?" $false) {
+        try { Send-Phone @{ enabled = $false } | Out-Null; Done "Phone access turned off" } catch { Warn "couldn't turn it off: $($_.Exception.Message)" }
+      }
+      return
+    }
+  } else {
+    Info "Phone access: open $ProductName on your phone (same Wi-Fi, or Tailscale when away) - sessions, live replies,"
+    Info "permission prompts - signed in with a PIN you choose. Off by default; you can also do this later in Settings."
+    if (-not (YesNo "Turn on phone access now?" $false)) { $script:later.Add("Phone access: Settings -> Phone access in the app (set a PIN, turn it on)"); return }
+  }
+  for ($try = 0; $try -lt 3; $try++) {
+    $a = Read-Secret "    PIN for phone access (6+ characters, no spaces)"
+    if ($a -notmatch '^\S{6,64}$') { Warn "use at least 6 characters, no spaces"; continue }
+    $b = Read-Secret "    Same PIN again"
+    if ($a -cne $b) { Warn "the PINs don't match"; continue }
+    try {
+      $r = Send-Phone @{ pin = $a; enabled = $true }
+      $a = $null; $b = $null
+      $url = @($r.urls)[0]
+      Done "Phone access on - open $url on your phone and sign in with the PIN"
+      if (-not $r.listening) { Todo "Phone access: nothing is listening on port 3101 yet - restart $ProductName, then check Fleet -> LAN link" }
+      if (-not (Get-NetFirewallRule -DisplayName $PeerRule -ErrorAction SilentlyContinue)) { Todo "Phone access needs the LAN link firewall rule (port 3101) - run this installer again: Modify -> 6 Auto-start" }
+      $script:later.Add("Away from home: install Tailscale on this PC and your phone, then open http://<this PC's Tailscale IP>:3101/ (Guide -> Remote Control)")
+    } catch { Warn "couldn't turn on phone access: $($_.Exception.Message)"; $script:later.Add("Phone access: Settings -> Phone access in the app") }
+    return
+  }
+  Todo "Phone access isn't set up - Settings -> Phone access in the app"
+}
+
 do { if (-not (Should "start")) { break }
 Section "Start + health check"
 if (Test-Path $pauseFile) { Remove-Item $pauseFile -Force -ErrorAction SilentlyContinue }
@@ -1059,6 +1111,7 @@ elseif (Test-Path $server) {
         }
       }
     } catch { Warn "couldn't read the health report: $($_.Exception.Message)" }
+    Set-PhoneAccess
     Start-Process "http://127.0.0.1:3000/command"
   }
 }

@@ -54,7 +54,11 @@ code-signed. Click **More info**, then **Run anyway**.
    - **Telegram**: see step 3 below. You can also skip it and do it in the app.
 6. **Machine group**: the display name for this PC. Its role defaults to **primary**.
 7. Windows asks once to allow the firewall change for the LAN link. Click **Yes**.
-8. Agentic Operations Control opens in your browser at http://127.0.0.1:3000.
+8. **Phone access** (optional): say yes to use the app from your phone over
+   the same Wi-Fi, and choose a PIN (6+ characters, typed hidden). Then open
+   `http://<this PC's LAN IP>:3101/` on the phone. Skip it if you like; it's
+   also in **Settings → Phone access**, per machine.
+9. Agentic Operations Control opens in your browser at http://127.0.0.1:3000.
 
 Optional: in Obsidian, choose *Open folder as vault*, then the new vault folder.
 
@@ -111,6 +115,8 @@ Per-machine settings are elsewhere:
 |---|---|
 | This PC's name and role | **Settings → Machine Group & Roles** |
 | LAN or Off-LAN | **Fleet → Network** |
+| Phone access (PIN, signed-in phones) | **Settings → Phone access** |
+| Answer Claude Code permission prompts from the app | **Fleet → Session alerts** (whole network); to answer for another machine, **Fleet → Sharing → Replies from my other machines** on that machine |
 | API keys | **Settings → API Keys** and **Settings → LLM Connections** (each machine keeps its own `.env.local`) |
 
 Scheduled missions are kept per machine and run on the master. Create them
@@ -124,4 +130,5 @@ on the primary under **Missions → On a schedule**.
   choose **Modify**, then the vault. Or in the app, go to
   **Settings → This network → Vault on this machine**, then **Restart now**.
 - In the app, the **Guide** has a page called **Set Up a New Network** with the
-  same steps.
+  same steps, and a **Remote Control** page about live sessions, permission
+  prompts and phone access.
