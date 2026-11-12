@@ -151,6 +151,32 @@ function Show-Status {
 # --------------------------------------------------------------------------
 # The check itself
 # --------------------------------------------------------------------------
+# Why did it stop? Copy the last lines the server wrote into this log.
+#   data\server-events.log  - written by the app (exit code, signals, errors, memory)
+#   data\server.log         - its console output (server.cmd --log)
+#   data\reports\          - Node's report after a fatal crash (out of memory etc.)
+# No "exit" line at all = something outside ended the process.
+function Write-StopClues {
+  try {
+    $ev = Join-Path $DataDir 'server-events.log'
+    if (Test-Path $ev) {
+      $last = @(Get-Content $ev -Tail 3 -Encoding UTF8 -ErrorAction Stop)
+      foreach ($l in $last) { Write-Log ("  last app event: " + $l) }
+      if (-not ($last -match '\] (exit|received) ')) { Write-Log "  no exit recorded - the process was ended from outside (or crashed hard; see data\reports)" }
+    }
+    $out = Join-Path $DataDir 'server.log'
+    if (Test-Path $out) {
+      $tail = @(Get-Content $out -Tail 40 -Encoding UTF8 -ErrorAction Stop | Where-Object { $_.Trim() -and $_ -notmatch '^=====' } | Select-Object -Last 6)
+      foreach ($l in $tail) { $t = $l.Trim(); if ($t.Length -gt 220) { $t = $t.Substring(0, 217) + '...' }; Write-Log ("  last output: " + $t) }
+    }
+    $rep = Join-Path $DataDir 'reports'
+    if (Test-Path $rep) {
+      $new = Get-ChildItem $rep -Filter '*.json' -ErrorAction SilentlyContinue | Where-Object { $_.LastWriteTime -gt (Get-Date).AddMinutes(-15) } | Select-Object -First 1
+      if ($new) { Write-Log ("  crash report: " + $new.FullName) }
+    }
+  } catch { }
+}
+
 function Invoke-Check {
   if (Test-Path $PauseFile) {
     $age = (Get-Date) - (Get-Item $PauseFile).LastWriteTime
@@ -192,7 +218,8 @@ function Invoke-Check {
   }
 
   Write-Log "port $Port not listening - relaunching server.cmd"
-  Start-Process -FilePath $ServerCmd -WorkingDirectory $Repo -WindowStyle Hidden
+  Write-StopClues
+  Start-Process -FilePath $ServerCmd -ArgumentList '--log' -WorkingDirectory $Repo -WindowStyle Hidden
 
   # confirm, rather than launch blind (a silent-start bug once hid behind that)
   $deadline = (Get-Date).AddSeconds(90)

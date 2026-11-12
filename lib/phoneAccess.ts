@@ -199,16 +199,30 @@ export async function handlePhone(req: http.IncomingMessage, res: http.ServerRes
   // the phone's own Host is kept, so anything the app builds from it points back at this port
   const headers: http.OutgoingHttpHeaders = { ...req.headers, "x-forwarded-for": clientIp(req), "x-mc-phone": "1" };
   delete headers["x-mc-peer-key"];
+  // Every stream gets an error handler: an unhandled stream error would end the whole server.
   const up = http.request({ host: "127.0.0.1", port: APP_PORT, method: req.method, path: req.url, headers }, (r) => {
+    r.on("error", () => res.destroy());
     const out = { ...r.headers };
     const loc = out.location;
     if (typeof loc === "string") out.location = loc.replace(/^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?/i, "");
-    res.writeHead(r.statusCode ?? 502, out);
+    try {
+      res.writeHead(r.statusCode ?? 502, out);
+    } catch {
+      r.destroy();
+      return void res.destroy();
+    }
     r.pipe(res);
   });
   up.on("error", (e) => {
+    if (res.destroyed) return;
     if (!res.headersSent) page(res, 502, "Not running", `<h1>The app isn't answering</h1><p>${esc(e.message)}</p>`);
     else res.end();
+  });
+  // the phone hung up (closed the tab, cancelled a prefetch): stop the request to the app too
+  req.on("error", () => up.destroy());
+  res.on("error", () => up.destroy());
+  res.on("close", () => {
+    if (!res.writableFinished) up.destroy();
   });
   req.pipe(up);
 }

@@ -7,6 +7,9 @@ export async function register() {
     return;
   }
   if (process.env.NEXT_RUNTIME === "nodejs") {
+    // data\server-events.log: start, exit, signals, uncaught errors, memory - why it stopped
+    const { startServerLog } = await import("./lib/serverLog");
+    startServerLog();
     const { startScheduler } = await import("./lib/scheduler");
     startScheduler();
     // Bring up companion daemons (Hermes dashboard, Ollama) this app depends on.
