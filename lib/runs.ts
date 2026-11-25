@@ -10,9 +10,10 @@ import { runAgentText } from "./runners";
 import { createApproval, listApprovals } from "./approvals";
 import { sendTelegram } from "./telegram";
 import { readTasks, writeTasks, newTaskId } from "./tasks";
-import { pickHermesModel } from "./nousModels";
+import { pickHermesModel, readWorkerModelSettings } from "./nousModels";
 import { cliAvailable } from "./cliAvailable";
-import { toolLabel, type SessionTool } from "./sessionTools";
+import { toolLabel, workerLabel, type SessionTool, type WorkerTool } from "./sessionTools";
+import { readRegistry, isLocalEndpoint } from "./registry";
 import { productName } from "./netSettings";
 import { readChecks } from "./projectChecks";
 
@@ -51,6 +52,12 @@ import { readChecks } from "./projectChecks";
  * back to the worker with the end of the command's output. Checks run only when
  * the run works on the machine that drives it.
  *
+ * THE LOCAL MODEL AS A WORKER. A machine with a local model (Ollama) uses it
+ * first for the smallest tasks: routine, text in and text out, no web, no files.
+ * It is not a session — one plain completion, no tools, nothing written to the
+ * shared memory — and its work is reviewed from above like anyone's. If it is
+ * not accepted the task goes to the normal ladder with all its attempts intact.
+ *
  * Not yet (later phases): running tasks on several machines at once, lessons
  * carried between runs, a branch per run.
  */
@@ -88,10 +95,16 @@ export interface RunTask {
   /** finished attempts, across all tiers */
   attempts: number;
   attemptsAtTier: number;
-  tool?: SessionTool;
+  tool?: WorkerTool;
   model?: string;
   /** why this worker was chosen */
   why?: string;
+  /** tool "local": the id of this machine's local model in data/registry.json */
+  agent?: string;
+  /** the local model's call in flight. It is not a job: nothing to look up, so after a restart it is simply made again */
+  local?: { at: number };
+  /** the local model has had its one go at this task */
+  triedLocal?: boolean;
   /** the job in flight; written before the job is started */
   job?: { id: string; mode: "new" | "reply"; at: number };
   jobIds: string[];
@@ -220,7 +233,7 @@ function runMarkdown(run: Run): string {
     ...(run.tasks.length === 0 ? ["_Not planned yet._"] : []),
     ...run.tasks.map(
       (t) =>
-        `- [${mark(t)}] **${t.id} · ${t.title}** — ${t.tier}${t.workTier !== t.tier ? ` → ${t.workTier}` : ""}${t.needsWeb ? " · web" : ""} · ${t.access}${t.dependsOn.length ? ` · after ${t.dependsOn.join(", ")}` : ""}${t.checks?.length ? ` · must pass ${t.checks.join(", ")}` : ""}${t.tool ? ` · ${toolLabel(t.tool)}${t.model ? ` (${t.model})` : ""}` : ""} · ${state(t)}`,
+        `- [${mark(t)}] **${t.id} · ${t.title}** — ${t.tier}${t.workTier !== t.tier ? ` → ${t.workTier}` : ""}${t.needsWeb ? " · web" : ""} · ${t.access}${t.dependsOn.length ? ` · after ${t.dependsOn.join(", ")}` : ""}${t.checks?.length ? ` · must pass ${t.checks.join(", ")}` : ""}${t.tool ? ` · ${workerLabel(t.tool)}${t.model ? ` (${t.model})` : ""}` : ""} · ${state(t)}`,
     ),
     ...(run.planNote ? [``, `_${run.planNote}_`] : []),
     ``,
@@ -270,7 +283,7 @@ async function writeTaskNote(run: Run, t: RunTask): Promise<void> {
   const md = [
     `# ${t.id} · ${t.title}`,
     ``,
-    `Part of [[Agentic OS/Runs/${run.id}/Run|${run.title}]] · ${t.status}${t.reviewNote ? ` (${t.reviewNote})` : ""} · ${t.attempts} attempt${t.attempts === 1 ? "" : "s"}${t.tool ? ` · ${toolLabel(t.tool)}${t.model ? ` on ${t.model}` : ""}` : ""}`,
+    `Part of [[Agentic OS/Runs/${run.id}/Run|${run.title}]] · ${t.status}${t.reviewNote ? ` (${t.reviewNote})` : ""} · ${t.attempts} attempt${t.attempts === 1 ? "" : "s"}${t.tool ? ` · ${workerLabel(t.tool)}${t.model ? ` on ${t.model}` : ""}` : ""}`,
     ``,
     `## Task`,
     ``,
@@ -448,7 +461,7 @@ function planPrompt(run: Run): string {
   ].join("\n");
 }
 
-function workPrompt(run: Run, t: RunTask): string {
+function workPrompt(run: Run, t: RunTask, opts: { local?: boolean } = {}): string {
   const deps = t.dependsOn.map((id) => run.tasks.find((x) => x.id === id)).filter((x): x is RunTask => !!x && !!x.result);
   return [
     `You are doing ONE task of a larger project run by ${productName()}.`,
@@ -469,7 +482,10 @@ function workPrompt(run: Run, t: RunTask): string {
     t.access === "edit" ? `- You may create and change files in the working folder. Do not delete anything you did not create.` : `- You cannot change files in this session. Put everything you produce in your reply.`,
     `- If you cannot finish, start your reply with "BLOCKED:" and say exactly what stopped you. Do not pretend.`,
     ...(t.access === "edit" ? [`- Delete any scratch or probe files you create along the way. Leave only what the task asks for.`] : []),
-    `- End with a line "RESULT:" followed by what you produced${t.access === "edit" ? " and the paths of any files you changed" : ""}.`,
+    // A local model read "followed by what you produced" as "repeat it all" and was rejected for a duplicated answer
+    opts.local
+      ? `- Give your full answer once. Then end with ONE line starting "RESULT:" that says in one sentence what you produced. Do not repeat the answer after it.`
+      : `- End with a line "RESULT:" followed by what you produced${t.access === "edit" ? " and the paths of any files you changed" : ""}.`,
   ].join("\n");
 }
 
@@ -547,21 +563,77 @@ function raise(tier: Tier): Tier | null {
 }
 
 interface Worker {
-  tool: SessionTool;
+  tool: WorkerTool;
   model?: string;
   web?: boolean;
+  /** tool "local": which registry entry */
+  agent?: string;
   why: string;
+}
+
+interface LocalModel {
+  id: string;
+  name: string;
+  model: string;
+}
+
+/**
+ * What the local model is trusted with: the smallest kind of task, once.
+ * Text in, text out — it gets no folder, no tools and no web. The prompt has to
+ * be short because Ollama sizes a model's context from the machine's memory (as
+ * little as 4k tokens) and cuts a longer prompt without saying so; a worker that
+ * silently lost half its instructions is worse than no worker (AGENTS.md rule 18).
+ */
+const LOCAL_PROMPT_MAX = 6000;
+function fitsLocal(run: Run, t: RunTask): boolean {
+  return t.workTier === "routine" && t.access === "answer" && !t.needsWeb && !t.triedLocal && t.attempts === 0 && !(t.checks ?? []).length && workPrompt(run, t, { local: true }).length <= LOCAL_PROMPT_MAX;
+}
+
+/**
+ * This machine's local model, if a run may use it right now: the run works on
+ * this machine, the owner has not switched it off ("local": false in
+ * data/worker-models.json), a keyless local endpoint is registered, and it
+ * answers with that model in its list. Asked, not assumed — with Ollama closed
+ * every routine task would otherwise lose a pass finding that out.
+ */
+async function localWorker(run: Run): Promise<LocalModel | null> {
+  if (run.host !== me()) return null;
+  if ((await readWorkerModelSettings()).local === false) return null;
+  const llm = (await readRegistry()).llms.find((l) => isLocalEndpoint(l.baseUrl) && !l.apiKey && l.model);
+  if (!llm) return null;
+  try {
+    const res = await fetch(`${llm.baseUrl.replace(/\/+$/, "")}/models`, { signal: AbortSignal.timeout(2500) });
+    if (!res.ok) return null;
+    const ids = (((await res.json()) as { data?: { id?: string }[] }).data ?? []).map((m) => String(m.id ?? ""));
+    const bare = (s: string) => s.replace(/:latest$/, "");
+    if (!ids.some((x) => bare(x) === bare(llm.model))) return null;
+  } catch {
+    return null;
+  }
+  return { id: llm.id, name: llm.name, model: llm.model };
+}
+
+/** One request at a time to the local model, across every run: a second would only queue inside Ollama with its time limit already running. */
+let localTurn: Promise<unknown> = Promise.resolve();
+function inLocalTurn<T>(work: () => Promise<T>): Promise<T> {
+  const next = localTurn.catch(() => {}).then(work);
+  localTurn = next;
+  return next;
 }
 
 /**
  * The cheapest worker that fits the task, on the machine the run uses.
- *   routine  → Hermes on a free Nous model, then Codex, then Claude
+ *   routine  → the local model for a small text-only task, if this machine has one;
+ *              then Hermes on a free Nous model, then Codex, then Claude
  *   standard → Codex, then Claude
  *   hard     → Claude, then Codex
  * A tool whose subscription has hit its limit is skipped; a tool that machine
  * doesn't have is skipped. Claude is the one tool every machine is assumed to have.
  */
-async function chooseWorker(t: RunTask, subs: SubscriptionMeter[]): Promise<Worker> {
+async function chooseWorker(run: Run, t: RunTask, subs: SubscriptionMeter[], local: LocalModel | null): Promise<Worker> {
+  if (local && fitsLocal(run, t)) {
+    return { tool: "local", agent: local.id, model: local.model, why: `routine text-only task → the local model on this machine (${local.model}: free, uses no subscription, nothing leaves the PC)` };
+  }
   const meter = (tool: SessionTool) => subs.find((s) => s.tool === tool);
   const usable = (tool: SessionTool) => {
     const m = meter(tool);
@@ -748,6 +820,18 @@ async function checkApproval(id: string): Promise<void> {
 
 /** After a failed attempt: same worker again, one tier up, or give up. */
 function afterFailure(run: Run, t: RunTask, reason: string): string {
+  if (t.tool === "local") {
+    // The local model's go is free and takes seconds, so it does not use up one of the task's
+    // attempts: the task goes to the normal ladder, which still has its full number of tries.
+    // (`triedLocal` is what stops it coming back here; a rejected result is shown to the next worker.)
+    t.local = undefined;
+    t.job = undefined;
+    t.tool = undefined;
+    t.agent = undefined;
+    t.model = undefined;
+    t.status = "pending";
+    return `${t.id}: the local model's attempt was not accepted → handing it to a subscription worker: ${reason}`;
+  }
   t.attempts++;
   t.attemptsAtTier++;
   t.job = undefined;
@@ -768,6 +852,47 @@ function afterFailure(run: Run, t: RunTask, reason: string): string {
   }
   t.status = "pending";
   return `${t.id} attempt ${t.attempts} failed → trying again: ${reason}`;
+}
+
+/**
+ * A task done by this machine's local model: one plain completion. No session,
+ * no folder, no tools — runAgentText() gives a registry model no tool loop, and
+ * `injectMemory: false` keeps the shared memory out of it. What comes back is
+ * treated exactly like a session's reply: empty or "BLOCKED:" is a failed go,
+ * anything else goes to review.
+ */
+async function localWork(id: string, taskId: string): Promise<void> {
+  const r = await inLocalTurn(async () => {
+    // read when its turn comes, not when it was queued: the run may have been stopped while it waited
+    const run = await readRun(id);
+    const t = run?.tasks.find((x) => x.id === taskId);
+    if (!run || run.status !== "running" || !t || t.status !== "running" || !t.local) return null;
+    if (!t.agent) return { at: t.local.at, text: "", error: "no local model is recorded for this task" };
+    const out = await runAgentText(t.agent, workPrompt(run, t, { local: true }), { injectMemory: false });
+    return { at: t.local.at, text: (out.text ?? "").trim(), error: out.error };
+  });
+  if (!r) return;
+  let line = "";
+  await withRun(id, (run) => {
+    const t = run.tasks.find((x) => x.id === taskId);
+    // paused is fine (the answer is kept, like a session that finishes during a pause); stopped or moved on is not
+    if (!t || t.status !== "running" || t.local?.at !== r.at || ["stopped", "failed", "done"].includes(run.status)) return;
+    const model = t.model;
+    t.local = undefined;
+    if (r.error) line = afterFailure(run, t, `the local model could not run it: ${r.error.replace(/\s+/g, " ").slice(0, 160)}`);
+    else if (!r.text) line = afterFailure(run, t, "the local model returned nothing");
+    else if (/^\s*BLOCKED:/i.test(r.text)) {
+      t.result = clip(r.text, MAX_RESULT);
+      line = afterFailure(run, t, `the local model was blocked: ${r.text.replace(/\s+/g, " ").slice(8, 160)}`);
+    } else {
+      t.result = clip(r.text, MAX_RESULT);
+      t.reviewTries = 0;
+      t.checkResults = [];
+      t.status = "review";
+      line = `${t.id} finished by the local model${model ? ` (${model})` : ""} → review.`;
+    }
+  });
+  if (line) await log(id, line);
 }
 
 async function review(id: string, taskId: string): Promise<void> {
@@ -843,7 +968,7 @@ async function deliver(id: string): Promise<void> {
     ``,
     ...run.tasks.map((t) => {
       const tries = t.attempts + (t.status === "done" ? 1 : 0);
-      const worker = t.tool ? ` · done by ${toolLabel(t.tool)}${t.model ? ` (${t.model})` : ""}${t.workTier !== t.tier ? `, moved up from ${t.tier} to ${t.workTier}` : ""}` : "";
+      const worker = t.tool ? ` · done by ${workerLabel(t.tool)}${t.model ? ` (${t.model})` : ""}${t.workTier !== t.tier ? `, moved up from ${t.tier} to ${t.workTier}` : ""}` : "";
       const results = t.checkResults ?? [];
       const checksLine = results.length ? ` · checks: ${results.map((r) => `${r.name} ${r.ran ? (r.ok ? "passed" : "FAILED") : "not run"}`).join(", ")}` : "";
       const review = `${checksLine}${t.reviewNote ? ` · ${t.reviewNote}` : t.reviewedBy ? ` · reviewed by ${t.reviewedBy}` : ""}`;
@@ -880,7 +1005,12 @@ async function step(id: string): Promise<void> {
   // decide which workers ready tasks get BEFORE taking the lock (it may fetch the Nous price list)
   const ready = run0.tasks.filter((t) => t.status === "pending" && t.dependsOn.every((d) => run0.tasks.find((x) => x.id === d)?.status === "done"));
   const picks = new Map<string, Worker>();
-  for (const t of ready) if (!(t.sessionKey && t.feedback)) picks.set(t.id, await chooseWorker(t, subs));
+  let local: LocalModel | null | undefined; // looked up once, and only if some task could use it
+  for (const t of ready) {
+    if (t.sessionKey && t.feedback) continue;
+    if (local === undefined && fitsLocal(run0, t)) local = await localWorker(run0);
+    picks.set(t.id, await chooseWorker(run0, t, subs, local ?? null));
+  }
 
   const lines: string[] = [];
   const overdue: string[] = [];
@@ -904,7 +1034,7 @@ async function step(id: string): Promise<void> {
         // failed attempt, so the task moves to another model or up a tier instead of sitting there.
         if (job.status === "running" && job.startedAt && Date.now() - job.startedAt > TIME_BUDGET_MS[t.workTier]) {
           overdue.push(job.id);
-          lines.push(afterFailure(run, t, `${toolLabel(t.tool ?? "claude")} was still working after ${Math.round(TIME_BUDGET_MS[t.workTier] / 60_000)} minutes and was stopped`));
+          lines.push(afterFailure(run, t, `${workerLabel(t.tool ?? "claude")} was still working after ${Math.round(TIME_BUDGET_MS[t.workTier] / 60_000)} minutes and was stopped`));
           if ((t.status as TaskStatus) === "failed") settled.push(t);
           continue;
         }
@@ -927,10 +1057,10 @@ async function step(id: string): Promise<void> {
             t.checkResults = []; // a new attempt has to prove itself again
             const must = t.checks ?? [];
             t.status = must.length ? "checking" : "review";
-            lines.push(`${t.id} finished by ${toolLabel(t.tool ?? "claude")}${t.model ? ` (${t.model})` : ""} → ${must.length ? `running ${must.length === 1 ? `the check "${must[0]}"` : `${must.length} checks`}` : "review"}.`);
+            lines.push(`${t.id} finished by ${workerLabel(t.tool ?? "claude")}${t.model ? ` (${t.model})` : ""} → ${must.length ? `running ${must.length === 1 ? `the check "${must[0]}"` : `${must.length} checks`}` : "review"}.`);
           }
         } else if (job.status === "error" || job.status === "expired") {
-          lines.push(afterFailure(run, t, `${toolLabel(t.tool ?? "claude")} could not run it: ${(job.error ?? job.status).replace(/\s+/g, " ").slice(0, 160)}`));
+          lines.push(afterFailure(run, t, `${workerLabel(t.tool ?? "claude")} could not run it: ${(job.error ?? job.status).replace(/\s+/g, " ").slice(0, 160)}`));
         }
         if ((t.status as TaskStatus) === "failed") settled.push(t);
       }
@@ -993,6 +1123,17 @@ async function step(id: string): Promise<void> {
         t.tool = w.tool;
         t.model = w.model;
         t.why = w.why;
+        t.agent = w.agent;
+        if (w.tool === "local") {
+          // no job: the call is made after this is written, and made again if the server restarts meanwhile
+          t.triedLocal = true;
+          t.local = { at: Date.now() };
+          t.job = undefined;
+          t.status = "running";
+          t.startedAt ??= Date.now();
+          lines.push(`${t.id} started: ${t.why}.`);
+          continue;
+        }
       }
       // the id goes into the run first; the job is started after this is written
       t.job = { id: newJobId(), mode: reply ? "reply" : "new", at: Date.now() };
@@ -1000,7 +1141,7 @@ async function step(id: string): Promise<void> {
       t.status = "running";
       t.startedAt ??= Date.now();
       toStart.push({ task: { ...t }, mode: t.job.mode, prompt: reply ? reworkPrompt(t) : workPrompt(run, t) });
-      lines.push(reply ? `${t.id} sent back to the same ${toolLabel(t.tool ?? "claude")} session with the review.` : `${t.id} started: ${t.why}.`);
+      lines.push(reply ? `${t.id} sent back to the same ${workerLabel(t.tool ?? "claude")} session with the review.` : `${t.id} started: ${t.why}.`);
     }
 
     // 4. nothing left to do → deliver
@@ -1012,6 +1153,7 @@ async function step(id: string): Promise<void> {
   if (!state) return;
   for (const t of settled) await writeTaskNote(state, t);
   for (const t of state.tasks) if (t.status === "review") detach(`${id}:review:${t.id}`, () => review(id, t.id));
+  for (const t of state.tasks) if (t.status === "running" && t.local) detach(`${id}:local:${t.id}`, () => localWork(id, t.id));
 
   for (const c of checksToStart) {
     try {
@@ -1032,7 +1174,7 @@ async function step(id: string): Promise<void> {
 
   for (const s of toStart) {
     const t = s.task;
-    if (!t.job) continue;
+    if (!t.job || t.tool === "local") continue; // the local model is not started as a job (see localWork)
     try {
       const job = await startJob(
         s.mode === "reply"

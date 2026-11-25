@@ -63,7 +63,9 @@ manual is `/guide` (source: `lib/guideContent.ts`).
   harvesting), `Shell.tsx`, `ChatThread.tsx`, `SettingsSection.tsx`,
   `GuideSection.tsx`, `Markdown.tsx` ([[wikilinks]] → obsidian:// links).
 - `data/*.json` — runtime state (git-ignored; registry.json holds plaintext
-  API keys). `.env.local` — machine config (`VAULT_DIR`, `EMBED_*`,
+  API keys). The installers add the local chat model to it through
+  `scripts/register-local-model.mjs` — parse and rewrite whole, never patch
+  the file as text, and never overwrite one that will not parse. `.env.local` — machine config (`VAULT_DIR`, `EMBED_*`,
   `OPENCLAW_CMD`, `HERMES_BIN/CMD`).
 - Vault: `VAULT_DIR` → app writes under `Agentic OS/` (Memory.md, Goals.md,
   Journal/, Chats/, Missions/, Agents/, Workspaces/<name>/, Guide.md, Home.md,
@@ -168,6 +170,14 @@ manual is `/guide` (source: `lib/guideContent.ts`).
 23. **Small local models read the shared brain; they do not write to it.**
     `WRITE_TOOLS` (lib/llmTools.ts) are withheld from local endpoints and
     refused at execution; the OS-verb hint is left out of their system prompt.
+    As a project-run worker (`localWork` in lib/runs.ts) it gets one plain
+    completion with `injectMemory: false` and no tools, only for routine
+    answer-only tasks with no web or checks, once per task, and its failure
+    does not use up an attempt. Keep its prompt short (`LOCAL_PROMPT_MAX`):
+    Ollama sizes context from the machine's memory and cuts long prompts
+    silently. Tell it plainly not to repeat itself — told to end with
+    "RESULT: what you produced", gpt-oss pasted its whole answer twice and was
+    rejected for it.
 24. **The vault is a OneDrive folder: a rename can be refused.** While a file is
     being uploaded or read, `rename` onto it fails with EPERM/EBUSY for a moment.
     Use a retrying replace (`replaceFile` in lib/runs.ts) for anything rewritten

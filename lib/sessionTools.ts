@@ -93,6 +93,13 @@ export function asSessionTool(v: unknown, fallback: SessionTool = "claude"): Ses
 }
 
 export const toolLabel = (tool: string): string => (isSessionTool(tool) ? SESSION_TOOLS[tool].label : tool);
+/**
+ * A project-run task can also be done by something that is not a session tool:
+ * this machine's local model (lib/runs.ts). It has no sessions, so it is not in
+ * the registry above; anything that shows who did a run task uses workerLabel.
+ */
+export type WorkerTool = SessionTool | "local";
+export const workerLabel = (tool: string): string => (tool === "local" ? "Local model" : toolLabel(tool));
 export const toolShort = (tool: string): string => (isSessionTool(tool) ? SESSION_TOOLS[tool].short : tool);
 export const toolRunsOn = (tool: string): string => (isSessionTool(tool) ? SESSION_TOOLS[tool].runsOn : "sign-in");
 export const resumeCommand = (tool: string, id: string): string => (isSessionTool(tool) ? SESSION_TOOLS[tool].resume(id) : "");

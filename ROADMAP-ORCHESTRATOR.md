@@ -36,6 +36,13 @@
 > - **Cost tiers (§2.4a) came early** too, on one machine: routine → Hermes on a free Nous
 >   model, standard → Codex, hard → Claude, smaller Claude models for smaller work, escalation
 >   after two rejections at a tier.
+> - **The local model became the first rung (2026-11-25).** On the machine a run works on, a
+>   registered and running Ollama model gets a routine, answer-only, no-web, no-checks task first:
+>   one plain completion, no tools, no shared memory, reviewed from above like any worker. A
+>   rejection hands the task to Hermes without using up an attempt. Tested on Raider18 with
+>   gpt-oss:20b: first try rejected (it repeated its answer after "RESULT:"), prompt fixed,
+>   second try done in 11 s and passed Codex's review. `"local": false` in
+>   data/worker-models.json turns it off.
 > - **The free Nous models can search the web.** Tested: all four free models answer, and a free
 >   model given the web toolset made real `web_search` / `web_extract` calls. So "the cheapest
 >   model with internet access" is normally still a free one.

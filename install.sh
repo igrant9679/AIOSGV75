@@ -184,6 +184,23 @@ else
   else CHAT_NOTE="this machine: no NVIDIA GPU found, it would be very slow - leave off"; fi
 fi
 chat_default() { [ $CHAT_FITS = 1 ] && echo y || echo n; }
+# Adds the local chat model to this machine's app as an agent (scripts/register-local-model.mjs,
+# the same script the Windows installer calls). data/registry.json holds API keys, so it is parsed
+# and re-written whole by Node, never patched as text. Safe to run again.
+register_chat_model() {
+  manual="to use $CHAT_MODEL in Mission Control, add it in Settings -> LLM Connections (base URL http://localhost:11434/v1, model $CHAT_MODEL, no key)"
+  script="$REPO_DIR/scripts/register-local-model.mjs"
+  if [ ! -f "$script" ]; then
+    if [ $DRY = 1 ]; then warn "would add $CHAT_MODEL to Mission Control as a local agent"; else todo "$manual"; fi
+    return 0
+  fi
+  if ! have node; then todo "$manual"; return 0; fi
+  if [ $DRY = 1 ]; then out="$(node "$script" "$CHAT_MODEL" --dry-run)"; rc=$?; else out="$(node "$script" "$CHAT_MODEL")"; rc=$?; fi
+  if [ $rc -ne 0 ]; then todo "$CHAT_MODEL is pulled but was not added to Mission Control ($out) - $manual"
+  elif [ $DRY = 1 ] && [ "${out#already}" = "$out" ]; then warn "$CHAT_MODEL - $out"
+  else ok "$CHAT_MODEL - $out"; fi
+  return 0
+}
 
 # Install / update / reinstall: choose the optional parts up front (one checklist),
 # so the steps below don't ask about each one. Already-installed items are kept.
@@ -396,17 +413,17 @@ if should tools; then
   else
     # The chat model: a big download that wants capable hardware. The checklist decides it on an
     # install; in Modify (no checklist) it is asked here, with the default this machine suggests.
-    if ollama list 2>/dev/null | grep -q "^$CHAT_MODEL"; then ok "$CHAT_MODEL already pulled"
+    if ollama list 2>/dev/null | grep -q "^$CHAT_MODEL"; then ok "$CHAT_MODEL already pulled"; register_chat_model
     else
       want=0
       if [ $INSTALL_CHAT = 1 ]; then want=1
       elif [ $SKIP_CHAT = 1 ] || { [ $SKIP_ALL_MODELS = 1 ] && [ $CHAT_DECIDED = 0 ]; }; then want=0
       elif [ $CHAT_DECIDED = 1 ]; then want=1
       elif yesno "Pull the local chat model $CHAT_MODEL? ${CHAT_MODEL_GB} GB download ($CHAT_NOTE)." "$(chat_default)"; then want=1; fi
-      if [ $want = 1 ] && [ $DRY = 1 ]; then warn "would pull $CHAT_MODEL (${CHAT_MODEL_GB} GB)"
+      if [ $want = 1 ] && [ $DRY = 1 ]; then warn "would pull $CHAT_MODEL (${CHAT_MODEL_GB} GB) and add it to Mission Control as a local agent"
       elif [ $want = 1 ]; then
         info "pulling $CHAT_MODEL (${CHAT_MODEL_GB} GB - this takes a while)..."
-        ollama pull "$CHAT_MODEL" && ok "pulled $CHAT_MODEL - to use it, add it in Settings -> LLM Connections (base URL http://localhost:11434/v1, model $CHAT_MODEL, no key)" || todo "couldn't pull $CHAT_MODEL - run 'ollama pull $CHAT_MODEL' later"
+        if ollama pull "$CHAT_MODEL"; then ok "pulled $CHAT_MODEL"; register_chat_model; else todo "couldn't pull $CHAT_MODEL - run 'ollama pull $CHAT_MODEL' later, then run the installer again (Modify) to add it to Mission Control"; fi
       else info "local chat model not installed ($CHAT_NOTE) - add it any time with 'ollama pull $CHAT_MODEL'"; fi
     fi
     # The search model: small, and what makes vault search understand meaning.

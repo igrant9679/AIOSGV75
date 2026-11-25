@@ -19,7 +19,7 @@ import path from "path";
  * a day; if a refresh fails the last good copy keeps being used.
  *
  * The owner can pin either choice in data/worker-models.json:
- *   { "routine": "<model id>", "web": "<model id>", "avoid": ["<model id>", …] }
+ *   { "routine": "<model id>", "web": "<model id>", "avoid": ["<model id>", …], "local": false }
  * `avoid` is also where a model that turned out not to work gets parked.
  */
 
@@ -49,6 +49,8 @@ export interface WorkerModelSettings {
   routine?: string;
   web?: string;
   avoid?: string[];
+  /** false = project runs never hand a task to this machine's local model (lib/runs.ts) */
+  local?: boolean;
 }
 
 const MODEL_ID_RE = /^[\w.:~/-]{1,120}$/;
@@ -131,6 +133,7 @@ export async function readWorkerModelSettings(): Promise<WorkerModelSettings> {
       routine: isModelId(j.routine) ? j.routine : undefined,
       web: isModelId(j.web) ? j.web : undefined,
       avoid: Array.isArray(j.avoid) ? j.avoid.filter(isModelId) : [],
+      local: j.local === false ? false : undefined,
     };
   } catch {
     return { avoid: [] };

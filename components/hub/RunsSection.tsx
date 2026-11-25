@@ -6,7 +6,7 @@ import EmptyState from "../ui/EmptyState";
 import Markdown from "../Markdown";
 import { ACCENTS, type Accent } from "@/lib/accents";
 import type { Run, RunStatus, RunTask, Tier } from "@/lib/runs";
-import { toolLabel } from "@/lib/sessionTools";
+import { workerLabel } from "@/lib/sessionTools";
 import { useHub, HubError, Chip, ago } from "./common";
 import { SmallButton } from "./SessionPanel";
 
@@ -81,7 +81,7 @@ function TaskRow({ t }: { t: RunTask }) {
         )}
         {t.tool && (
           <span className="font-mono text-[10px] text-ink-dim" title={t.why}>
-            {toolLabel(t.tool)}
+            {workerLabel(t.tool)}
             {t.model ? ` · ${t.model}` : ""}
           </span>
         )}

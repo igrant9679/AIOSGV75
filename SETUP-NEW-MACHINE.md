@@ -366,9 +366,11 @@ Open http://127.0.0.1:3000. On first boot the app scaffolds
    `data/registry.json`):
    - DeepSeek / OpenRouter / Kimi / GLM / Grok / Gemini presets: pick, paste
      key. Rotate later with the pencil icon on the row.
-   - Local model: provider **Custom**, name `Local`, Base URL
+   - Local model: the installer adds it for you when it pulls `gpt-oss:20b`.
+     By hand: provider **Custom**, name `Local`, Base URL
      `http://localhost:11434/v1`, model `gpt-oss:20b` (or whatever you pulled),
      **API key blank**. A local model can read shared memory but not write to it.
+     Project runs also hand it the smallest text-only tasks first.
 2. **Command Agents** — `Codex` with template `codex exec --skip-git-repo-check {input}` (if
    installed + logged in). OpenClaw and Hermes are built-ins driven by
    `.env.local`, not added here.

@@ -1,6 +1,6 @@
 <#
   Mission Control - Windows installer, updater, modifier and uninstaller.
-  MC-INSTALLER-VERSION: 2026.11.24.1   (bump on every change; setup.exe runs the newer of its bundled copy and GitHub's)
+  MC-INSTALLER-VERSION: 2026.11.24.2   (bump on every change; setup.exe runs the newer of its bundled copy and GitHub's)
 
   Run it any time. On a machine without Mission Control it installs everything;
   on a machine that has it, it asks what you want:
@@ -180,6 +180,25 @@ function Move-Blockers($gitOutput) {
   }
   if ($moved) { Warn "moved $moved hand-copied file(s) to $backup (the official versions replace them)" }
   return $moved
+}
+# Adds the local chat model to this machine's app as an agent, so it does not also need a trip
+# to Settings. One Node script does it for both installers (scripts\register-local-model.mjs):
+# data\registry.json is the file that holds API keys, so it is only ever parsed and re-written
+# whole, never patched as text. Safe to run again: it does nothing when the model is already there.
+function Register-ChatModel {
+  $manual = "to use $ChatModel in $ProductName, add it in Settings -> LLM Connections (base URL http://localhost:11434/v1, model $ChatModel, no key)"
+  $script = Join-Path $RepoDir "scripts\register-local-model.mjs"
+  if (-not (Test-Path $script)) {
+    if ($DryRun) { Warn "would add $ChatModel to $ProductName as a local agent" } else { Todo $manual }
+    return
+  }
+  if (-not (Have node)) { Todo $manual; return }
+  $a = @($script, $ChatModel); if ($DryRun) { $a += "--dry-run" }
+  $out = (& node @a | Out-String).Trim()
+  if ($LASTEXITCODE -ne 0) { Todo "$ChatModel is pulled but was not added to $ProductName ($out) - $manual"; return }
+  if ($out -match '^already') { Ok "$ChatModel - $out" }
+  elseif ($DryRun) { Warn "$ChatModel - $out" }
+  else { Done "$ChatModel - $out" }
 }
 function Winget-Install($id, $name) {
   if ($DryRun) { Warn "would install $name ($id) via winget"; return }
@@ -655,17 +674,17 @@ elseif (Have ollama) {
   $have = (& ollama list 2>$null) | Out-String
   # The chat model: a $ChatModelGB GB download that wants a capable GPU. The checklist decides it on
   # an install; in Modify (no checklist) it is asked here, with the default this PC's GPU suggests.
-  if ($have -match [regex]::Escape($ChatModel)) { Ok "$ChatModel already pulled" }
+  if ($have -match [regex]::Escape($ChatModel)) { Ok "$ChatModel already pulled"; Register-ChatModel }
   else {
     $want = $false
     if ($InstallChatModel) { $want = $true }
     elseif ($SkipChatModel -or ($script:skipAllModels -and -not $script:chatModelDecided)) { $want = $false }
     elseif ($script:chatModelDecided) { $want = $true }
     else { $want = YesNo "Pull the local chat model $ChatModel? $ChatModelGB GB download ($ChatModelNote)." $ChatModelFits }
-    if ($want -and $DryRun) { Warn "would pull $ChatModel ($ChatModelGB GB)" }
+    if ($want -and $DryRun) { Warn "would pull $ChatModel ($ChatModelGB GB) and add it to $ProductName as a local agent" }
     elseif ($want) {
       Info "pulling $ChatModel ($ChatModelGB GB - this takes a while)..."; & ollama pull $ChatModel | Out-Host
-      if ($LASTEXITCODE -eq 0) { Done "pulled $ChatModel - to use it, add it in Settings -> LLM Connections (base URL http://localhost:11434/v1, model $ChatModel, no key)" } else { Todo "couldn't pull $ChatModel - run 'ollama pull $ChatModel' later" }
+      if ($LASTEXITCODE -eq 0) { Done "pulled $ChatModel"; Register-ChatModel } else { Todo "couldn't pull $ChatModel - run 'ollama pull $ChatModel' later, then run the installer again (Modify -> tools) to add it to $ProductName" }
     }
     else { Info "local chat model not installed ($ChatModelNote) - add it any time with 'ollama pull $ChatModel'" }
   }

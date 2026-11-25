@@ -305,8 +305,13 @@ IdrisArea51 backup). Started as a comparison against a "shared Obsidian memory" 
    **Installer 2026.11.24.1:** the "models" checklist item now means the search model only, and a
    new `chatmodel` item offers gpt-oss:20b, pre-ticked only when nvidia-smi reports 16 GB+ (Mac:
    Apple Silicon with 24 GB+). `-InstallChatModel` / `-SkipChatModel`. Dry-run verified for 8 GB,
-   16 GB, no GPU and the forced flag. The installer still does NOT register the model in
-   data/registry.json; it prints the Settings step. Web search for local/API models needs a Brave
+   16 GB, no GPU and the forced flag.
+   **2026-11-25: Installer 2026.11.24.2 registers the model** via `scripts/register-local-model.mjs`
+   (both installers call it; idempotent; repoints an old llama3.2 local entry; refuses an
+   unparseable registry.json). **And project runs use the local model** as the first rung for
+   routine answer-only no-web no-checks tasks (`localWork` in lib/runs.ts; `workerLabel` in
+   lib/sessionTools.ts; `"local": false` in data/worker-models.json opts out). Verified with a
+   real run; shared Memory.md unchanged. Web search for local/API models needs a Brave
    key in Settings -> Service Keys, and Raider18 has none.
    **Project orchestrator: designed; phase 1 built (see above)** - `ROADMAP-ORCHESTRATOR.md`. Real sessions as
    workers, vault-backed resumable state advanced by the master tick, executed checks, lessons.
