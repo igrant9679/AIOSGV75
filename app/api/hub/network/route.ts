@@ -1,6 +1,7 @@
 import os from "os";
 import { clusterStatus } from "@/lib/cluster";
 import { lanAddresses, localNetworks, networkOf, PEER_PORT } from "@/lib/netAddrs";
+import { pingStates, sendPing, PING_GIVE_UP_MS } from "@/lib/onedrivePing";
 import { modeOf, peerListening, probePeer, readNetwork, setHostNetwork, type NetMode } from "@/lib/peer";
 
 export const dynamic = "force-dynamic";
@@ -9,10 +10,12 @@ export const maxDuration = 30;
 async function view(probe: boolean) {
   const [net, st] = await Promise.all([readNetwork(), clusterStatus()]);
   const others = st.nodes.filter((n) => !n.self);
+  const pings = await pingStates().catch(() => ({}) as Awaited<ReturnType<typeof pingStates>>);
   const probes = probe ? await Promise.all(others.map((n) => (modeOf(net, n.host) === "offlan" ? Promise.resolve(null) : probePeer(n.host)))) : others.map(() => null);
   return {
     self: { host: os.hostname(), label: st.config.label, addrs: lanAddresses(), nets: localNetworks().map((n) => n.label), port: PEER_PORT, listening: await peerListening() },
     clusterOn: st.config.enabled,
+    pingGiveUpMs: PING_GIVE_UP_MS,
     machines: others.map((n, i) => {
       const k = Object.keys(net.hosts).find((h) => h.toLowerCase() === n.host.toLowerCase());
       const address = k ? net.hosts[k].address ?? "" : "";
@@ -25,6 +28,9 @@ async function view(probe: boolean) {
         address,
         lanAddrs,
         network: networkOf(address ? [address] : lanAddrs),
+        /** its last heartbeat, which reaches this machine through OneDrive */
+        lastSeen: (n as { ts?: number }).ts,
+        ping: pings[n.host] ?? null,
         probe: probes[i],
       };
     }),
@@ -42,7 +48,7 @@ export async function GET(req: Request) {
 
 /** { host, mode?: "lan" | "offlan" | "auto", address?: string } - shared with every machine through the vault. */
 export async function POST(req: Request) {
-  let b: { host?: string; mode?: string; address?: string };
+  let b: { host?: string; mode?: string; address?: string; action?: string };
   try {
     b = await req.json();
   } catch {
@@ -50,6 +56,10 @@ export async function POST(req: Request) {
   }
   try {
     if (!b.host || !/^[\w.-]{1,80}$/.test(b.host)) return Response.json({ error: "bad host" }, { status: 400 });
+    if (b.action === "ping") {
+      await sendPing(b.host);
+      return Response.json(await view(false));
+    }
     await setHostNetwork(b.host, { mode: b.mode as NetMode | undefined, address: typeof b.address === "string" ? b.address : undefined });
     return Response.json(await view(true));
   } catch (e) {

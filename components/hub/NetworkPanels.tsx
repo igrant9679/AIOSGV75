@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useProductName } from "../useNetSettings";
 import Panel from "../ui/Panel";
 import StatusOrb from "../ui/StatusOrb";
@@ -22,6 +22,7 @@ import { SmallButton } from "./SessionPanel";
 interface NetView {
   self: { host: string; label: string; addrs: string[]; nets?: string[]; port: number; listening: boolean };
   clusterOn: boolean;
+  pingGiveUpMs?: number;
   machines: {
     host: string;
     label: string;
@@ -31,15 +32,85 @@ interface NetView {
     lanAddrs: string[];
     /** whether its address is on one of this machine's networks */
     network?: "same" | "other" | "unknown";
+    /** its last heartbeat (arrives through OneDrive) */
+    lastSeen?: number;
+    /** the latest OneDrive round-trip test */
+    ping?: { id: string; sentAt: number; answeredAt?: number; answer?: string } | null;
     probe: { ok: boolean; ms?: number; address?: string; error?: string } | null;
   }[];
 }
+
+const ago = (ms: number) => {
+  const s = Math.max(0, Math.round(ms / 1000));
+  return s < 90 ? `${s} s` : s < 5400 ? `${Math.round(s / 60)} min` : `${Math.round(s / 3600)} h`;
+};
+const span = (ms: number) => {
+  const s = Math.max(1, Math.round(ms / 1000));
+  return s < 60 ? `${s} s` : `${Math.floor(s / 60)} min ${s % 60} s`;
+};
+
+/** A direct-link error in plain words ("The operation was aborted due to timeout" means no answer in 2 s). */
+const plainLanError = (e: string) => (/abort|timeout/i.test(e) ? "no answer within 2 seconds" : /ECONNREFUSED/i.test(e) ? "refused - is the app running there?" : e);
 
 const MODES: [NetView["machines"][number]["mode"], string, string][] = [
   ["lan", "LAN", "On the same local network: talk directly (instant), and fall back to OneDrive if it can't be reached."],
   ["offlan", "Off-LAN", "Away from the main network: OneDrive only (1-2 minutes)."],
   ["auto", "Auto", "Try the LAN when an address is known, else OneDrive (same as LAN)."],
 ];
+
+/**
+ * The OneDrive side of a machine: when its heartbeat last arrived (that machine → here),
+ * and a round-trip test (here → there → here) on request.
+ */
+function OneDriveLine({ m, giveUpMs, busy, onTest }: { m: NetView["machines"][number]; giveUpMs: number; busy: boolean; onTest: () => void }) {
+  const [, tick] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => tick((n) => n + 1), 5_000);
+    return () => clearInterval(t);
+  }, []);
+  const now = Date.now();
+  const pg = m.ping;
+  let test: ReactNode = null;
+  if (pg?.answeredAt) {
+    const ok = !/arrived too late/i.test(pg.answer ?? "");
+    test = (
+      <span style={{ color: ok ? ACCENTS.lime.base : ACCENTS.amber.base }} title={`Its answer: ${pg.answer ?? ""}`}>
+        {ok ? "✓" : "!"} round trip through OneDrive in {span(pg.answeredAt - pg.sentAt)} ({ago(now - pg.answeredAt)} ago)
+        {pg.answer && /unknown request/i.test(pg.answer)
+          ? " · it runs an older version (update it to get the full answer)"
+          : pg.answer && !/^pong/i.test(pg.answer)
+            ? ` · it answered "${pg.answer.slice(0, 60)}"`
+            : ""}
+      </span>
+    );
+  } else if (pg && now - pg.sentAt < giveUpMs) {
+    test = <span style={{ color: ACCENTS.violet.base }}>test sent {ago(now - pg.sentAt)} ago · waiting for its answer to sync back (usually 1-4 min)…</span>;
+  } else if (pg) {
+    test = (
+      <span style={{ color: ACCENTS.amber.base }} title="The test request is in its folder in the vault; if that machine is on, OneDrive or the app there is not picking it up.">
+        no answer after {ago(now - pg.sentAt)} - OneDrive may not be syncing on one of the two machines
+      </span>
+    );
+  }
+  return (
+    <div className="flex flex-wrap items-center gap-2 font-mono text-[10px] text-ink-faint">
+      <span title="Each machine writes a heartbeat file to the vault every 30 s; this is when the latest one from that machine arrived here through OneDrive.">
+        OneDrive: {m.lastSeen ? `last heard from it ${ago(now - m.lastSeen)} ago` : "no heartbeat yet"}
+      </span>
+      {test && <span>·</span>}
+      {test}
+      <button
+        type="button"
+        disabled={busy}
+        onClick={onTest}
+        title="Leaves a small test request for that machine in OneDrive and waits for its answer to come back. Proves both directions work. Nothing is run there."
+        className="cursor-pointer rounded-md border border-line px-2 py-0.5 hover:bg-white/[0.06] disabled:opacity-50"
+      >
+        Test OneDrive
+      </button>
+    </div>
+  );
+}
 
 export function NetworkPanel() {
   const product = useProductName(); // this network's product name
@@ -66,6 +137,36 @@ export function NetworkPanel() {
     const t = setInterval(() => load(), 60_000);
     return () => clearInterval(t);
   }, [load]);
+
+  // While a OneDrive test is out, look for its answer every 10 s. Only the ping fields are taken from
+  // these light reads, so the LAN results of the last full check stay on screen.
+  const waiting = view?.machines.some((m) => m.ping && !m.ping.answeredAt && Date.now() - m.ping.sentAt < (view.pingGiveUpMs ?? 900_000)) ?? false;
+  useEffect(() => {
+    if (!waiting) return;
+    const t = setInterval(async () => {
+      try {
+        const b = (await (await fetch("/api/hub/network")).json()) as NetView;
+        if (!b?.machines) return;
+        setView((v) => (v ? { ...v, machines: v.machines.map((m) => { const n = b.machines.find((x) => x.host === m.host); return n ? { ...m, ping: n.ping, lastSeen: n.lastSeen, online: n.online } : m; }) } : v));
+      } catch {
+        /* next time */
+      }
+    }, 10_000);
+    return () => clearInterval(t);
+  }, [waiting]);
+
+  const ping = async (host: string) => {
+    setBusy(host);
+    try {
+      const r = await fetch("/api/hub/network", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ host, action: "ping" }) });
+      const b = (await r.json()) as NetView & { error?: string };
+      if (!r.ok) setError(b.error ?? `HTTP ${r.status}`);
+      else setView((v) => (v ? { ...v, machines: v.machines.map((m) => { const n = b.machines.find((x) => x.host === m.host); return n ? { ...m, ping: n.ping } : m; }) } : v));
+    } catch (e) {
+      setError((e as Error).message);
+    }
+    setBusy(null);
+  };
 
   const set = async (host: string, body: object) => {
     setBusy(host);
@@ -130,7 +231,7 @@ export function NetworkPanel() {
                         : elsewhere
                           ? `online · other network (${theirs}) → via OneDrive`
                           : p
-                            ? `online · LAN not answering → via OneDrive${p.error ? ` (${p.error})` : ""}`
+                            ? `online · LAN not answering → via OneDrive${p.error ? ` (${plainLanError(p.error)})` : ""}`
                             : "online"}
                 </span>
                 <span className="flex-1" />
@@ -171,6 +272,7 @@ export function NetworkPanel() {
                   </button>
                 </form>
               )}
+              <OneDriveLine m={m} giveUpMs={view.pingGiveUpMs ?? 900_000} busy={busy === m.host} onTest={() => ping(m.host)} />
             </div>
           );
         })}

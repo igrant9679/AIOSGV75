@@ -171,7 +171,7 @@ const ID_RE = /^sj-[\w-]+$/;
 // ─── the vault channel ───
 
 const clusterDir = () => path.join(vaultInfo().base, "Cluster");
-const requestsDir = (host: string) => path.join(clusterDir(), "requests", host.replace(/[^A-Za-z0-9_-]+/g, "_"));
+export const requestsDir = (host: string) => path.join(clusterDir(), "requests", host.replace(/[^A-Za-z0-9_-]+/g, "_"));
 const handoffFile = (id: string) => path.join(clusterDir(), "handoff", `${id}.jsonl`);
 
 async function groupOn(): Promise<boolean> {
@@ -185,6 +185,9 @@ async function writeJson(file: string, data: unknown): Promise<void> {
   await fsp.writeFile(tmp, JSON.stringify(data), "utf8");
   await fsp.rename(tmp, file);
 }
+
+/** For lib/onedrivePing.ts: the same atomic write the request channel uses. */
+export const writeVaultJson = writeJson;
 
 async function readThreadFile(id: string): Promise<Thread | undefined> {
   try {
@@ -953,6 +956,12 @@ async function takeVaultRequests(): Promise<void> {
     await fsp.rm(file, { force: true }).catch(() => {});
     const r = req.job;
     if (!r?.id || !ID_RE.test(r.id)) continue;
+    // A OneDrive round-trip test (lib/onedrivePing.ts): answered here, before any request handling. Nothing runs.
+    if ((r.mode as string) === "ping") {
+      const cfg = await readConfig().catch(() => null);
+      await writeJson(path.join(dir, "results", `${r.id}.json`), { id: r.id, status: "done", reply: `pong from ${cfg?.label || me()}`, finishedAt: Date.now() }).catch(() => {});
+      continue;
+    }
     if (Date.now() - (req.sentAt ?? 0) > REMOTE_EXPIRE_MS) {
       await writeJson(path.join(dir, "results", `${r.id}.json`), { id: r.id, status: "error", error: "The request arrived too late (over 30 minutes in transit).", finishedAt: Date.now() }).catch(() => {});
       continue;
