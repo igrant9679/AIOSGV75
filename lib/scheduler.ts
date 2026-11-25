@@ -18,6 +18,7 @@ import { publishLive } from "./fleetLive";
 import { maybeDailySummary } from "./dailySummary";
 import { sessionsSnapshot } from "./sessions";
 import { mergeRemoteSessions } from "./sessionShare";
+import { maybeWeeklyRollup } from "./rollup";
 
 async function refreshScaffold(): Promise<void> {
   const reg = await readRegistry().catch(() => null);
@@ -76,6 +77,7 @@ export function startScheduler(): void {
       .then((m) => alertsTick(m.sessions)) // Telegram pings for session alerts, when turned on
       .catch(() => {});
     maybeDailySummary().catch(() => {}); // yesterday's machines note, once after 6 AM
+    maybeWeeklyRollup().catch(() => {}); // weekly notes + archive + conflict-copy sweep, every 6h
   }, 30_000);
   // catch anything already due shortly after boot
   setTimeout(async () => {

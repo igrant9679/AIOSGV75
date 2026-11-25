@@ -3,6 +3,7 @@ import os from "os";
 import { getAgentDef } from "@/lib/agents-config";
 import { findCommandAgent } from "@/lib/registry";
 import { gatherContext, memoryBlock } from "@/lib/retrieval";
+import { cleanEnv } from "@/lib/runners";
 
 export const dynamic = "force-dynamic";
 
@@ -31,7 +32,9 @@ export async function POST(request: Request) {
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
-      const child = spawn(command, [], { cwd: os.homedir(), shell: true });
+      // same environment the non-streaming runner gives these agents: no inherited
+      // Claude session vars, no provider API keys (subscription only)
+      const child = spawn(command, [], { cwd: os.homedir(), shell: true, env: cleanEnv() });
 
       const send = (obj: Record<string, unknown>) =>
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(obj)}\n\n`));

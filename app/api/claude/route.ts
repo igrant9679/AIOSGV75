@@ -3,6 +3,7 @@ import os from "os";
 import { gatherContext, memoryBlock } from "@/lib/retrieval";
 import { mcpArgs } from "@/lib/mcp";
 import type { ClaudeRunOptions } from "@/lib/types";
+import { cleanEnv } from "@/lib/runners";
 
 export const dynamic = "force-dynamic";
 
@@ -48,13 +49,10 @@ export async function POST(request: Request) {
 
   // Strip inherited session/proxy vars (e.g. when the dev server was launched
   // from inside another Claude Code session) so the CLI authenticates with its
-  // own stored credentials — but keep ANTHROPIC_API_KEY so a key set in
-  // .env.local works as the auth method.
-  const env = { ...process.env };
-  for (const key of Object.keys(env)) {
-    if (key === "ANTHROPIC_API_KEY") continue;
-    if (key.startsWith("CLAUDE_") || key.startsWith("ANTHROPIC_") || key === "CLAUDECODE") delete env[key];
-  }
+  // own stored credentials, and provider API keys so it runs on the signed-in
+  // subscription (see cleanEnv; MC_ALLOW_API_KEYS=1 lets a key through).
+  // `false`: a chat you are watching is not a background run.
+  const env = cleanEnv(false);
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({

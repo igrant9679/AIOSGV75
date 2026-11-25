@@ -3,6 +3,7 @@ import fs from "fs/promises";
 import path from "path";
 import os from "os";
 import { sendTelegram } from "./telegram";
+import { cleanEnv } from "./runners";
 
 /**
  * Hermes Goal Mode: hand Hermes a long-horizon goal and walk away. Each goal
@@ -106,7 +107,7 @@ export async function startGoalRun(goal: string, maxTurns: number): Promise<Goal
   const child = spawn(
     hermesBin(),
     ["chat", "--yolo", "--max-turns", String(maxTurns), "-z", goal],
-    { cwd: scratchDir, shell: true, env: process.env }
+    { cwd: scratchDir, shell: true, env: cleanEnv() }
   );
   procs.set(id, child);
 

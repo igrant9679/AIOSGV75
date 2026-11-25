@@ -116,7 +116,10 @@ export interface ShareSettings {
 export type RemoteReplies = "off" | "answer" | "edit";
 
 const SETTINGS_FILE = path.join(process.cwd(), "data", "share-settings.json");
-const DEFAULT_SETTINGS: ShareSettings = { conversations: true, toolMemory: true, remoteReplies: "off" };
+// remoteReplies is ON by default ("answer": read and answer, nothing that needs
+// approval), so a machine that joins the group can be worked from the others
+// straight away. A machine where the setting was ever saved keeps what it saved.
+const DEFAULT_SETTINGS: ShareSettings = { conversations: true, toolMemory: true, remoteReplies: "answer" };
 
 export async function readShareSettings(): Promise<ShareSettings> {
   try {

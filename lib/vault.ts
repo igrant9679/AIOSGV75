@@ -66,6 +66,17 @@ export async function ensureAgentPage(agentId: string, tagline?: string): Promis
   }
 }
 
+/**
+ * Write only when the content differs. An identical rewrite still makes OneDrive
+ * sync the file, and two machines doing that at the same moment is what leaves
+ * "<name>-<PC>.md" conflict copies behind.
+ */
+async function writeIfChanged(file: string, content: string): Promise<void> {
+  const current = await fs.readFile(file, "utf8").catch(() => null);
+  if (current === content) return;
+  await fs.writeFile(file, content, "utf8");
+}
+
 let scaffoldedFor = "";
 
 /** (Re)build the Home MOC note once per day and make sure core hub pages exist. */
@@ -85,7 +96,7 @@ export async function ensureScaffold(agents: { id: string; tagline?: string }[] 
   try {
     const { guideMarkdown } = await import("./guideContent");
     const { productName } = await import("./netSettings"); // dynamic: netSettings imports this file
-    await fs.writeFile(safeJoin("Guide.md"), guideMarkdown(productName()), "utf8");
+    await writeIfChanged(safeJoin("Guide.md"), guideMarkdown(productName()));
   } catch {
     /* non-fatal */
   }
@@ -99,6 +110,7 @@ export async function ensureScaffold(agents: { id: string; tagline?: string }[] 
     ``,
     `## Live surfaces`,
     `- [[Agentic OS/Guide|User Guide]] — how the whole OS works`,
+    `- [[Agentic OS/Rules|Agent Rules]] — the one note every agent follows; edit it to change how they behave`,
     `- [[Agentic OS/Memory|Shared Memory]] — what every agent knows`,
     `- [[Agentic OS/Goals|Goals]]`,
     `- [[Agentic OS/Tasks|Task Board]]`,
@@ -111,9 +123,12 @@ export async function ensureScaffold(agents: { id: string; tagline?: string }[] 
     `## Folders`,
     `- Missions/ — multi-agent run archives`,
     `- Workspaces/ — per-workspace goals & journals`,
+    `- Weekly/ — one roll-up note per week`,
+    `- Archive/ — mission logs and machine summaries older than 30 days (not searched by agents)`,
     ``,
   ].join("\n");
-  await fs.writeFile(safeJoin("Home.md"), home, "utf8");
+  await writeIfChanged(safeJoin("Home.md"), home);
+  await ensureRulesNote().catch(() => false);
 }
 
 export async function appendChatLog(agentId: string, markdown: string): Promise<string> {
@@ -138,6 +153,92 @@ export async function appendChatLog(agentId: string, markdown: string): Promise<
 /** Path segments for a workspace ("Default" or empty → the vault base itself). */
 function wsParts(workspace?: string): string[] {
   return workspace && workspace !== "Default" ? ["Workspaces", workspace] : [];
+}
+
+/* ---- agent rules ---- */
+
+/** Only this much of the rules note is sent: it rides on EVERY agent call. */
+export const RULES_MAX_CHARS = 2400;
+
+/**
+ * The rules every agent gets when Agentic OS/Rules.md is missing, and the body
+ * the note is created with. No literal OS-verb tags in here on purpose: an
+ * agent quoting its rules back in a chat reply would otherwise have the quoted
+ * tag harvested and executed. The tag syntax itself is taught by VERB_HINT in
+ * lib/retrieval.ts, which is code because the harvester parses it.
+ */
+export const DEFAULT_RULES = `## While working
+- When you finish real work in a chat, log it in one line with the journal tag: what you did and what is still open.
+- When a standing decision is made, save it with the remember tag, in one sentence. One fact per tag, and only facts that will still matter next month.
+- Link every project, person or note you mention as a [[wikilink]].
+- The memory and vault context you are given can be out of date. Prefer the newest note, and say so when you are unsure.
+
+## Never
+- Never put passwords, API keys or tokens in memory, the journal or goals.
+- Never invent activity, meetings or deadlines that are not in the context you were given.
+- Never use the tags in a scheduled brief or a mission report. They only work in chat replies.`;
+
+function rulesNoteMarkdown(): string {
+  return [
+    `# Agent Rules`,
+    ``,
+    `#agentic-os/rules · [[Agentic OS/Home|Agentic OS]]`,
+    ``,
+    `> The one note every agent is given on every call, whichever agent it is and whichever machine it runs on.`,
+    `> Edit it to change how they all behave. The change applies from the next message, with no restart.`,
+    `> Keep it short: only the first ${RULES_MAX_CHARS.toLocaleString("en-US")} characters are sent. These quoted lines are not sent.`,
+    ``,
+    DEFAULT_RULES,
+    ``,
+  ].join("\n");
+}
+
+/** Create Agentic OS/Rules.md if it is missing. Never overwrites: the note is the user's. */
+export async function ensureRulesNote(): Promise<boolean> {
+  if (!(await vaultAvailable())) return false;
+  await ensureDir(BASE);
+  try {
+    await fs.writeFile(safeJoin("Rules.md"), rulesNoteMarkdown(), { encoding: "utf8", flag: "wx" });
+    return true;
+  } catch {
+    return false; // already there
+  }
+}
+
+/** Drop frontmatter, the H1, the tag line and the quoted explainer: agents want the rules, not the note's scaffolding. */
+function stripRulesChrome(note: string): string {
+  return note
+    .replace(/^\uFEFF/, "")
+    .replace(/^---[\s\S]*?---\s*/, "")
+    .replace(/^#\s+[^\n]*\n?/, "")
+    .replace(/^#agentic-os\/[^\n]*\n?/gm, "")
+    .replace(/^>[^\n]*\n?/gm, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+export interface AgentRules {
+  text: string;
+  /** "vault" = the user's note; "default" = built-in (note missing, empty, or vault offline). */
+  source: "vault" | "default";
+  truncated: boolean;
+}
+
+/**
+ * The rules injected into every agent call. Read from the vault each time (no
+ * cache), so an edit in Obsidian applies to the next message on every machine
+ * as soon as OneDrive has delivered it.
+ */
+export async function readRules(): Promise<AgentRules> {
+  let body = "";
+  try {
+    body = stripRulesChrome(await fs.readFile(safeJoin("Rules.md"), "utf8"));
+  } catch {
+    /* missing or vault offline */
+  }
+  if (!body) return { text: DEFAULT_RULES, source: "default", truncated: false };
+  const truncated = body.length > RULES_MAX_CHARS;
+  return { text: truncated ? body.slice(0, RULES_MAX_CHARS).trimEnd() : body, source: "vault", truncated };
 }
 
 /* ---- shared memory ---- */

@@ -33,7 +33,9 @@ export interface LlmLite {
 
 /**
  * Server-side: resolve an agent's billing mode.
- * - claude → subscription unless an ANTHROPIC_API_KEY is configured
+ * - claude → subscription. An ANTHROPIC_API_KEY only reaches the CLI when the
+ *   machine has opted out of subscription-only (MC_ALLOW_API_KEYS=1, see
+ *   cleanEnv in lib/runners.ts) — only then is it API-billed
  * - registry LLM → local for localhost endpoints, otherwise API-billed
  * - command agents (Codex, Hermes, OpenClaw, custom CLIs) → unknown: they use
  *   their own login, which may be a subscription (Codex/ChatGPT, Hermes/Nous)
@@ -41,7 +43,7 @@ export interface LlmLite {
  *   costs into the ledger anyway.
  */
 export function billingFor(agentId: string, llms: LlmLite[] = []): BillingMode {
-  if (agentId === "claude") return process.env.ANTHROPIC_API_KEY ? "api" : "subscription";
+  if (agentId === "claude") return process.env.ANTHROPIC_API_KEY && process.env.MC_ALLOW_API_KEYS === "1" ? "api" : "subscription";
   if (agentId === "auto") return "unknown"; // routes to whoever — per-run reality varies
   const llm = llms.find((l) => l.id === agentId);
   if (llm) return isLocalEndpoint(llm.baseUrl) ? "local" : "api";

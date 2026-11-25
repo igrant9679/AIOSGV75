@@ -332,8 +332,11 @@ EMBED_MODEL=nomic-embed-text
 #    into lib/telegram.ts if unset) ──────────────────────────────────
 # TELEGRAM_TARGET=<your telegram user id>
 
-# ── Claude auth override (rarely needed — CLI login is the norm) ─────
-# ANTHROPIC_API_KEY=sk-ant-...   # the bridge whitelists this env var
+# ── Subscription only is the default: agent CLIs (Claude Code, Codex,
+#    command agents) never see provider API keys and run on their own
+#    sign-in. Only a machine that must run a CLI on an API key needs these:
+# MC_ALLOW_API_KEYS=1
+# ANTHROPIC_API_KEY=sk-ant-...   # ignored unless MC_ALLOW_API_KEYS=1
 ```
 
 Two traps:

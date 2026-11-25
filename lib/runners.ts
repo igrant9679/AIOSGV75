@@ -29,12 +29,45 @@ const CLI_TIMEOUT_MS = 300_000;
 const LLM_TIMEOUT_MS = 180_000;
 
 /** The env Mission Control runs agent CLIs with: no inherited Claude session vars, so they use their own login. */
+/**
+ * Variables that make a signed-in CLI bill an API account per token instead of
+ * using its subscription. `claude -p` picks up ANTHROPIC_API_KEY without asking;
+ * the others do the same for Codex, the Gemini CLI and Kimi's CLI. They often
+ * sit in .env.local for a different reason (Studio's image and voice
+ * providers read OPENAI_API_KEY / GEMINI_API_KEY there), and everything in
+ * .env.local is in this process's environment.
+ */
+export const API_KEY_VARS = [
+  "ANTHROPIC_API_KEY",
+  "ANTHROPIC_AUTH_TOKEN",
+  "OPENAI_API_KEY",
+  "CODEX_API_KEY",
+  "GEMINI_API_KEY",
+  "GOOGLE_API_KEY",
+  "GOOGLE_GENERATIVE_AI_API_KEY",
+  "MOONSHOT_API_KEY",
+  "KIMI_API_KEY",
+];
+
+/**
+ * Subscription only, the default: agent CLIs never see a provider API key, so
+ * they can only run on the login they were signed in with. A machine that
+ * really has to run a CLI on an API key opts out with MC_ALLOW_API_KEYS=1 in
+ * .env.local. Studio and API LLMs are unaffected either way: they read their
+ * keys in this process, not in a child.
+ */
+export function subscriptionOnly(): boolean {
+  return process.env.MC_ALLOW_API_KEYS !== "1";
+}
+
 export function cleanEnv(headless = true): NodeJS.ProcessEnv {
   const env = { ...process.env };
+  const strict = subscriptionOnly();
   for (const key of Object.keys(env)) {
-    if (key === "ANTHROPIC_API_KEY") continue;
+    if (key === "ANTHROPIC_API_KEY" && !strict) continue;
     if (key.startsWith("CLAUDE_") || key.startsWith("ANTHROPIC_") || key === "CLAUDECODE") delete env[key];
   }
+  if (strict) for (const key of API_KEY_VARS) delete env[key];
   // Mission Control's own background runs: the session-alert hook (scripts/mc-hook.mjs) ignores them
   if (headless) env.MC_HEADLESS = "1";
   else delete env.MC_HEADLESS;

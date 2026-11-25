@@ -165,6 +165,59 @@ helper scripts now live in vault **`Agentic OS/Cluster/`** — all idempotent, a
   not `costUsd`, so no fabricated dollars appear — but the per-agent tag reads BILLED. Fix only
   if the Analytics split starts mattering.
 
+## ✅ DONE 2026-11-24 — rules note, weekly roll-up + archive, search blind spot, subscription-only
+
+Done on Raider18 (now a **workstation**; the group is six machines, IdrisLegion7 master,
+IdrisArea51 backup). Started as a comparison against a "shared Obsidian memory" design doc.
+
+- **The vault search was blind to most of the vault, silently.** `buildIndex()` filled in
+  directory order to one 6,000-passage cap. Session digests alone are ~38,000 passages, so the
+  cap landed inside `Sessions/` and **Missions, Journal, History, Chats, Daily Summaries and
+  Agents contributed zero passages** — proved live: a phrase that exists only in a mission log
+  returned nothing but Tool Memory. 31 `Home-*`/`Guide-*` conflict copies were also eating ~1,000
+  passages. Now budgeted per folder, newest first (`FOLDER_BUDGETS`, `lib/vaultSearch.ts`);
+  `GET /api/vault/rollup` reports passages per folder. Same silent-failure family as the four in
+  this file: it kept returning results.
+- **`Agentic OS/Rules.md`** — the one note every agent gets on every call (`readRules()`,
+  injected by `memoryBlock`/`memorySystemBlock`). Edit it in Obsidian; no restart. Verified by
+  adding a rule and watching Claude obey it on the next message. `/api/vault/rules` shows what is
+  being sent. Default text deliberately has no literal OS-verb tags (a quoted tag in a chat reply
+  gets harvested).
+- **`lib/rollup.ts`** (master, every 6 h) — writes `Weekly/<YYYY>-W<ww>.md` for each finished
+  week with material (no agent call), then moves mission logs + daily machine summaries older
+  than 30 days to `Archive/<folder>/<YYYY-MM>/`, only once that week's note exists. First run,
+  by hand from Raider18: **19 weekly notes (W28–W47), 159 mission logs archived**. Archive is
+  not indexed; weekly notes link to archived logs by bare file name so the links survive the move.
+  Journal, Chats and Sessions are NOT moved (pages read them in place; a moved digest is rewritten).
+- **Conflict sweep widened** (`sweepGeneratedCopies`): Home/Guide, daily-summary, weekly and
+  mission-log copies, plus duplicate heartbeats in `Cluster/nodes` (`sweepNodeCopies`). 41 removed
+  on the first run. Home.md/Guide.md are no longer rewritten when unchanged. User-written notes
+  (Memory, Goals, Tasks, Rules, Journal) are never swept.
+- **Subscription only, by default** — `cleanEnv()` strips every provider API key
+  (`API_KEY_VARS`) from CLI children; `MC_ALLOW_API_KEYS=1` opts out. Two spawn sites that passed
+  the whole environment (`app/api/agents/run`, `lib/goalmode.ts`) now use it. Verified by planting
+  an invalid `ANTHROPIC_API_KEY` in `.env.local`: Claude still answered, `apiKeySource: none`.
+  New Health check "Subscriptions, not API tokens"; the Claude/Codex login checks now warn when
+  signed in with an API key. **Raider18 audit:** Claude = claude.ai team subscription, Codex =
+  ChatGPT login, no keys in env. Only API-key agent here is **Grok**.
+- **Replies from other machines default to "Answers only"** (was Off). Only affects a machine
+  that never saved the setting.
+
+**Still open from this session**
+1. **Every other machine needs `update.cmd`** — above all Legion7: roll-up, archive and the sweeps
+   are master duties, and old code still has the blind index. Until then 4 duplicate heartbeats
+   stay in `Cluster/nodes`.
+2. **Gemini and Kimi have no subscription path yet.** Neither CLI is installed on Raider18 and the
+   session layer only knows `claude` and `codex` (`SessionTool`). Gemini exists only as an API
+   preset / Studio image key; Kimi as a `kimi-coding` API preset and a "not installed" meter.
+   Roadmap Phase 2 ("Install + wire the Kimi CLI") covers Kimi; Gemini CLI is not on the roadmap.
+3. **Cross-machine control is Claude Code + Codex only.** Hermes, Gemini, Kimi sessions cannot be
+   listed, resumed or started from another machine.
+4. Nobody logs to the journal (2 files, both July). The rules note now asks agents to; watch
+   whether `Journal/` starts filling before trusting the weekly notes' Journal section.
+5. `collectVaultFiles()` (Library, graph, reports) still stops at 3,000 files in directory order —
+   the same shape of bug as the index had. ~1,500 files today.
+
 ## ⚠ OPEN — read first (2026-08-08)
 
 0. **DECIDED 2026-08-06 — the split: gateway stays on the DESKTOP, everything else runs on sabin.**

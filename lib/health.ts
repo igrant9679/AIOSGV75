@@ -11,6 +11,8 @@ import { vaultAvailable, vaultInfo } from "./vault";
 import { sendTelegram } from "./telegram";
 import { effectiveNetSettings, productName } from "./netSettings";
 import { readRemoteSessions, readShareState } from "./sessionShare";
+import { API_KEY_VARS, subscriptionOnly } from "./runners";
+import { isLocalEndpoint, readRegistry } from "./registry";
 
 /**
  * Health checks — the things that, when broken, make Mission Control quietly
@@ -139,8 +141,27 @@ async function checkClaude(): Promise<HealthCheck> {
   const r = await run("claude", ["auth", "status", "--json"]);
   if (r.missing) return { ...base, level: "fail", detail: "The claude command isn't installed or isn't on PATH.", fix: `Install Claude Code, then restart ${productName()}.` };
   try {
-    const j = JSON.parse(r.out.slice(r.out.indexOf("{"), r.out.lastIndexOf("}") + 1)) as { loggedIn?: boolean; authMethod?: string };
-    if (j.loggedIn) return { ...base, level: "ok", detail: `Signed in${j.authMethod && j.authMethod !== "none" ? ` (${j.authMethod})` : ""}.` };
+    const j = JSON.parse(r.out.slice(r.out.indexOf("{"), r.out.lastIndexOf("}") + 1)) as {
+      loggedIn?: boolean;
+      authMethod?: string;
+      apiProvider?: string;
+      subscriptionType?: string;
+    };
+    // Signed in, but not with the subscription: every run is billed per token.
+    const viaApi = /api[ _-]?key|console/i.test(j.authMethod ?? "") || (!!j.apiProvider && j.apiProvider !== "firstParty");
+    if (j.loggedIn && viaApi) {
+      return {
+        ...base,
+        level: "warn",
+        detail: `Signed in with ${j.authMethod || j.apiProvider}, not a Claude subscription - every run here is billed per token.`,
+        fix: "Open a terminal, run `claude`, type /login and choose your Claude subscription. Then press Re-check.",
+        impact: "Claude runs on this machine are charged to an API account.",
+      };
+    }
+    if (j.loggedIn) {
+      const plan = j.subscriptionType ? `${j.subscriptionType} subscription` : j.authMethod && j.authMethod !== "none" ? j.authMethod : "";
+      return { ...base, level: "ok", detail: `Signed in${plan ? ` (${plan})` : ""}.` };
+    }
     return {
       ...base,
       level: "fail",
@@ -158,9 +179,49 @@ async function checkCodex(): Promise<HealthCheck> {
   if (r.missing) return { ...base, level: "skip", detail: "Codex isn't installed on this machine." };
   if (r.code === 0 && /logged in/i.test(r.out)) {
     const how = r.out.match(/logged in using ([^\r\n]+)/i)?.[1]?.trim();
+    if (how && /api/i.test(how)) {
+      return {
+        ...base,
+        level: "warn",
+        detail: `Signed in using ${how}, not your ChatGPT subscription - every run here is billed per token.`,
+        fix: "Open a terminal, run `codex logout`, then `codex login` and sign in with ChatGPT.",
+        impact: "Codex runs on this machine are charged to an OpenAI API account.",
+      };
+    }
     return { ...base, level: "ok", detail: `Signed in${how ? ` using ${how}` : ""}.` };
   }
   return { ...base, level: "warn", detail: "Signed out.", fix: "Open a terminal and run `codex login`." };
+}
+
+/**
+ * Subscriptions, not API tokens: are provider keys being kept away from the
+ * agent CLIs, and which agents here are billed per token regardless?
+ */
+async function checkBilling(): Promise<HealthCheck> {
+  const base = { id: "billing", label: "Subscriptions, not API tokens" };
+  const present = API_KEY_VARS.filter((k) => !!process.env[k]);
+  const reg = await readRegistry().catch(() => null);
+  const metered = (reg?.llms ?? []).filter((l) => !isLocalEndpoint(l.baseUrl)).map((l) => l.name || l.id);
+  const meteredNote = metered.length
+    ? ` Added by API key, so billed by their provider (per token unless it is a flat-rate plan): ${metered.join(", ")}.`
+    : "";
+  if (!subscriptionOnly() && present.length) {
+    return {
+      ...base,
+      level: "warn",
+      detail: `MC_ALLOW_API_KEYS=1 is set and ${present.join(", ")} ${present.length === 1 ? "is" : "are"} in the environment, so agent CLIs can run on an API key instead of their subscription.${meteredNote}`,
+      fix: "Remove MC_ALLOW_API_KEYS from .env.local and restart, unless this machine is meant to run a CLI on an API key.",
+      impact: "CLI runs on this machine may be charged per token.",
+    };
+  }
+  const kept = present.length
+    ? ` ${present.join(", ")} ${present.length === 1 ? "is" : "are"} set here but kept away from the agent CLIs.`
+    : "";
+  return {
+    ...base,
+    level: metered.length ? "info" : "ok",
+    detail: `Claude Code, Codex and the other agent CLIs run on their own sign-in; provider API keys are never passed to them.${kept}${meteredNote}`,
+  };
 }
 
 async function checkSchedules(): Promise<HealthCheck[]> {
@@ -490,6 +551,7 @@ export function runHealthChecks(): Promise<HealthReport> {
     const results = await Promise.all([
       checkClaude(),
       checkCodex(),
+      checkBilling(),
       checkSchedules(),
       checkVault(),
       checkDaemons(),

@@ -38,7 +38,7 @@ activity, session id (multi-turn conversations resume via `--resume`), cost, and
 `401 Invalid authentication credentials`, either:
 
 - run `claude` once in a terminal and complete the login flow (or `claude setup-token`), or
-- create `.env.local` with `ANTHROPIC_API_KEY=sk-ant-…` and restart the dev server.
+- create `.env.local` with `MC_ALLOW_API_KEYS=1` and `ANTHROPIC_API_KEY=sk-ant-…` and restart the dev server. This bills per token; by default the app keeps API keys away from the CLIs so they run on your subscription.
 
 **Permission modes** in the console toolbar map to `--permission-mode`:
 

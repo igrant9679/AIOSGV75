@@ -164,6 +164,32 @@ async function readNodes(): Promise<NodeInfo[]> {
   return nodes;
 }
 
+/**
+ * OneDrive's conflict copies of heartbeats ("<host>-<PC>.json") parse fine, so
+ * readNodes() would list the same machine twice. A real heartbeat is always
+ * named after the host written inside it; anything else is a leftover.
+ */
+async function sweepNodeCopies(): Promise<number> {
+  let n = 0;
+  for (const f of await fs.readdir(nodesDir()).catch(() => [] as string[])) {
+    if (!f.endsWith(".json")) continue;
+    const file = path.join(nodesDir(), f);
+    try {
+      const info = JSON.parse(await fs.readFile(file, "utf8")) as NodeInfo;
+      if (!info?.host || path.basename(nodeFile(info.host)) === f) continue;
+    } catch {
+      // Unreadable: a live heartbeat is rewritten every tick, so only an old one is a leftover.
+      const st = await fs.stat(file).catch(() => null);
+      if (!st || Date.now() - st.mtimeMs < 24 * 60 * 60 * 1000) continue;
+    }
+    await fs
+      .unlink(file)
+      .then(() => n++)
+      .catch(() => {});
+  }
+  return n;
+}
+
 async function writeHeartbeat(cfg: ClusterConfig, isMaster: boolean): Promise<void> {
   const info: NodeInfo = {
     host: nodeId(),
@@ -229,6 +255,7 @@ export async function clusterTick(): Promise<boolean> {
     if (isMaster && Date.now() - lastLeaseSweep > 60 * 60 * 1000) {
       lastLeaseSweep = Date.now();
       await sweepConflictCopies(clusterDir(), /^lease-.+\.json$/i).catch(() => 0);
+      await sweepNodeCopies().catch(() => 0);
     }
     return isMaster;
   } catch {

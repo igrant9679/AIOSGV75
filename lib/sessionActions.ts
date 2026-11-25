@@ -36,7 +36,7 @@ import { setHidden } from "./sessionNaming";
  *   Agentic OS/Cluster/handoff/<job-id>.jsonl                         a session being moved
  *
  * Either way the target only acts when ITS "Replies from my other machines"
- * setting allows it (off by default), only on sessions / folders it really
+ * setting allows it (on by default at "answers only"), only on sessions / folders it really
  * has, and never with more access than that setting grants.
  *
  * data/session-jobs.json is the source of truth (re-read on every call).

@@ -1,4 +1,4 @@
-import { readMemory, readUserProfile } from "./vault";
+import { readMemory, readRules, readUserProfile } from "./vault";
 import { searchVault, type VaultPassage } from "./vaultSearch";
 
 /**
@@ -47,9 +47,12 @@ export interface AgentContext {
    *  `facts` (keyword-retrieved, top-8) this is injected WHOLE on every call,
    *  which is why userProfile.ts hard-caps it. */
   profile: string;
+  /** The user's rules for every agent, from Agentic OS/Rules.md (built-in default
+   *  when the note is missing). Injected WHOLE like the profile, so vault.ts caps it. */
+  rules: string;
 }
 
-export const EMPTY_CONTEXT: AgentContext = { facts: "", passages: [], profile: "" };
+export const EMPTY_CONTEXT: AgentContext = { facts: "", passages: [], profile: "", rules: "" };
 
 /** Drop frontmatter, the H1, and the generated explainer blockquote — agents
  *  want the profile body, not the note's own scaffolding. */
@@ -65,14 +68,17 @@ function stripProfileChrome(note: string): string {
 }
 
 export async function gatherContext(query: string): Promise<AgentContext> {
-  const [facts, passages, profileNote] = await Promise.all([
+  const [facts, passages, profileNote, rules] = await Promise.all([
     retrieveMemoryFacts(query),
     searchVault(query, 3).catch(() => [] as VaultPassage[]),
     readUserProfile().catch(() => ""),
+    readRules()
+      .then((r) => r.text)
+      .catch(() => ""),
   ]);
   // Strip the frontmatter + generated banner; agents want the profile body.
   const profile = stripProfileChrome(profileNote);
-  return { facts, passages, profile };
+  return { facts, passages, profile, rules };
 }
 
 /**
@@ -93,6 +99,7 @@ function passagesText(passages: VaultPassage[]): string {
 /** Preamble block for CLI-style agents (prepended to the transmitted prompt). */
 export function memoryBlock(ctx: AgentContext): string {
   const parts: string[] = [];
+  if (ctx.rules) parts.push(`[House rules — set by the user in their Agentic OS/Rules note; follow them:]\n${ctx.rules}`);
   if (ctx.profile) parts.push(`[Who you are working with — maintained profile:]
 ${ctx.profile}`);
   if (ctx.facts) parts.push(`[Shared memory — relevant facts from the user's agent network:]\n${ctx.facts}`);
@@ -106,6 +113,9 @@ ${ctx.profile}`);
 /** System-message variant for API LLMs. */
 export function memorySystemBlock(ctx: AgentContext): string {
   const parts: string[] = [];
+  if (ctx.rules) {
+    parts.push(`HOUSE RULES (set by the user in their Agentic OS/Rules note; follow them):\n${ctx.rules}`);
+  }
   if (ctx.profile) {
     parts.push(`WHO YOU ARE WORKING WITH (maintained profile, refreshed weekly):
 ${ctx.profile}`);

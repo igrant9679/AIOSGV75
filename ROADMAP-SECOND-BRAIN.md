@@ -39,8 +39,11 @@ Ground rules that apply to every phase:
 
 - CLI workers for Claude, Codex and Kimi, each tied to a login profile
   (`CLAUDE_CONFIG_DIR` / `CODEX_HOME` + an account label).
-- "Subscription only" switch: strip `ANTHROPIC_API_KEY` / `OPENAI_API_KEY`
-  from worker env; force ChatGPT sign-in for Codex.
+- ~~"Subscription only" switch~~ **done 2026-11-24**, and on by default rather
+  than a switch: `cleanEnv()` strips every provider key (`API_KEY_VARS`) from
+  all CLI children unless `MC_ALLOW_API_KEYS=1`; Health warns when Claude or
+  Codex is signed in with an API key. Still open: force ChatGPT sign-in for
+  Codex at launch (today it is detected, not enforced).
 - Auto router: treat each subscription as a quota pool, cool down a lane that
   hits its limit, route elsewhere; cap reviewer retries.
 - Install + wire the Kimi CLI; add its session reader.

@@ -44,7 +44,10 @@ manual is `/guide` (source: `lib/guideContent.ts`).
   `watchers.ts`, `approvals.ts` (Telegram-answerable gates), `runners.ts`
   (non-streaming agent execution), `router.ts` (Auto), `retrieval.ts` +
   `vaultSearch.ts` (BM25) + `embeddings.ts` (optional semantic layer),
-  `vault.ts` (Obsidian read/write + scaffold), `registry.ts`, `usage.ts`,
+  `vault.ts` (Obsidian read/write + scaffold + the Rules note),
+  `rollup.ts` (weekly roll-up notes + Archive, master duty),
+  `conflictCopies.ts` (sweeps OneDrive copies of generated notes),
+  `registry.ts`, `usage.ts`,
   `arena.ts`, `evals.ts`, `llmTools.ts`, `telegram.ts`, `guideContent.ts`.
 - Operator pages beyond chat: `/tasks` (kanban + Orchestrator panel),
   `/schedule` (cron calendar), `/library` (vault doc browser), `/graph`
@@ -56,7 +59,8 @@ manual is `/guide` (source: `lib/guideContent.ts`).
   API keys). `.env.local` — machine config (`VAULT_DIR`, `EMBED_*`,
   `OPENCLAW_CMD`, `HERMES_BIN/CMD`).
 - Vault: `VAULT_DIR` → app writes under `Agentic OS/` (Memory.md, Goals.md,
-  Journal/, Chats/, Missions/, Agents/, Workspaces/<name>/, Guide.md, Home.md).
+  Journal/, Chats/, Missions/, Agents/, Workspaces/<name>/, Guide.md, Home.md,
+  Rules.md, Weekly/, Archive/).
 
 ## Hard-won rules — do not relearn these the painful way
 
@@ -81,9 +85,12 @@ manual is `/guide` (source: `lib/guideContent.ts`).
 7. **Approval protocol is mirrored in OpenClaw's workspace** —
    `~/.openclaw/workspace/TOOLS.md` teaches Talos the curl commands for
    Telegram approvals. If API ports/paths change, update that file too.
-8. **The Claude bridge strips `CLAUDE_*`/`ANTHROPIC_*` env vars** (except
-   `ANTHROPIC_API_KEY`) from the child so a dev server launched from inside a
-   Claude Code session doesn't poison CLI auth.
+8. **Every CLI child gets `cleanEnv()` (lib/runners.ts), never `process.env`.**
+   It strips `CLAUDE_*`/`ANTHROPIC_*` so a server launched from inside a Claude
+   Code session doesn't poison CLI auth, and — subscription only, the default —
+   every provider API key (`API_KEY_VARS`), so a key in `.env.local` for Studio
+   can't switch Claude or Codex to per-token billing. `MC_ALLOW_API_KEYS=1`
+   opts a machine out. A new spawn site that passes `process.env` reopens that.
 9. `ChatThread.tsx` has contained a literal NBSP (U+00A0); if exact-match
    editing fails there, that's why.
 10. Keyless endpoints: `hasKey` in the registry GET means "ready", which is
@@ -100,6 +107,17 @@ manual is `/guide` (source: `lib/guideContent.ts`).
     unconditionally, overlay empty-states. And rAF is fully suspended in
     hidden tabs — pair every frame with a timer fallback if work must settle
     off-screen.
+14. **A cap that fills in directory order is a silent blind spot.** The vault
+    index once stopped at a global passage cap inside `Sessions/`; Missions,
+    Journal, History, Chats and Agents contributed zero passages and search
+    still "worked". The index is budgeted per folder, newest first
+    (`FOLDER_BUDGETS` in `lib/vaultSearch.ts`); `GET /api/vault/rollup` reports
+    passages per folder. Give any new high-volume folder its own budget.
+15. **Agent behaviour lives in the vault, not in code.** `Agentic OS/Rules.md`
+    is injected whole into every call (`readRules()` in `lib/vault.ts`); only the
+    OS-verb tag syntax (`VERB_HINT`) stays in code, because the harvester parses
+    it. Keep literal verb tags out of any default rules text — an agent quoting
+    its rules in a chat reply would have the quoted tag executed.
 
 ## Dev cycle (production server auto-starts at login)
 
