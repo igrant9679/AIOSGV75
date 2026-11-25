@@ -74,9 +74,13 @@ Pick roles before you start:
 **Hardware guidance**
 
 - Any modern x64 machine runs the app itself (it's a Node server).
-- Local Llama via Ollama: `llama3.2` (3B) is comfortable on 8–16 GB RAM,
-  CPU-only. 7–8B models want ~24 GB. Models cost 2–5 GB disk each.
-- ~10 GB free disk covers Node, the app, and the two default Ollama models.
+- Local chat model via Ollama: the installer offers `gpt-oss:20b` (14 GB), which
+  wants an NVIDIA GPU with 16 GB+ of memory or an Apple Silicon Mac with 24 GB+.
+  The installer checks and leaves it unticked on anything smaller. A small model
+  such as `llama3.2` (3B, 2 GB) runs on 8–16 GB RAM without a GPU but fails
+  ordinary tasks often; it is not installed by default any more.
+- ~10 GB free disk covers Node, the app and the search model; add 14 GB for the
+  local chat model.
 
 **Base tools** (PowerShell, run as your normal user):
 
@@ -231,8 +235,8 @@ for the same reason.)
 ```powershell
 winget install Ollama.Ollama
 # reopen terminal, then:
-ollama pull llama3.2           # ~2 GB — tool-capable chat model
-ollama pull nomic-embed-text   # ~274 MB — embeddings for semantic RAG
+ollama pull nomic-embed-text   # ~274 MB — embeddings for semantic RAG (every machine)
+ollama pull gpt-oss:20b        # ~14 GB — local chat model; only with a 16 GB+ GPU
 curl http://localhost:11434/api/tags   # both models listed = ready
 ```
 
@@ -362,8 +366,9 @@ Open http://127.0.0.1:3000. On first boot the app scaffolds
    `data/registry.json`):
    - DeepSeek / OpenRouter / Kimi / GLM / Grok / Gemini presets: pick, paste
      key. Rotate later with the pencil icon on the row.
-   - Local Llama: provider **Custom**, name `Llama`, Base URL
-     `http://localhost:11434/v1`, model `llama3.2`, **API key blank**.
+   - Local model: provider **Custom**, name `Local`, Base URL
+     `http://localhost:11434/v1`, model `gpt-oss:20b` (or whatever you pulled),
+     **API key blank**. A local model can read shared memory but not write to it.
 2. **Command Agents** — `Codex` with template `codex exec --skip-git-repo-check {input}` (if
    installed + logged in). OpenClaw and Hermes are built-ins driven by
    `.env.local`, not added here.

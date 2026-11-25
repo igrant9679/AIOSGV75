@@ -1,6 +1,6 @@
 <#
   Mission Control - Windows installer, updater, modifier and uninstaller.
-  MC-INSTALLER-VERSION: 2026.11.11.1   (bump on every change; setup.exe runs the newer of its bundled copy and GitHub's)
+  MC-INSTALLER-VERSION: 2026.11.24.1   (bump on every change; setup.exe runs the newer of its bundled copy and GitHub's)
 
   Run it any time. On a machine without Mission Control it installs everything;
   on a machine that has it, it asks what you want:
@@ -41,9 +41,13 @@
     -Label <name>    display name in the machine group (default: computer name)
     -Role <primary|backup|workstation>   default: workstation
     -Components <list>  optional items to install, skipping the checklist, e.g.
-                     -Components ollama,models,codex,hermes,openclaw,firewall
+                     -Components ollama,models,chatmodel,codex,hermes,openclaw,firewall
                      (-Components none = only the required parts)
     -SkipModels / -SkipOllama            no local models / no Ollama
+    -InstallChatModel / -SkipChatModel   the local chat model (gpt-oss:20b, a 14 GB
+                                         download) without asking / never. By default it
+                                         is offered, and pre-ticked only on a PC whose
+                                         GPU has 16 GB of memory or more.
     -InstallOllama                       Ollama without asking
     -InstallCodex / -NoCodex             Codex CLI without asking / never
     -InstallHermes / -InstallOpenClaw    run those official installers without asking
@@ -76,6 +80,8 @@ param(
   [switch]$DryRun,
   [switch]$Yes,
   [switch]$SkipModels,
+  [switch]$SkipChatModel,
+  [switch]$InstallChatModel,
   [switch]$SkipOllama,
   [switch]$InstallOllama,
   [string]$Components = "",
@@ -322,20 +328,45 @@ if ($Mode -eq "modify") {
 }
 # Install / update / reinstall: choose the optional parts up front (one checklist),
 # so the steps below don't ask about each one. Already-installed items are kept.
+# The local chat model is the one heavy optional download (the search model is
+# 0.3 GB and worth having everywhere). It is offered on every machine, but only
+# pre-ticked where it will run well: a GPU with enough memory to hold it.
+$ChatModel = 'gpt-oss:20b'
+$ChatModelGB = 14
+$ChatModelNeedsGpuGB = 16
+function Get-GpuMemoryGB {
+  try {
+    $o = & nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>$null
+    if ($LASTEXITCODE -eq 0 -and $o) {
+      $mib = ($o | ForEach-Object { [int]("$_".Trim()) } | Measure-Object -Maximum).Maximum
+      return [int][math]::Round($mib / 1024)
+    }
+  } catch { }
+  return 0
+}
+$GpuGB = Get-GpuMemoryGB
+$ChatModelFits = $GpuGB -ge $ChatModelNeedsGpuGB
+$ChatModelNote = if ($ChatModelFits) { "this PC: $GpuGB GB GPU, a good fit" } elseif ($GpuGB -gt 0) { "this PC: $GpuGB GB GPU, too small to run it well - leave off" } else { "this PC: no NVIDIA GPU found, it would be very slow - leave off" }
+$script:chatModelDecided = $false          # true once the checklist below has settled it
+$script:skipAllModels = [bool]$SkipModels  # -SkipModels on the command line means "no local models at all"
+
 if ($Mode -in @("install", "reinstall") -and -not $RepairOnly) {
   $items = [ordered]@{
     ollama   = @{ label = "Ollama - free local AI models + smarter vault search (~2.3 GB; best on the primary machine)"; have = [bool](Have ollama); on = $false }
-    models   = @{ label = "Local models for Ollama (llama3.2 + nomic-embed-text)"; have = $false; on = $false }
+    models   = @{ label = "Search model for Ollama (nomic-embed-text, 0.3 GB) - smarter vault search"; have = $false; on = $false }
+    chatmodel = @{ label = "Local chat model ($ChatModel, $ChatModelGB GB download) - a free worker that runs on this PC ($ChatModelNote)"; have = $false; on = $false }
     codex    = @{ label = "Codex CLI - ChatGPT/Codex jobs on this machine (your ChatGPT subscription)"; have = [bool](Have codex); on = $false }
     hermes   = @{ label = "Hermes - goal mode + Control Room (~5-10 min, downloads Python)"; have = [bool](Test-Path (Join-Path $env:LOCALAPPDATA "hermes\hermes-agent\venv\Scripts\hermes.exe")) -or [bool](Get-Command hermes -ErrorAction SilentlyContinue); on = $false }
     openclaw = @{ label = "OpenClaw - Telegram gateway + approvals (primary machine only)"; have = [bool](Have openclaw); on = $false }
     firewall = @{ label = "LAN link - let your other machines reach this one (firewall rule, port 3101)"; have = [bool](Get-NetFirewallRule -DisplayName $PeerRule -ErrorAction SilentlyContinue); on = $true }
   }
-  if ($items.ollama.have) { $items.models.on = $true }
+  if ($items.ollama.have) { $items.models.on = $true; $items.chatmodel.on = $ChatModelFits }
   # flags given on the command line win over the defaults
-  if ($InstallOllama) { $items.ollama.on = $true; $items.models.on = $true }
-  if ($SkipOllama) { $items.ollama.on = $false; $items.models.on = $false }
-  if ($SkipModels) { $items.models.on = $false }
+  if ($InstallOllama) { $items.ollama.on = $true; $items.models.on = $true; $items.chatmodel.on = $ChatModelFits }
+  if ($SkipOllama) { $items.ollama.on = $false; $items.models.on = $false; $items.chatmodel.on = $false }
+  if ($SkipModels) { $items.models.on = $false; $items.chatmodel.on = $false }
+  if ($SkipChatModel) { $items.chatmodel.on = $false }
+  if ($InstallChatModel) { $items.chatmodel.on = $true; if (-not $items.ollama.have) { $items.ollama.on = $true }; $items.models.on = $true }
   if ($InstallCodex) { $items.codex.on = $true }
   if ($InstallHermes) { $items.hermes.on = $true }
   if ($InstallOpenClaw) { $items.openclaw.on = $true }
@@ -343,7 +374,7 @@ if ($Mode -in @("install", "reinstall") -and -not $RepairOnly) {
   if ($Components) {
     foreach ($k in @($items.Keys)) { $items[$k].on = $false }
     foreach ($c in ($Components.ToLower() -split '[,\s]+' | Where-Object { $_ -and $_ -ne "none" })) {
-      if ($items.Contains($c)) { $items[$c].on = $true } else { Warn "-Components: unknown item '$c' (use ollama, models, codex, hermes, openclaw, firewall)" }
+      if ($items.Contains($c)) { $items[$c].on = $true } else { Warn "-Components: unknown item '$c' (use ollama, models, chatmodel, codex, hermes, openclaw, firewall)" }
     }
   } elseif (-not ($Yes -or $DryRun)) {
     $keys = @($items.Keys)
@@ -353,7 +384,7 @@ if ($Mode -in @("install", "reinstall") -and -not $RepairOnly) {
       Write-Host "  Always installed: Git, Node.js, the $ProductName app, Claude Code CLI, auto-start" -ForegroundColor DarkGray
       for ($i = 0; $i -lt $keys.Count; $i++) {
         $it = $items[$keys[$i]]
-        if ($it.have -and $keys[$i] -ne "models") { Write-Host ("   [*] {0}  {1}  (already installed - kept)" -f ($i + 1), $it.label) -ForegroundColor DarkGray; continue }
+        if ($it.have -and $keys[$i] -notin @("models", "chatmodel")) { Write-Host ("   [*] {0}  {1}  (already installed - kept)" -f ($i + 1), $it.label) -ForegroundColor DarkGray; continue }
         $box = if ($it.on) { "[x]" } else { "[ ]" }
         Write-Host ("   {0} {1}  {2}" -f $box, ($i + 1), $it.label) -ForegroundColor $(if ($it.on) { "Green" } else { "Gray" })
       }
@@ -363,9 +394,11 @@ if ($Mode -in @("install", "reinstall") -and -not $RepairOnly) {
         $i = [int]$n - 1
         if ($i -lt 0 -or $i -ge $keys.Count) { continue }
         $k = $keys[$i]
-        if ($items[$k].have -and $k -ne "models") { continue }
+        if ($items[$k].have -and $k -notin @("models", "chatmodel")) { continue }
         $items[$k].on = -not $items[$k].on
-        if ($k -eq "ollama" -and $items.ollama.on) { $items.models.on = $true }
+        if ($k -eq "ollama" -and $items.ollama.on) { $items.models.on = $true; $items.chatmodel.on = $ChatModelFits }
+        # the chat model needs Ollama: ticking it brings Ollama along
+        if ($k -eq "chatmodel" -and $items.chatmodel.on -and -not $items.ollama.have) { $items.ollama.on = $true; $items.models.on = $true }
       }
     }
   }
@@ -373,11 +406,12 @@ if ($Mode -in @("install", "reinstall") -and -not $RepairOnly) {
   $SkipOllama = -not ($items.ollama.on -or $items.ollama.have); $InstallOllama = $items.ollama.on
   $useOllama = -not $SkipOllama
   $SkipModels = -not $items.models.on
+  $SkipChatModel = -not $items.chatmodel.on; $script:chatModelDecided = $true
   $NoCodex = -not ($items.codex.on -or $items.codex.have); $InstallCodex = $items.codex.on
   $NoHermes = -not $items.hermes.on; $InstallHermes = $items.hermes.on
   $NoOpenClaw = -not $items.openclaw.on; $InstallOpenClaw = $items.openclaw.on
   $NoFirewall = -not $items.firewall.on; $script:firewallChosen = $items.firewall.on
-  $picked = @($items.Keys | Where-Object { $items[$_].on -and -not ($items[$_].have -and $_ -ne "models") })
+  $picked = @($items.Keys | Where-Object { $items[$_].on -and -not ($items[$_].have -and $_ -notin @("models", "chatmodel")) })
   Info ("optional items: " + $(if ($picked.Count) { $picked -join ", " } else { "none" }) + " (re-run the installer -> Modify to add more later)")
 }
 
@@ -615,11 +649,29 @@ elseif (Test-Path (Join-Path $RepoDir "package.json")) {
 
 # ---- 7. Local models ------------------------------------------------------
 do { if (-not (Should "tools")) { break }
-Section "Local models (llama3.2 + nomic-embed-text)"
-if ($SkipModels -or -not $useOllama) { Info "skipped" }
+Section "Local models (search model + optional chat model)"
+if (-not $useOllama) { Info "skipped" }
 elseif (Have ollama) {
   $have = (& ollama list 2>$null) | Out-String
-  foreach ($m in @('llama3.2', 'nomic-embed-text')) {
+  # The chat model: a $ChatModelGB GB download that wants a capable GPU. The checklist decides it on
+  # an install; in Modify (no checklist) it is asked here, with the default this PC's GPU suggests.
+  if ($have -match [regex]::Escape($ChatModel)) { Ok "$ChatModel already pulled" }
+  else {
+    $want = $false
+    if ($InstallChatModel) { $want = $true }
+    elseif ($SkipChatModel -or ($script:skipAllModels -and -not $script:chatModelDecided)) { $want = $false }
+    elseif ($script:chatModelDecided) { $want = $true }
+    else { $want = YesNo "Pull the local chat model $ChatModel? $ChatModelGB GB download ($ChatModelNote)." $ChatModelFits }
+    if ($want -and $DryRun) { Warn "would pull $ChatModel ($ChatModelGB GB)" }
+    elseif ($want) {
+      Info "pulling $ChatModel ($ChatModelGB GB - this takes a while)..."; & ollama pull $ChatModel | Out-Host
+      if ($LASTEXITCODE -eq 0) { Done "pulled $ChatModel - to use it, add it in Settings -> LLM Connections (base URL http://localhost:11434/v1, model $ChatModel, no key)" } else { Todo "couldn't pull $ChatModel - run 'ollama pull $ChatModel' later" }
+    }
+    else { Info "local chat model not installed ($ChatModelNote) - add it any time with 'ollama pull $ChatModel'" }
+  }
+  # The search model: small, and what makes vault search understand meaning.
+  foreach ($m in @('nomic-embed-text')) {
+    if ($SkipModels) { Info "search model skipped"; continue }
     if ($have -match [regex]::Escape($m)) { Ok "$m already pulled" }
     elseif ($DryRun) { Warn "would pull $m" }
     else { Info "pulling $m (can take a while)..."; & ollama pull $m | Out-Host; if ($LASTEXITCODE -eq 0) { Done "pulled $m" } else { Todo "couldn't pull $m - run 'ollama pull $m' later" } }

@@ -119,6 +119,11 @@ export function memorySystemBlock(ctx: AgentContext, opts: { verbs?: boolean } =
   const parts: string[] = [];
   if (ctx.rules) {
     parts.push(`HOUSE RULES (set by the user in their Agentic OS/Rules note; follow them):\n${ctx.rules}`);
+    // The rules ask agents to log and save; a read-only model can't. Left unsaid, it tried anyway
+    // and ended its answers with a made-up "[journal] ..." line.
+    if (opts.verbs === false) {
+      parts.push(`The rules above that ask you to log to the journal or save to memory do NOT apply to you: you have no way to do either. Do not write "[journal]", "[remember]" or any similar marker. Just answer.`);
+    }
   }
   if (ctx.profile) {
     parts.push(`WHO YOU ARE WORKING WITH (maintained profile, refreshed weekly):

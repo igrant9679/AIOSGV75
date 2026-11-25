@@ -66,7 +66,8 @@ irm https://raw.githubusercontent.com/igrant9679/AIOSGV75/main/install.ps1 -OutF
 ```
 
 Installs Git / Node LTS / Ollama via winget, clones + `npm install` + build, pulls
-`llama3.2` + `nomic-embed-text`, installs Claude Code (+ optional Codex), writes a
+`nomic-embed-text` (and, where the GPU has 16 GB+ of memory, offers the 14 GB local chat
+model `gpt-oss:20b`), installs Claude Code (+ optional Codex), writes a
 starter `.env.local`, and registers the auto-start VBS. Idempotent; flags `-DryRun`,
 `-Yes`, `-SkipModels`, `-InstallCodex`, `-RepoDir`, `-Vault`.
 
@@ -148,7 +149,7 @@ none of this arrives with a clone):
 | `deepseek` | `deepseek` | `https://api.deepseek.com/v1` | `deepseek-chat` | real, prepaid, unused → $0 |
 | `openrouter` | `openrouter` | `https://openrouter.ai/api/v1` | `nvidia/nemotron-3-super-120b-a12b:free` | free tier, rate-limited |
 | `glm` | `glm-coding` | `https://api.z.ai/api/coding/paas/v4` | `glm-5.2` | GLM Coding Pro, flat-rate |
-| `llama` | `ollama` | `http://localhost:11434/v1` | `llama3.2` | **none** — keyless, tick REMOVE KEY |
+| `llama` | `ollama` | `http://localhost:11434/v1` | `gpt-oss:20b` (was `llama3.2` until 2026-11-24) | **none** — keyless, tick REMOVE KEY |
 
 > ⚠ **The GLM base URL must be `/api/coding/paas/v4`.** The metered `/api/paas/v4`
 > returns `429 code 1113 "Insufficient balance"` with the *same valid key* — a

@@ -295,6 +295,19 @@ IdrisArea51 backup). Started as a comparison against a "shared Obsidian memory" 
    Ollama on Raider18: 0.40.17, `llama3.2` (3B) + `nomic-embed-text`, RTX 5090 Laptop 24 GB.
    Registered as registry LLM `llama`. llama3.2 saved a junk fact to shared memory on its first
    question (removed) - hence rule 23. A bigger local model is worth pulling; not done.
+   **v51 = `37f1e92` (phase 2 + local-model rules). Then, same night: llama3.2 replaced by
+   gpt-oss:20b on Raider18** (`ollama pull gpt-oss:20b`, 13 GB on disk, ~12 GB of the 24 GB GPU at
+   32k context, 5 s cold load; registry entry `llama` now named "Local (gpt-oss 20b)"; llama3.2
+   removed with `ollama rm`). Like for like, llama3.2 failed a one-sentence summary and a two-step
+   sum and gpt-oss:20b did both; asked directly to save to shared memory it declined and wrote
+   nothing. Its very first load crashed once ("CUDA error: shared object initialization failed");
+   four cold loads after that were clean.
+   **Installer 2026.11.24.1:** the "models" checklist item now means the search model only, and a
+   new `chatmodel` item offers gpt-oss:20b, pre-ticked only when nvidia-smi reports 16 GB+ (Mac:
+   Apple Silicon with 24 GB+). `-InstallChatModel` / `-SkipChatModel`. Dry-run verified for 8 GB,
+   16 GB, no GPU and the forced flag. The installer still does NOT register the model in
+   data/registry.json; it prints the Settings step. Web search for local/API models needs a Brave
+   key in Settings -> Service Keys, and Raider18 has none.
    **Project orchestrator: designed; phase 1 built (see above)** - `ROADMAP-ORCHESTRATOR.md`. Real sessions as
    workers, vault-backed resumable state advanced by the master tick, executed checks, lessons.
 4. Nobody logs to the journal (2 files, both July). The rules note now asks agents to; watch

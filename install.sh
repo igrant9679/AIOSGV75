@@ -17,8 +17,11 @@
 #
 # Flags: --mode install|update|modify|reinstall|uninstall  --dry-run  --yes
 #        --repo-dir <path>  --vault <path>  --label <name>  --role primary|backup|workstation
-#        --components ollama,models,codex,hermes,openclaw   (or none) - skip the checklist
+#        --components ollama,models,chatmodel,codex,hermes,openclaw   (or none) - skip the checklist
 #        --skip-models  --skip-ollama  --install-ollama  --install-codex  --no-codex
+#        --install-chat-model  --skip-chat-model   the local chat model (gpt-oss:20b, 14 GB).
+#          Offered everywhere; pre-ticked only where it will run well (Apple Silicon with
+#          24 GB+ memory, or an NVIDIA GPU with 16 GB+).
 #        --install-hermes  --install-openclaw  --no-hermes  --no-openclaw  --no-companions
 #        --no-login  --no-start  --repair-only
 #
@@ -29,6 +32,7 @@
 
 MODE=""; REPO_DIR="$HOME/Documents/mission-control"; REPO_URL="https://github.com/igrant9679/AIOSGV75.git"; BRANCH="main"
 VAULT=""; LABEL=""; ROLE=""; DRY=0; YES=0; SKIP_MODELS=0; SKIP_OLLAMA=0; INSTALL_CODEX=0; NO_CODEX=0
+SKIP_CHAT=0; INSTALL_CHAT=0; CHAT_DECIDED=0; SKIP_ALL_MODELS=0
 INSTALL_HERMES=0; INSTALL_OPENCLAW=0; NO_COMPANIONS=0; INSTALL_OLLAMA=0; NO_HERMES=0; NO_OPENCLAW=0; COMPONENTS=""; NO_LOGIN=0; NO_START=0; REPAIR_ONLY=0; REPO_DIR_SET=0
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -39,7 +43,9 @@ while [ $# -gt 0 ]; do
     --role) ROLE="$2"; shift ;;
     --dry-run) DRY=1 ;;
     --yes|-y) YES=1 ;;
-    --skip-models) SKIP_MODELS=1 ;;
+    --skip-models) SKIP_MODELS=1; SKIP_ALL_MODELS=1 ;;
+    --skip-chat-model) SKIP_CHAT=1 ;;
+    --install-chat-model) INSTALL_CHAT=1 ;;
     --skip-ollama) SKIP_OLLAMA=1 ;;
     --install-ollama) INSTALL_OLLAMA=1 ;;
     --components) COMPONENTS="$2"; shift ;;
@@ -162,26 +168,46 @@ if [ "$MODE" = "modify" ]; then
   [ -z "$SEL" ] && { echo "Nothing selected - no changes made."; exit 0; }
   case " $SEL " in *" vault "*) VAULT_DIR="$VAULT" ;; esac
 fi
+# The local chat model is the one heavy optional download (the search model is
+# 0.3 GB and worth having everywhere). Offered on every machine, pre-ticked only
+# where it will run well.
+CHAT_MODEL="gpt-oss:20b"; CHAT_MODEL_GB=14; CHAT_FITS=0
+if [ "$(uname -s)" = "Darwin" ]; then
+  mem_gb=$(( $(sysctl -n hw.memsize 2>/dev/null || echo 0) / 1073741824 ))
+  if [ "$(uname -m)" = "arm64" ] && [ "$mem_gb" -ge 24 ]; then CHAT_FITS=1; CHAT_NOTE="this Mac: ${mem_gb} GB memory, a good fit"
+  else CHAT_NOTE="this Mac: ${mem_gb} GB memory, too little to run it well - leave off"; fi
+else
+  gpu_mib=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null | sort -n | tail -1)
+  gpu_gb=$(( (${gpu_mib:-0} + 512) / 1024 ))
+  if [ "$gpu_gb" -ge 16 ]; then CHAT_FITS=1; CHAT_NOTE="this machine: ${gpu_gb} GB GPU, a good fit"
+  elif [ "$gpu_gb" -gt 0 ]; then CHAT_NOTE="this machine: ${gpu_gb} GB GPU, too small to run it well - leave off"
+  else CHAT_NOTE="this machine: no NVIDIA GPU found, it would be very slow - leave off"; fi
+fi
+chat_default() { [ $CHAT_FITS = 1 ] && echo y || echo n; }
+
 # Install / update / reinstall: choose the optional parts up front (one checklist),
 # so the steps below don't ask about each one. Already-installed items are kept.
 if { [ "$MODE" = "install" ] || [ "$MODE" = "reinstall" ]; } && [ $REPAIR_ONLY = 0 ]; then
-  KEYS="ollama models codex hermes openclaw"
+  KEYS="ollama models chatmodel codex hermes openclaw"
   hermes_here() { have hermes || [ -x "$HOME/.hermes/hermes-agent/venv/bin/hermes" ] || [ -x "$HOME/.local/bin/hermes" ]; }
-  C_ollama=0; C_models=0; C_codex=0; C_hermes=0; C_openclaw=0
+  C_ollama=0; C_models=0; C_chatmodel=0; C_codex=0; C_hermes=0; C_openclaw=0
   H_ollama=0; H_codex=0; H_hermes=0; H_openclaw=0
-  have ollama && { H_ollama=1; C_models=1; }
+  have ollama && { H_ollama=1; C_models=1; C_chatmodel=$CHAT_FITS; }
   have codex && H_codex=1
   hermes_here && H_hermes=1
   have openclaw && H_openclaw=1
-  [ $INSTALL_OLLAMA = 1 ] && { C_ollama=1; C_models=1; }
-  [ $SKIP_OLLAMA = 1 ] && { C_ollama=0; C_models=0; }
-  [ $SKIP_MODELS = 1 ] && C_models=0
+  [ $INSTALL_OLLAMA = 1 ] && { C_ollama=1; C_models=1; C_chatmodel=$CHAT_FITS; }
+  [ $SKIP_OLLAMA = 1 ] && { C_ollama=0; C_models=0; C_chatmodel=0; }
+  [ $SKIP_MODELS = 1 ] && { C_models=0; C_chatmodel=0; }
+  [ $SKIP_CHAT = 1 ] && C_chatmodel=0
+  [ $INSTALL_CHAT = 1 ] && { C_chatmodel=1; C_models=1; [ $H_ollama = 1 ] || C_ollama=1; }
   [ $INSTALL_CODEX = 1 ] && C_codex=1
   [ $INSTALL_HERMES = 1 ] && C_hermes=1
   [ $INSTALL_OPENCLAW = 1 ] && C_openclaw=1
   label_of() { case "$1" in
     ollama) echo "Ollama - free local AI models + smarter vault search (~2.3 GB; best on the primary machine)" ;;
-    models) echo "Local models for Ollama (llama3.2 + nomic-embed-text)" ;;
+    models) echo "Search model for Ollama (nomic-embed-text, 0.3 GB) - smarter vault search" ;;
+    chatmodel) echo "Local chat model ($CHAT_MODEL, ${CHAT_MODEL_GB} GB download) - a free worker that runs on this machine ($CHAT_NOTE)" ;;
     codex) echo "Codex CLI - ChatGPT/Codex jobs on this machine (your ChatGPT subscription)" ;;
     hermes) echo "Hermes - goal mode + Control Room (~5-10 min)" ;;
     openclaw) echo "OpenClaw - Telegram gateway + approvals (primary machine only)" ;;
@@ -191,7 +217,7 @@ if { [ "$MODE" = "install" ] || [ "$MODE" = "reinstall" ]; } && [ $REPAIR_ONLY =
   if [ -n "$COMPONENTS" ]; then
     for k in $KEYS; do setv C "$k" 0; done
     for c in $(echo "$COMPONENTS" | tr 'A-Z,' 'a-z '); do
-      case " $KEYS none " in *" $c "*) [ "$c" != none ] && setv C "$c" 1 ;; *) warn "--components: unknown item '$c' (use ollama, models, codex, hermes, openclaw)" ;; esac
+      case " $KEYS none " in *" $c "*) [ "$c" != none ] && setv C "$c" 1 ;; *) warn "--components: unknown item '$c' (use ollama, models, chatmodel, codex, hermes, openclaw)" ;; esac
     done
   elif [ $YES = 0 ] && [ $DRY = 0 ]; then
     while :; do
@@ -200,7 +226,7 @@ if { [ "$MODE" = "install" ] || [ "$MODE" = "reinstall" ]; } && [ $REPAIR_ONLY =
       i=0
       for k in $KEYS; do
         i=$((i + 1))
-        if [ "$k" != models ] && [ "$(getv H "$k")" = 1 ]; then echo "   [*] $i  $(label_of "$k")  (already installed - kept)"; continue; fi
+        if [ "$k" != models ] && [ "$k" != chatmodel ] && [ "$(getv H "$k")" = 1 ]; then echo "   [*] $i  $(label_of "$k")  (already installed - kept)"; continue; fi
         if [ "$(getv C "$k")" = 1 ]; then box="[x]"; else box="[ ]"; fi
         echo "   $box $i  $(label_of "$k")"
       done
@@ -210,8 +236,14 @@ if { [ "$MODE" = "install" ] || [ "$MODE" = "reinstall" ]; } && [ $REPAIR_ONLY =
         i=0
         for k in $KEYS; do
           i=$((i + 1)); [ "$i" = "$n" ] || continue
-          [ "$k" != models ] && [ "$(getv H "$k")" = 1 ] && continue
-          if [ "$(getv C "$k")" = 1 ]; then setv C "$k" 0; else setv C "$k" 1; [ "$k" = ollama ] && C_models=1; fi
+          [ "$k" != models ] && [ "$k" != chatmodel ] && [ "$(getv H "$k")" = 1 ] && continue
+          if [ "$(getv C "$k")" = 1 ]; then setv C "$k" 0
+          else
+            setv C "$k" 1
+            [ "$k" = ollama ] && { C_models=1; C_chatmodel=$CHAT_FITS; }
+            # the chat model needs Ollama: ticking it brings Ollama along
+            [ "$k" = chatmodel ] && { C_models=1; [ $H_ollama = 1 ] || C_ollama=1; }
+          fi
         done
       done
     done
@@ -219,6 +251,7 @@ if { [ "$MODE" = "install" ] || [ "$MODE" = "reinstall" ]; } && [ $REPAIR_ONLY =
   # apply: the steps below read these flags and stop asking
   if [ $C_ollama = 1 ] || [ $H_ollama = 1 ]; then SKIP_OLLAMA=0; else SKIP_OLLAMA=1; fi; INSTALL_OLLAMA=$C_ollama
   [ $C_models = 1 ] && SKIP_MODELS=0 || SKIP_MODELS=1
+  [ $C_chatmodel = 1 ] && SKIP_CHAT=0 || SKIP_CHAT=1; CHAT_DECIDED=1
   if [ $C_codex = 1 ] || [ $H_codex = 1 ]; then NO_CODEX=0; else NO_CODEX=1; fi; INSTALL_CODEX=$C_codex
   NO_HERMES=$((1 - C_hermes)); INSTALL_HERMES=$C_hermes
   NO_OPENCLAW=$((1 - C_openclaw)); INSTALL_OPENCLAW=$C_openclaw
@@ -358,10 +391,27 @@ if should app; then
 fi
 
 if should tools; then
-  section "Local models (llama3.2 + nomic-embed-text)"
-  if [ $SKIP_MODELS = 1 ] || [ $USE_OLLAMA = 0 ] || ! have ollama; then info "skipped"
+  section "Local models (search model + optional chat model)"
+  if [ $USE_OLLAMA = 0 ] || ! have ollama; then info "skipped"
   else
-    for m in llama3.2 nomic-embed-text; do
+    # The chat model: a big download that wants capable hardware. The checklist decides it on an
+    # install; in Modify (no checklist) it is asked here, with the default this machine suggests.
+    if ollama list 2>/dev/null | grep -q "^$CHAT_MODEL"; then ok "$CHAT_MODEL already pulled"
+    else
+      want=0
+      if [ $INSTALL_CHAT = 1 ]; then want=1
+      elif [ $SKIP_CHAT = 1 ] || { [ $SKIP_ALL_MODELS = 1 ] && [ $CHAT_DECIDED = 0 ]; }; then want=0
+      elif [ $CHAT_DECIDED = 1 ]; then want=1
+      elif yesno "Pull the local chat model $CHAT_MODEL? ${CHAT_MODEL_GB} GB download ($CHAT_NOTE)." "$(chat_default)"; then want=1; fi
+      if [ $want = 1 ] && [ $DRY = 1 ]; then warn "would pull $CHAT_MODEL (${CHAT_MODEL_GB} GB)"
+      elif [ $want = 1 ]; then
+        info "pulling $CHAT_MODEL (${CHAT_MODEL_GB} GB - this takes a while)..."
+        ollama pull "$CHAT_MODEL" && ok "pulled $CHAT_MODEL - to use it, add it in Settings -> LLM Connections (base URL http://localhost:11434/v1, model $CHAT_MODEL, no key)" || todo "couldn't pull $CHAT_MODEL - run 'ollama pull $CHAT_MODEL' later"
+      else info "local chat model not installed ($CHAT_NOTE) - add it any time with 'ollama pull $CHAT_MODEL'"; fi
+    fi
+    # The search model: small, and what makes vault search understand meaning.
+    for m in nomic-embed-text; do
+      if [ $SKIP_MODELS = 1 ]; then info "search model skipped"; continue; fi
       if ollama list 2>/dev/null | grep -q "^$m"; then ok "$m already pulled"
       elif [ $DRY = 1 ]; then warn "would pull $m"
       else ollama pull "$m" && ok "pulled $m" || todo "couldn't pull $m - run 'ollama pull $m' later"; fi
