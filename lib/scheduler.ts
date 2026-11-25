@@ -19,6 +19,7 @@ import { maybeDailySummary } from "./dailySummary";
 import { sessionsSnapshot } from "./sessions";
 import { mergeRemoteSessions } from "./sessionShare";
 import { maybeWeeklyRollup } from "./rollup";
+import { runsTick } from "./runs";
 
 async function refreshScaffold(): Promise<void> {
   const reg = await readRegistry().catch(() => null);
@@ -47,6 +48,9 @@ export function startScheduler(): void {
   // Projects page: replies / new sessions / threads asked for by your other
   // machines (through the vault), and results of the ones this machine sent.
   setInterval(() => void sessionJobsTick().catch(() => {}), 15_000);
+  // Project runs this machine drives: plan, hand tasks to sessions, review, deliver.
+  // Every machine, not only the master - a run belongs to the machine that started it.
+  setInterval(() => void runsTick().catch(() => {}), 20_000);
   setTimeout(() => void maybeRunHealth().catch(() => {}), 20_000);
   // LAN link to the other machines (peer endpoints only, on :3101)
   startPeerServer();

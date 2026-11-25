@@ -291,17 +291,21 @@ Tool activity streams into the chat as dim cards (call → result), then the mod
     id: "auto",
     title: "Auto — Smart Routing",
     keywords: "auto router routing tier simple standard hard failover cheapest arena win rate health pool benched models in pool",
-    body: `**Auto** is a virtual agent that picks the right real model per task:
+    body: `**Auto** is a virtual agent that picks the right real worker per task, **cheapest first and dearer only when the task asks for it**:
 
-- **Simple** (short, factual) → the cheapest ready model
-- **Standard** → the best proven performer by Arena win-rate
-- **Hard** (code, analysis, writing) → the reigning Arena champion
+- **Simple** (short, factual) → the cheapest ready worker: **Hermes on a free Nous Portal model** (with web search switched on when the question needs current information), or a local model
+- **Standard** → the best proven performer by Arena win-rate; until there is arena data, a subscription tool you already pay for (**Codex** on your ChatGPT plan), else Claude
+- **Hard** (code, analysis, writing) → the reigning Arena champion; until there is arena data, the strongest tool available (**Claude**, or Codex if Claude is benched)
+
+**Auto spends subscriptions and free models, not API credit.** A model you added by API key is billed by its provider, so Auto leaves it out of the pool until you opt it in: Auto page → **Who Auto Can Use** → tick the model. Local models (Ollama) are free and always eligible. You can still chat with a keyed model directly on its own page whether or not Auto may use it.
+
+**Which Nous model Hermes uses** is chosen for you from Nous's public price list (refreshed twice a day, cached in data/nous-models.json): the free model for a task that needs no internet, the cheapest model that can make tool calls for one that does (Hermes reaches the web through tool calls; the free models can, so this is normally still free), with the next-cheapest as fallbacks because free tiers are rate-limited. Hermes's own default model is never inherited, and Claude or GPT models are never run *through* Nous — you already pay for those by subscription. To pin a model or park one that misbehaves, create data/worker-models.json: \`{ "routine": "<model id>", "web": "<model id>", "avoid": ["<model id>"] }\`.
 
 It also reads the usage ledger for **health** — models failing more than half their recent runs are skipped — and **fails over to Claude** automatically if the chosen model errors. Health is deliberately **recency-weighted**: a run's weight halves every 7 days, and same-outcome runs inside a 5-minute window count as *one* event. That matters because an outage fails however many jobs happened to be in flight — 11 missions dying in one minute is one broken credential, not 11 votes — and because a fixed agent should be able to prove it works again in a run or two rather than waiting a month for the average to recover. Every answer shows a routing line: who answered and why. Auto works in chat, missions, and schedules. It gets smarter as you crown Arena winners and accumulate usage data.
 
 The Auto page keeps a **Recent Routes** panel — the last few routing decisions with the chosen model and the router's stated reason, so you can see the routing brain at work (and catch it picking expensive models for cheap questions).
 
-**"N models in pool"** in the page header is the router's *live* pool, not a count of what you've configured — Claude plus every ready LLM, minus anything the health filter has benched. A **"· N benched"** suffix appears when models were skipped; hover the badge to see which ones and their success rate. So a low number means one of two different things: either that machine's registry is thin (**API keys are per-machine** — re-enter them in Settings after installing on a new machine), or a model has been failing and Auto stopped reaching for it. Command agents (Talos, Hermes, Codex) are never in this pool — Auto routes to Claude and API LLMs only.`,
+**"N models in pool"** in the page header is the router's *live* pool, not a count of what you've configured — Claude plus every ready LLM, minus anything the health filter has benched. A **"· N benched"** suffix appears when models were skipped; hover the badge to see which ones and their success rate. So a low number means one of two different things: either that machine's registry is thin (**API keys are per-machine** — re-enter them in Settings after installing on a new machine), or a model has been failing and Auto stopped reaching for it. The pool is: Hermes on a free model (when Hermes is installed), Codex (when its CLI is installed), Claude, local models, and any API-key model you opted in. Talos and other command agents are not in it.`,
   },
   {
     id: "chat-features",
@@ -656,7 +660,17 @@ Without a publishing connection the pipeline still works end-to-end — you just
     id: "orchestrator-attention",
     title: "Orchestrator & Needs Attention",
     keywords: "orchestrator chief of staff delegate goal decompose dispatch review rework assemble subtasks auto route cheap tokens conserve needs attention stalled blocked waiting pending nudge reminder",
-    body: `**🤖 The Orchestrator** (panel on the Tasks page) is the chief-of-staff loop — hand it one goal and it runs the whole show:
+    body: `**🧭 Runs** (sidebar → Runs) is for a real project: describe it, and it is planned into tasks, each task is done by a **real session** (Claude Code, Codex or Hermes, in a folder, able to edit files when you allow it), reviewed, sent back or moved to a stronger worker, and delivered.
+
+- **Start a run** — write the brief, pick where it works (a project's folder on a machine that has it, or a home folder), pick who plans (Auto gives planning to Claude; Hermes plans on a free model), and tick *Tasks may edit files there* only if they should. Unticked, every task answers in text and changes nothing.
+- **You approve the plan** before any worker starts — on the Runs page, in Needs you, or from Telegram ("approve <id>"). Open a task to read exactly what its worker will be told and how "done" is defined.
+- **Cheapest worker that fits.** Each task has a tier. *Routine* (look up, summarise, draft, simple edits) goes to Hermes on a free Nous model; *standard* to Codex; *hard* to Claude. Within the Claude plan, routine and standard work use the smaller Claude models. A tool that isn't installed on that machine, or whose plan has hit its limit, is skipped.
+- **Review from above, and escalation.** A routine task is reviewed by Codex, everything else by Claude. Rejected work goes back to the same session with the reviewer's words; a task rejected twice at one tier is retried one tier up by a fresh worker that is shown the rejected output. After four attempts a task is marked failed and the run carries on with the rest.
+- **Guards.** A Hermes worker is limited in tool-calling rounds (20 for routine work) and every worker has a time budget by tier (8, 15, 19 minutes); a worker still going past it is stopped and the task moves on. Hermes workers never get a terminal.
+- **It survives restarts.** A run's state is a file in your vault (Agentic OS/Runs/<run>/run.json, with a readable Run.md, a Log.md, one note per task and the final Delivery.md). The machine that started a run advances it every 20 seconds and simply carries on after a restart. Pause, Resume and Stop work from any machine.
+- **What "reviewed" means here:** a second model read the output. Nothing is executed to check it yet, and the delivery says so. A task accepted because its reviewer failed is labelled *not reviewed*.
+
+**🤖 The Orchestrator** (panel on the Tasks page, and the Board page) is the quick path for a text deliverable — hand it one goal and it runs the whole show in one go:
 
 1. **Plan** — Claude decomposes the goal into ≤5 self-contained subtasks
 2. **Dispatch** — each subtask goes to **Auto**, which routes to the cheapest capable model (your token-conservation layer). Or **pin workers**: pick up to 4 agents in the launcher (e.g. Hermes for research, Llama for free drafts) and subtasks are distributed among them round-robin — the review/rework gate stays either way

@@ -41,8 +41,10 @@ export interface Approval {
    * Who launches it once approved. Unset = syncApprovedMissions() below.
    * "bridge" = lib/bridge.ts launches it itself so it can write the result
    * back to the vault Outbox for the external agent that asked.
+   * "run" = a project run's plan (lib/runs.ts): nothing is launched from here at
+   * all; the run's driver reads the answer and carries on.
    */
-  handler?: "bridge";
+  handler?: "bridge" | "run";
 }
 
 const LEGACY_FILE = path.join(process.cwd(), "data", "approvals.json");
@@ -109,7 +111,13 @@ export async function listApprovals(): Promise<Approval[]> {
 
 let seq = 0;
 
-export async function createApproval(input: { payload: string; source: string; handler?: "bridge" }): Promise<Approval> {
+export async function createApproval(input: {
+  payload: string;
+  source: string;
+  handler?: "bridge" | "run";
+  /** Telegram text to send instead of the default; "{id}" is replaced with the approval's id. */
+  notify?: string;
+}): Promise<Approval> {
   const approvals = await load();
   const approval: Approval = {
     id: `ap-${Date.now().toString(36)}${seq++}`,
@@ -120,9 +128,19 @@ export async function createApproval(input: { payload: string; source: string; h
     status: "pending",
     origin: (await import("os")).hostname(),
     ...(input.handler ? { handler: input.handler } : {}),
+    // A machine still on older code launches every approved item whose handler isn't
+    // "bridge" as a mission - it would run a plan's summary as a prompt. Marking it
+    // launched from the start makes those machines skip it; nothing here reads the
+    // stamp for a "run" approval.
+    ...(input.handler === "run" ? { launchedAt: Date.now() } : {}),
   };
   approvals.push(approval);
   await save(approvals);
+
+  if (input.notify) {
+    void sendTelegram(input.notify.replace(/\{id\}/g, approval.id));
+    return approval;
+  }
 
   // notify the owner's phone — fire and forget
   void sendTelegram(
@@ -163,7 +181,7 @@ export async function syncApprovedMissions(): Promise<void> {
     (a) =>
       a.status === "approved" &&
       !a.launchedAt &&
-      a.handler !== "bridge" && // the bridge launches its own (lib/bridge.ts)
+      !a.handler && // the bridge launches its own (lib/bridge.ts); a run's plan launches nothing here
       // Belt-and-braces against resurrection. Any future path that loses
       // `launchedAt` — a bad merge, a hand-edited vault file, a restored backup
       // — would otherwise make the master re-run every approval it ever

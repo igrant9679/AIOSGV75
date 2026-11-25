@@ -7,6 +7,10 @@ import { AGENT_DEFS } from "./agents-config";
 import { readRegistry, isLocalEndpoint, type LlmConfig } from "./registry";
 import { gatherContext, memoryBlock, memorySystemBlock, EMPTY_CONTEXT } from "./retrieval";
 import { recordUsage } from "./usage";
+import path from "path";
+import fsp from "fs/promises";
+import { needsWeb, pickHermesModel } from "./nousModels";
+import { hermesToolsets } from "./sessionTools";
 
 /**
  * Non-streaming, promise-based agent runners for server-side orchestration
@@ -209,6 +213,80 @@ export async function runLlmText(llm: LlmConfig, prompt: string, system: string)
   }
 }
 
+/**
+ * Hermes for Auto: one question, on the cheapest Nous model that fits, with only the
+ * answer-level toolsets (no terminal, no files). The registered Hermes agent
+ * (`hermes -z`) is a different thing: Hermes's own default model with every
+ * tool auto-approved, which is the owner's choice when they talk to Hermes directly.
+ */
+async function runHermesFree(prompt: string): Promise<RunResult> {
+  const started = Date.now();
+  const web = needsWeb(prompt);
+  const choice = await pickHermesModel({ needsWeb: web });
+  const once = (model?: string) =>
+    new Promise<RunResult>((resolve) => {
+      const args = ["chat", "-q", prompt, "-Q", "-t", hermesToolsets("answer", web)];
+      if (model) args.push("-m", model);
+      // shell:false — the prompt is an argument, and through cmd.exe a newline would end the command
+      const child = spawn(process.env.HERMES_BIN || "hermes", args, { cwd: agentCwd(), shell: false, env: cleanEnv(), windowsHide: true });
+      let out = "";
+      let err = "";
+      const timer = setTimeout(() => {
+        child.kill();
+        resolve({ text: "", ms: Date.now() - started, error: "timed out" });
+      }, CLI_TIMEOUT_MS);
+      child.stdout.on("data", (c: Buffer) => (out += c.toString("utf8")));
+      child.stderr.on("data", (c: Buffer) => (err = (err + c.toString("utf8")).slice(-1500)));
+      child.on("error", (e) => {
+        clearTimeout(timer);
+        resolve({ text: "", ms: Date.now() - started, error: e.message });
+      });
+      child.on("close", (code) => {
+        clearTimeout(timer);
+        const plain = (t: string) => t.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "").replace(/\r\n/g, "\n");
+        const text = plain(out).trim();
+        // Hermes prints a failure where the answer would go and exits non-zero
+        if (code !== 0 || !text) resolve({ text: "", ms: Date.now() - started, error: (text || plain(err).replace(/session_id:[^\n]*/g, "").trim() || `hermes exited with code ${code}`).slice(-400) });
+        else resolve({ text, ms: Date.now() - started, costUsd: choice.free ? 0 : undefined });
+      });
+    });
+  let r = await once(choice.model);
+  // free tiers are rate-limited: one retry on the next-cheapest model before Auto escalates
+  if (r.error && choice.fallbacks[0]) r = await once(choice.fallbacks[0]);
+  return r;
+}
+
+/** Codex for Auto: `codex exec` on the ChatGPT sign-in, read-only (its default sandbox), answer to a file. */
+async function runCodexCli(prompt: string): Promise<RunResult> {
+  const started = Date.now();
+  const outFile = path.join(os.tmpdir(), `mc-auto-codex-${process.pid}-${Date.now().toString(36)}.txt`);
+  return new Promise<RunResult>((resolve) => {
+    const child = spawn("codex", ["exec", "-", "--skip-git-repo-check", "-o", `"${outFile}"`], { cwd: agentCwd(), shell: true, env: cleanEnv(), windowsHide: true });
+    let err = "";
+    const finish = async (error?: string) => {
+      const text = (await fsp.readFile(outFile, "utf8").catch(() => "")).trim();
+      await fsp.rm(outFile, { force: true }).catch(() => {});
+      resolve({ text, ms: Date.now() - started, error: text ? undefined : error || "no output" });
+    };
+    const timer = setTimeout(() => {
+      child.kill();
+      void finish("timed out");
+    }, CLI_TIMEOUT_MS);
+    child.stderr.on("data", (c: Buffer) => (err = (err + c.toString("utf8")).slice(-1500)));
+    child.stdout.on("data", () => {});
+    child.on("error", (e) => {
+      clearTimeout(timer);
+      void finish(e.message);
+    });
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      void finish(code === 0 ? undefined : err.trim().slice(-400) || `codex exited with code ${code}`);
+    });
+    child.stdin.write(prompt);
+    child.stdin.end();
+  });
+}
+
 /** Run any registered agent by id, with retrieved shared memory injected. */
 export async function runAgentText(
   agentId: string,
@@ -235,6 +313,10 @@ export async function runAgentText(
   let result: RunResult | null = null;
   if (agentId === "claude") {
     result = await runClaudeText((inject ? memoryBlock(ctx) : "") + prompt);
+  } else if (agentId === "hermes-free") {
+    result = await runHermesFree((inject ? memoryBlock(ctx) : "") + prompt);
+  } else if (agentId === "codex-cli") {
+    result = await runCodexCli((inject ? memoryBlock(ctx) : "") + prompt);
   } else {
     const reg = await readRegistry();
     const llm = reg.llms.find((l) => l.id === agentId);

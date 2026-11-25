@@ -89,6 +89,8 @@ export async function POST(req: Request) {
     openTerminal?: boolean;
     hideSource?: boolean;
     dispatch?: string;
+    model?: unknown;
+    web?: unknown;
   };
   try {
     b = await req.json();
@@ -120,6 +122,8 @@ export async function POST(req: Request) {
           openTerminal: b.openTerminal === true,
           hideSource: b.hideSource !== false,
           dispatch: typeof b.dispatch === "string" ? b.dispatch.slice(0, 300) : undefined,
+          model: typeof b.model === "string" ? b.model : undefined,
+          web: typeof b.web === "boolean" ? b.web : undefined,
         });
         if ((b.action === "stop" || b.action === "export") && job.status === "error") return Response.json({ error: job.error, job }, { status: 400 });
         return Response.json({ job });

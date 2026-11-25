@@ -47,6 +47,9 @@ manual is `/guide` (source: `lib/guideContent.ts`).
   `vault.ts` (Obsidian read/write + scaffold + the Rules note),
   `rollup.ts` (weekly roll-up notes + Archive, master duty),
   `conflictCopies.ts` (sweeps OneDrive copies of generated notes),
+  `runs.ts` (project runs: plan → real sessions as workers → review →
+  escalate → deliver; state in the vault, advanced by the machine that
+  started the run), `nousModels.ts` (cheapest Nous model for a Hermes run),
   `sessionTools.ts` (the registry of session tools) + `sessions.ts` /
   `hermesSessions.ts` (readers) + `sessionActions.ts` (reply / new / stop,
   locally and on other machines),
@@ -136,6 +139,20 @@ manual is `/guide` (source: `lib/guideContent.ts`).
     with `-t <toolsets>` (`HERMES_TOOLSETS`; an explicit list replaces the
     configured one — checked in Hermes's source, not assumed). Prompts go as an
     argument with `shell: false`: through cmd.exe a newline ends the command.
+18. **Whoever judges or builds on a result must see all of it.** The first
+    project run clipped a worker's output at 7,000 characters for the reviewer;
+    the reviewer saw "…(shortened)", took it for the worker's own truncation and
+    rejected good work. Pass results whole, or say in the prompt that the cut is
+    the system's. And tell an assembler how each piece was checked — left out,
+    it reported reviewed work as unreviewed.
+19. **Cheap models need a leash, not just a lower price.** A free model given a
+    research task made 66 web calls in nine minutes. Hermes workers get a
+    turn cap (`HERMES_TURNS`) and every run task a time budget
+    (`TIME_BUDGET_MS`); past it the worker is stopped and the task escalates.
+20. **Auto must never reach for a pay-per-token model on its own.** Registry
+    LLMs with a key are out of `routablePool()` unless `autoRoute` is set.
+    Before this, one benched Claude left a single Grok API key as Auto's whole
+    pool and every Auto task went to it.
 
 ## Dev cycle (production server auto-starts at login)
 

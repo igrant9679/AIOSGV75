@@ -13,7 +13,8 @@ import { readThread, type Thread } from "./sessionThread";
 import { PeerUnavailable, peerFetch } from "./peer";
 import { exportSession, importSession, type HandoffPackage } from "./handoff";
 import { setHidden } from "./sessionNaming";
-import { HERMES_TOOLSETS, SESSION_TOOLS, asSessionTool, toolLabel } from "./sessionTools";
+import { SESSION_TOOLS, asSessionTool, hermesToolsets, toolLabel } from "./sessionTools";
+import { isModelId } from "./nousModels";
 
 /**
  * Acting on sessions - from the Projects page, the live view and the
@@ -82,6 +83,12 @@ export interface SessionJob {
   handoff?: { fromHost: string; fromLabel: string; oldCwd: string; targetCwd: string; openTerminal: boolean; hideSource: boolean };
   /** run-somewhere: why this machine was picked */
   dispatch?: string;
+  /** the model to run on, when the caller chose one (cost tiers); unset = the tool's own default */
+  model?: string;
+  /** Hermes: false = no web toolset for this run. Unset = web on. */
+  web?: boolean;
+  /** Hermes: the most tool-calling rounds this run may take. Unset = Hermes's own limit. */
+  maxTurns?: number;
   /** set on the TARGET machine for a job another machine asked for */
   requestedBy?: string;
   requestedByLabel?: string;
@@ -236,7 +243,21 @@ export interface StartInput {
   openTerminal?: boolean;
   hideSource?: boolean;
   dispatch?: string;
+  model?: string;
+  web?: boolean;
+  maxTurns?: number;
+  /**
+   * A job id chosen by the caller. A project run writes the id into its own
+   * state BEFORE starting the job, so a crash between the two is recovered by
+   * looking the job up instead of starting it twice.
+   */
+  id?: string;
 }
+
+const turnCap = (v: unknown): number | undefined => (typeof v === "number" && Number.isInteger(v) && v >= 1 && v <= 90 ? v : undefined);
+
+/** Ids for jobs a caller wants to name up front (see StartInput.id). */
+export const newJobId = () => newId();
 
 export async function startJob(input: StartInput): Promise<SessionJob> {
   const snap = await sessionsSnapshot();
@@ -248,7 +269,21 @@ export async function startJob(input: StartInput): Promise<SessionJob> {
   const access: JobAccess = input.access === "edit" ? "edit" : "answer";
   if ((input.mode === "reply" || input.mode === "new") && !prompt) throw new Error("Write a message first.");
   if (prompt.length > MAX_PROMPT) throw new Error(`That message is too long (max ${MAX_PROMPT.toLocaleString()} characters).`);
-  const base = { id: newId(), prompt, access, fork: false, status: "queued" as JobStatus, createdAt: Date.now(), dispatch: input.dispatch };
+  const id = input.id && ID_RE.test(input.id) ? input.id : newId();
+  const already = (await listJobs()).find((j) => j.id === id);
+  if (already) return already; // the caller retried after a crash: same id, same job
+  const base = {
+    id,
+    prompt,
+    access,
+    fork: false,
+    status: "queued" as JobStatus,
+    createdAt: Date.now(),
+    dispatch: input.dispatch,
+    model: isModelId(input.model) ? input.model : undefined,
+    web: typeof input.web === "boolean" ? input.web : undefined,
+    maxTurns: turnCap(input.maxTurns),
+  };
 
   let job: SessionJob;
   let content: HandoffPackage | undefined;
@@ -446,6 +481,9 @@ export async function acceptRequest(r: SessionJob, via: "lan" | "vault", content
     requestedBy: r.requestedBy,
     requestedByLabel: r.requestedByLabel,
     dispatch: r.dispatch,
+    model: isModelId(r.model) ? r.model : undefined,
+    web: typeof r.web === "boolean" ? r.web : undefined,
+    maxTurns: turnCap(r.maxTurns),
   };
   if (r.access === "edit" && job.access !== "edit") throw Object.assign(new Error(`${myLabel} only allows answers (no file edits) from other machines.`), { status: 403 });
 
@@ -687,6 +725,7 @@ async function execute(job: SessionJob): Promise<Partial<SessionJob>> {
       if (job.fork) args.push("--fork-session");
     }
     if (job.access === "edit") args.push("--permission-mode", "acceptEdits");
+    if (job.model) args.push("--model", job.model);
     const live = streamParser(job.id);
     const r = await runCli("claude", args, cwd, job.prompt, setPid, live.push, { MC_JOB_ID: job.id });
     live.end();
@@ -712,7 +751,11 @@ async function execute(job: SessionJob): Promise<Partial<SessionJob>> {
     // `hermes chat -q … -Q`: the reply on stdout, "session_id: <id>" on stderr. (`hermes -z` is
     // cleaner but ignores --resume.) Neither mode can stop and ask, so what the run may do is
     // set by the toolsets it is given: an explicit -t list REPLACES the configured one.
-    const args = ["chat", "-q", job.prompt, "-Q", "-t", HERMES_TOOLSETS[job.access]];
+    const args = ["chat", "-q", job.prompt, "-Q", "-t", hermesToolsets(job.access, job.web)];
+    if (job.model) args.push("-m", job.model);
+    // A small model does not always know when it has read enough: one research task made 66
+    // web calls in nine minutes. The cap ends the run with whatever it has by then.
+    if (job.maxTurns) args.push("--max-turns", String(job.maxTurns));
     // --no-restore-cwd: we already start in the session's folder; without it Hermes prints a "restored workspace dir" line into the reply
     if (job.mode === "reply") args.push("--resume", job.sessionId!, "--no-restore-cwd");
     const r = await runCli(process.env.HERMES_BIN || "hermes", args, cwd, "", setPid, undefined, { MC_JOB_ID: job.id }, false);
@@ -737,6 +780,7 @@ async function execute(job: SessionJob): Promise<Partial<SessionJob>> {
   if (job.mode === "reply") args.push("resume", job.sessionId!);
   args.push("-", "--skip-git-repo-check", "-o", outFile);
   if (job.access === "edit") args.push("-c", "sandbox_mode=workspace-write");
+  if (job.model) args.push("-m", job.model);
   const r = await runCli("codex", args, cwd, job.prompt, setPid);
   const reply = await fsp.readFile(outFile, "utf8").catch(() => "");
   await fsp.rm(outFile, { force: true }).catch(() => {});

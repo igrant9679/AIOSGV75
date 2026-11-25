@@ -19,6 +19,7 @@ interface PoolMember {
   id: string;
   name: string;
   health: number | null;
+  band?: "free" | "subscription" | "premium" | "metered";
 }
 interface PoolInfo {
   ready: number;
@@ -26,11 +27,19 @@ interface PoolInfo {
   degraded: boolean;
   members: PoolMember[];
   dropped: PoolMember[];
+  excluded?: { id: string; name: string }[];
 }
+
+const BAND_LABEL: Record<NonNullable<PoolMember["band"]>, string> = {
+  free: "free",
+  subscription: "subscription",
+  premium: "subscription · strongest",
+  metered: "pay per token",
+};
 
 /** Chat page for the smart-routing Auto agent. */
 export default function AutoSection() {
-  const { addEvent, chats, appendChat, clearChat, busy, setBusy, registry } = useMission();
+  const { addEvent, chats, appendChat, clearChat, busy, setBusy, registry, refreshRegistry } = useMission();
 
   const entries = chats[CHAT_ID] ?? [];
   const isBusy = busy[CHAT_ID] ?? false;
@@ -51,6 +60,22 @@ export default function AutoSection() {
   useEffect(() => {
     loadPool();
   }, [loadPool]);
+
+  // Models added by API key are billed by their provider, so Auto only uses one you opt in.
+  const keyed = registry.llms.filter((l) => l.keyStored && !/^https?:\/\/(localhost|127\.0\.0\.1)/i.test(l.baseUrl));
+  const [savingId, setSavingId] = useState<string | null>(null);
+  const setAutoRoute = useCallback(
+    async (id: string, on: boolean) => {
+      setSavingId(id);
+      try {
+        await fetch("/api/registry", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: "llm", id, data: { autoRoute: on } }) });
+        await Promise.all([refreshRegistry(), loadPool()]);
+      } finally {
+        setSavingId(null);
+      }
+    },
+    [refreshRegistry, loadPool],
+  );
 
   const readyModels = pool?.ready ?? 1 + registry.llms.filter((l) => l.hasKey).length;
   const benched = pool?.dropped ?? [];
@@ -162,8 +187,9 @@ export default function AutoSection() {
               <Avatar name="Auto" accent="cyan" size={52} />
               <p className="text-sm font-medium text-ink">One agent, whole fleet</p>
               <p className="max-w-sm text-xs leading-5 text-ink-faint">
-                Auto reads each task and routes it — cheap models for simple questions, arena champions for hard ones,
-                with automatic failover to Claude if the pick errors. Every reply shows who answered and why.
+                Auto reads each task and routes it, cheapest first: a free model for simple questions, a subscription
+                tool for standard work, Claude for hard problems, with automatic failover to Claude if the pick errors.
+                Every reply shows who answered and why.
               </p>
             </>
           }
@@ -196,21 +222,55 @@ export default function AutoSection() {
           </div>
         </Panel>
 
+        <Panel title="Who Auto Can Use" delay={0.09}>
+          <div className="flex flex-col gap-1.5 p-3">
+            {(pool?.members ?? []).map((m) => (
+              <div key={m.id} className="flex items-center justify-between gap-2 rounded-xl border border-line px-3 py-1.5">
+                <span className="truncate text-xs text-ink">{m.name}</span>
+                <span className="shrink-0 font-mono text-[10px] text-ink-faint">{m.band ? BAND_LABEL[m.band] : ""}</span>
+              </div>
+            ))}
+            {keyed.length > 0 && (
+              <>
+                <p className="px-1 pt-2 text-[10.5px] leading-4 text-ink-faint">
+                  Added by API key, so billed by their provider. Auto leaves these alone unless you turn one on.
+                </p>
+                {keyed.map((l) => (
+                  <label key={l.id} className="flex cursor-pointer items-center justify-between gap-2 rounded-xl border border-dashed border-line px-3 py-1.5">
+                    <span className="truncate text-xs text-ink-dim">{l.name}</span>
+                    <span className="flex shrink-0 items-center gap-1.5 font-mono text-[10px] text-ink-faint">
+                      {l.autoRoute ? "Auto may use it" : "not used by Auto"}
+                      <input
+                        type="checkbox"
+                        checked={Boolean(l.autoRoute)}
+                        disabled={savingId === l.id}
+                        onChange={(e) => void setAutoRoute(l.id, e.target.checked)}
+                        aria-label={`Let Auto use ${l.name}`}
+                      />
+                    </span>
+                  </label>
+                ))}
+              </>
+            )}
+          </div>
+        </Panel>
+
         <Panel title="How Routing Works" delay={0.1}>
           <div className="flex flex-col gap-3 p-4 text-[11.5px] leading-5 text-ink-dim">
             <p>
-              <span className="font-semibold text-neon-lime">Simple</span> — short, factual → cheapest ready model.
+              <span className="font-semibold text-neon-lime">Simple</span> — short, factual → the cheapest ready
+              worker: Hermes on a free model (with web search when the question needs it), or a local model.
             </p>
             <p>
               <span className="font-semibold text-neon-amber">Standard</span> — proven performer by{" "}
               <Link href="/arena" className="text-neon-cyan underline-offset-2 hover:underline">
                 Arena
               </Link>{" "}
-              win-rate, else a balanced pick.
+              win-rate, else a subscription tool you already pay for (Codex), else Claude.
             </p>
             <p>
               <span className="font-semibold text-neon-rose">Hard</span> — code, analysis, writing → the top arena
-              champion.
+              champion, or Claude until there is arena data.
             </p>
             <p>
               Signals sharpen as you use the OS: crown arena winners and the{" "}

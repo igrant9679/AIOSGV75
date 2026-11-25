@@ -24,6 +24,7 @@ const PAGES: Command[] = [
   { id: "projects", label: "Projects", hint: "brain by project", accent: "magenta", href: "/projects" },
   { id: "fleet", label: "Fleet", hint: "machines × subscriptions", accent: "lime", href: "/fleet" },
   { id: "board", label: "Board", hint: "manager · workers · reviewer", accent: "amber", href: "/board" },
+  { id: "runs", label: "Runs", hint: "projects done by workers", accent: "violet", href: "/runs" },
   { id: "mastermind", label: "Mastermind", hint: "all agents, one room", accent: "cyan", href: "/mastermind" },
   { id: "jarvis", label: "JARVIS", hint: "voice command center", accent: "cyan", href: "/jarvis" },
   { id: "pipeline", label: "Pipeline", hint: "inbox → shipped", accent: "violet", href: "/pipeline" },

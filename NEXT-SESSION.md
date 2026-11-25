@@ -231,6 +231,62 @@ IdrisArea51 backup). Started as a comparison against a "shared Obsidian memory" 
    green merely for being installed.
    Not done for Hermes: live view (no process list), session search inside the Projects page,
    moving a session between machines, fork.
+   **Gemini + Kimi CLIs installed on Raider18 (2026-11-24), not yet signed in or wired.**
+   `npm i -g @google/gemini-cli@0.71.1 @moonshot-ai/kimi-code@2.7.3`. The PyPI `kimi-cli` is
+   ARCHIVED (Moonshot points to Kimi Code), and an unrelated unscoped npm package `kimi-code`
+   also installs a `kimi` command - only the `@moonshot-ai/` scope is the vendor's.
+   Facts from each CLI's own --help, for the wiring:
+   Gemini: `gemini -p <prompt> -o stream-json`, `--session-id <uuid>` (we choose the id up
+   front), `-r/--resume`, `--approval-mode plan|auto_edit` (plan = read-only -> Answer only),
+   `--skip-trust`. Kimi: `kimi -p <prompt> --output-format stream-json`, `-S <id>` resume,
+   `--plan`, `kimi session list`, `kimi login` (device-code flow = the Kimi Code subscription).
+   Sign-in is Idris's: run `gemini` and pick Login with Google; run `kimi login`. Then one
+   probe run of each shows the session file format, and they slot into `lib/sessionTools.ts`.
+   Do NOT set GOOGLE_CLOUD_PROJECT to get past a Gemini login error - it bills a GCP project.
+
+   **Kimi probe, same evening - BLOCKED on the account, not the code.** `kimi login` succeeded
+   through the device-code flow (`managed:kimi-code`, source=oauth, global region kimi.ai), but
+   the first request returned 403: "Your current subscription does not have access to Kimi
+   Code right now." The CLI printed only "Prompt turn ended with reason: failed"; the real
+   message is in the session's `agents/main/wire.jsonl` (`turn.ended` -> `error.message`) and
+   `logs/kimi-code.log`. A Kimi job runner MUST read it from there or every failure is opaque.
+   Learned for the wiring: `kimi -p` ALWAYS runs with auto permission (edits and shell commands
+   run unasked) and cannot be combined with `--plan`. The only per-run limit is
+   `--agent-file <md>` with a `tools:` allowlist (enforced before execution), and that flag
+   cannot be combined with `-S`/`-c`. So: new sessions can be limited; a reply to a session
+   started elsewhere cannot, and must be refused or gated by a PreToolUse hook (not built).
+   Sessions: `~/.kimi-code/sessions/<wd_key>/<session_id>/state.json` + `agents/main/wire.jsonl`,
+   index `~/.kimi-code/session_index.jsonl`, or `kimi session list --all --json`. The session
+   id arrives as a `session.resume_hint` line in `--output-format stream-json`.
+   Gemini: Idris has not signed the CLI in yet (it needs a window ON this machine; the website
+   and the desktop app do not sign the CLI in).
+   **Kimi Code dropped the same evening.** Idris's Kimi plan (kimi.ai) does not include Kimi
+   Code; the CLI and `~/.kimi-code` were removed. The Kimi desktop app he installed was left.
+   **Auto on Raider18 routes everything to Grok (a per-token API key).** `/api/auto` shows
+   pool = [grok], dropped = [claude, health 0.18] - Claude is below the health floor after the
+   autumn OAuth failures, so the only candidate left is the metered one. And Auto can never
+   pick Hermes or Codex: `routablePool()` only offers Claude + registry LLMs. Both matter for
+   the cost-tier plan in ROADMAP-ORCHESTRATOR.md section 2.4a.
+   **Later the same night: Auto fixed, cost tiers, and project runs phase 1 BUILT.**
+   - Auto: registry models with an API key are out of `routablePool()` unless `autoRoute` is set
+     (Auto page -> Who Auto Can Use). Pool is now Hermes-on-a-free-model (`hermes-free`), Codex
+     (`codex-cli`), Claude, local models. Tested: simple -> Hermes free in 10 s, a web question ->
+     Hermes free with a real search, standard and hard -> Codex (Claude is benched at 18% health
+     from the autumn OAuth failures and returns to the pool as it succeeds).
+   - `lib/nousModels.ts`: Nous publishes its price list without sign-in
+     (inference-api.nousresearch.com/v1/models). 4 free models, all tool-capable; each verified
+     through a real run. Jobs can now carry `model`, `web`, `maxTurns` (lib/sessionActions.ts).
+   - `lib/runs.ts` + `/runs` + `/api/runs`: a real run (SQLite WAL briefing) went plan -> approve
+     -> Hermes free with web -> rejected -> reworked in the same session -> rejected -> escalated to
+     Codex -> rejected by Claude with specifics -> redone -> passed -> second task -> delivery. It
+     also survived a server restart mid-run. See the status block at the top of
+     ROADMAP-ORCHESTRATOR.md for what it taught.
+   - TRAP for anyone testing Hermes from a Claude Code session's shell: `hermes` reports
+     "API call failed after 3 retries: Connection error" there even with CLAUDE_*/ANTHROPIC_*
+     stripped, while the same call through Mission Control works. Test Hermes through
+     /api/hub/sessions, not from the sandboxed shell. (Cause not found.)
+   **Project orchestrator: designed; phase 1 built (see above)** - `ROADMAP-ORCHESTRATOR.md`. Real sessions as
+   workers, vault-backed resumable state advanced by the master tick, executed checks, lessons.
 4. Nobody logs to the journal (2 files, both July). The rules note now asks agents to; watch
    whether `Journal/` starts filling before trusting the weekly notes' Journal section.
 5. `collectVaultFiles()` (Library, graph, reports) still stops at 3,000 files in directory order —

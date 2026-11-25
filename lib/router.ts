@@ -1,11 +1,23 @@
 import { readRegistry, isLocalEndpoint } from "./registry";
 import { listStandings } from "./arena";
 import { readUsage, type UsageEntry } from "./usage";
+import { hermesInstalled } from "./hermesSessions";
+import { cliAvailable } from "./cliAvailable";
 
 /**
  * The "Auto" agent's brain: classify the task, then pick the best real agent
  * using live signals — arena win-rates (quality), the usage ledger
  * (cost/latency/health), and provider cost hints as a prior.
+ *
+ * Cheapest first, dearer only when the task asks for it:
+ *
+ *   free          Hermes on a free Nous model, local models (Ollama)
+ *   subscription  Codex on the ChatGPT plan — already paid for, quota-limited
+ *   premium       Claude on the Claude plan — the strongest, and the scarcest quota
+ *   metered       models added by API key — billed per token, so NOT in the pool
+ *                 unless the owner opts each one in (LlmConfig.autoRoute)
+ *
+ * simple → cheapest · standard → a subscription tool · hard → the strongest.
  */
 export interface RouteDecision {
   agentId: string;
@@ -39,6 +51,8 @@ const COST_RANK: Record<string, number> = {
   sakana: 10,
 };
 const CLAUDE_COST_RANK = 9;
+/** Codex on the ChatGPT subscription: free at the margin like a flat plan, but it spends a weekly quota. */
+const CODEX_COST_RANK = 4;
 /** Costs nothing per call — ranks below every paid tier, including `gemini: 1`. */
 const FREE_COST_RANK = 0;
 
@@ -74,9 +88,16 @@ export function classifyTier(prompt: string): RouteDecision["tier"] {
   return "standard";
 }
 
+export type CostBand = "free" | "subscription" | "premium" | "metered";
+
+/** Auto's own workers: a tool run a particular way, not an entry in the registry. See runAgentText. */
+export const HERMES_FREE_ID = "hermes-free";
+export const CODEX_CLI_ID = "codex-cli";
+
 export interface Candidate {
   id: string;
   name: string;
+  band: CostBand;
   costRank: number;
   winRate: number | null;
   battles: number;
@@ -135,6 +156,8 @@ export interface RoutablePool {
   dropped: Candidate[];
   /** Every candidate failed the filter, so it was bypassed and `pool` = `candidates`. */
   degraded: boolean;
+  /** Models added by API key that Auto is NOT using because the owner hasn't opted them in. */
+  excluded: { id: string; name: string }[];
 }
 
 /**
@@ -151,20 +174,38 @@ export async function routablePool(): Promise<RoutablePool> {
   const healthOf = (id: string): number | null => healthFor(usage.filter((e) => e.agent === id), now);
   const standingFor = (id: string) => standings.find((s) => s.agentId === id);
 
+  // A keyed, remote model is billed by its provider: it joins the pool only when opted in.
+  const eligible = reg.llms.filter((l) => isLocalEndpoint(l.baseUrl) || (l.apiKey && l.autoRoute === true));
+  const excluded = reg.llms.filter((l) => l.apiKey && !isLocalEndpoint(l.baseUrl) && l.autoRoute !== true).map((l) => ({ id: l.id, name: l.name }));
+  const own = (id: string, name: string, band: CostBand, costRank: number): Candidate => ({
+    id,
+    name,
+    band,
+    costRank,
+    winRate: standingFor(id) ? standingFor(id)!.wins / Math.max(1, standingFor(id)!.battles) : null,
+    battles: standingFor(id)?.battles ?? 0,
+    health: healthOf(id),
+  });
+
   const candidates: Candidate[] = [
+    // Hermes on a free Nous model: costs nothing, and a signed-out Hermes is caught by the health filter
+    ...(hermesInstalled() ? [own(HERMES_FREE_ID, "Hermes (free model)", "free", FREE_COST_RANK)] : []),
+    // Codex on the ChatGPT plan: no per-call cost, but a weekly quota — dearer than free, cheaper than Claude
+    ...(cliAvailable("codex") ? [own(CODEX_CLI_ID, "Codex", "subscription", CODEX_COST_RANK)] : []),
     {
       id: "claude",
       name: "Claude",
+      band: "premium" as CostBand,
       costRank: CLAUDE_COST_RANK,
       winRate: standingFor("claude") ? standingFor("claude")!.wins / Math.max(1, standingFor("claude")!.battles) : null,
       battles: standingFor("claude")?.battles ?? 0,
       health: healthOf("claude"),
     },
-    ...reg.llms
-      .filter((l) => l.apiKey || isLocalEndpoint(l.baseUrl))
+    ...eligible
       .map((l) => ({
         id: l.id,
         name: l.name,
+        band: (isLocalEndpoint(l.baseUrl) ? "free" : "metered") as CostBand,
         costRank: costRankFor(l),
         winRate: standingFor(l.id) ? standingFor(l.id)!.wins / Math.max(1, standingFor(l.id)!.battles) : null,
         battles: standingFor(l.id)?.battles ?? 0,
@@ -180,6 +221,7 @@ export async function routablePool(): Promise<RoutablePool> {
     pool: degraded ? candidates : healthy,
     dropped: degraded ? [] : candidates.filter((c) => !healthy.includes(c)),
     degraded,
+    excluded,
   };
 }
 
@@ -196,18 +238,29 @@ export async function routeTask(prompt: string): Promise<RouteDecision> {
     why = `simple task → cheapest ready model`;
   } else if (tier === "hard") {
     const ranked = [...pool].sort((a, b) => quality(b) - quality(a) || a.costRank - b.costRank);
-    pick = ranked[0].battles > 0 ? ranked[0] : (pool.find((c) => c.id === "claude") ?? ranked[0]);
+    // No arena data: the strongest band that is available. Claude first; if Claude is benched or
+    // absent, a subscription tool - never "cheapest", which is what sorting by cost alone gave.
+    const strength: CostBand[] = ["premium", "subscription", "metered", "free"];
+    const strongest = [...pool].sort((a, b) => strength.indexOf(a.band) - strength.indexOf(b.band) || b.costRank - a.costRank)[0];
+    pick = ranked[0].battles > 0 ? ranked[0] : strongest;
     why =
       pick.battles > 0
         ? `hard task → best arena win-rate (${Math.round((pick.winRate ?? 0) * 100)}% of ${pick.battles})`
         : `hard task → strongest default (no arena data yet)`;
   } else {
-    // standard: proven quality if any, else mid-cost
+    // standard: proven quality if any; else a subscription tool (paid for already, more able than
+    // the free tier); else the premium one. Never the free tier by default — "cheapest" is for
+    // simple tasks, and a standard task answered badly costs more than it saved.
     const proven = [...pool].filter((c) => c.battles > 0).sort((a, b) => quality(b) - quality(a));
-    pick = proven[0] ?? [...pool].sort((a, b) => a.costRank - b.costRank)[Math.floor((pool.length - 1) / 2)];
+    const byCost = [...pool].sort((a, b) => a.costRank - b.costRank);
+    const subscription = byCost.find((c) => c.band === "subscription");
+    const premium = byCost.find((c) => c.band === "premium");
+    pick = proven[0] ?? subscription ?? premium ?? byCost[Math.floor((pool.length - 1) / 2)];
     why = proven[0]
       ? `standard task → proven performer (${Math.round((pick.winRate ?? 0) * 100)}% arena win-rate)`
-      : `standard task → balanced pick`;
+      : subscription
+        ? `standard task → ${pick.name}, on a subscription already paid for`
+        : `standard task → balanced pick`;
   }
 
   return { agentId: pick.id, agentName: pick.name, tier, reason: why };

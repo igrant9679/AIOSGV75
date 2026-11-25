@@ -52,6 +52,8 @@ export interface LlmInfo {
   keyStored: boolean;
   accent: "cyan" | "magenta" | "amber" | "lime" | "violet" | "rose";
   systemPrompt?: string;
+  /** Auto may route to this keyed, remote model (off unless the owner opts in). */
+  autoRoute?: boolean;
 }
 
 export interface CommandAgentInfo {

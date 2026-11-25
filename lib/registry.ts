@@ -15,6 +15,13 @@ export interface LlmConfig {
   apiKey: string;
   accent: Accent;
   systemPrompt?: string;
+  /**
+   * Auto may route to this model. Off unless the owner turns it on: a model
+   * added by API key is billed by its provider, and Auto is meant to spend
+   * subscriptions and free models first. Local endpoints (Ollama) are free and
+   * always eligible; this flag is about keyed, remote ones.
+   */
+  autoRoute?: boolean;
 }
 
 export interface CommandAgentConfig {

@@ -114,3 +114,14 @@ export const HERMES_TOOLSETS: Record<"answer" | "edit", string> = {
   answer: "web,vision,todo,memory,session_search",
   edit: "web,vision,todo,memory,session_search,skills,file",
 };
+
+/**
+ * The toolsets for one run. `web: false` leaves the web toolset out: Hermes's
+ * web search goes through Nous's Tool Gateway, so a task that doesn't need the
+ * internet shouldn't be able to spend on it, and a free model given no web tool
+ * can't wander off searching. Undefined keeps the default (web on).
+ */
+export function hermesToolsets(access: "answer" | "edit", web?: boolean): string {
+  const sets = HERMES_TOOLSETS[access].split(",");
+  return (web === false ? sets.filter((s) => s !== "web") : sets).join(",");
+}

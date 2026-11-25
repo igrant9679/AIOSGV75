@@ -119,6 +119,7 @@ export async function PATCH(request: Request) {
     if (d.apiKey === null) llm.apiKey = ""; // explicit clear, e.g. switching to a keyless localhost endpoint
     if (typeof d.model === "string" && d.model.trim()) llm.model = d.model.trim().slice(0, 100);
     if (typeof d.systemPrompt === "string") llm.systemPrompt = d.systemPrompt.slice(0, 4000) || undefined;
+    if (typeof d.autoRoute === "boolean") llm.autoRoute = d.autoRoute || undefined;
     if (typeof d.accent === "string" && ACCENT_IDS.includes(d.accent as (typeof ACCENT_IDS)[number])) {
       llm.accent = d.accent as Accent;
     }

@@ -15,8 +15,10 @@ export async function GET() {
     ready: p.pool.length,
     total: p.candidates.length,
     degraded: p.degraded,
-    members: p.pool.map(brief),
+    members: p.pool.map((c) => ({ ...brief(c), band: c.band })),
     dropped: p.dropped.map(brief),
+    // models added by API key that Auto leaves alone until the owner opts them in
+    excluded: p.excluded,
   });
 }
 
