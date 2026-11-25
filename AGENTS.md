@@ -55,7 +55,10 @@ manual is `/guide` (source: `lib/guideContent.ts`).
   `hermesSessions.ts` (readers) + `sessionActions.ts` (reply / new / stop,
   locally and on other machines),
   `registry.ts`, `usage.ts`,
-  `arena.ts`, `evals.ts`, `llmTools.ts`, `telegram.ts`, `guideContent.ts`.
+  `arena.ts`, `evals.ts`, `llmTools.ts`, `telegram.ts`, `guideContent.ts`,
+  `helpContent.ts` (the Help panel's per-page help, how-tos and glossary:
+  give every new page an entry in `PAGE_HELP`; `components/HelpDrawer.tsx`
+  renders it, `/api/help/ask` answers questions from the guide).
 - Operator pages beyond chat: `/tasks` (kanban + Orchestrator panel),
   `/schedule` (cron calendar), `/library` (vault doc browser), `/graph`
   (canvas force-sim knowledge graph — hand-rolled, no graph lib).

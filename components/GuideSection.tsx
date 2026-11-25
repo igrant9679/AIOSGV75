@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { GUIDE_SECTIONS } from "@/lib/guideContent";
 import Panel from "./ui/Panel";
@@ -31,6 +31,23 @@ export default function GuideSection() {
     })).filter((s) => s.score > 0);
     return query.trim() ? scored.sort((a, b) => b.score - a.score) : scored;
   }, [query]);
+
+  // links from the Help panel open /guide#guide-<section>: scroll there once the page has drawn
+  useEffect(() => {
+    let t: ReturnType<typeof setTimeout> | undefined;
+    const go = () => {
+      const id = decodeURIComponent(window.location.hash.slice(1));
+      if (!id.startsWith("guide-")) return;
+      setQuery(""); // a search could be hiding the section
+      t = setTimeout(() => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" }), 150);
+    };
+    go();
+    window.addEventListener("hashchange", go);
+    return () => {
+      window.removeEventListener("hashchange", go);
+      if (t) clearTimeout(t);
+    };
+  }, []);
 
   const scrollTo = (id: string) => {
     document.getElementById(`guide-${id}`)?.scrollIntoView({ behavior: "smooth", block: "start" });

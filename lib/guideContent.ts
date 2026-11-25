@@ -25,6 +25,8 @@ export const GUIDE_SECTIONS: GuideSection[] = [
 
 **Theme** — the sun/moon button in the header toggles light/dark. Your choice is remembered per browser.
 
+**New here? Press Help.** The **Help** button at the top right of every page (or **F1**) opens a side panel with: *This page* (what the page you are on is for and how to use it, step by step), *Start here* (a short tour and a "which page do I use for…" chooser), *How do I…* (searchable answers with a Go there button), *Glossary* (the app's words in plain language) and *Ask* (type a question in your own words; Claude Haiku answers from this manual, using a little of your Claude plan). A first-time visitor gets a small "New to Mission Control?" card pointing at it, once per browser.
+
 **Finding your way** — press **Ctrl/⌘+K** for the command palette (jump to any page or agent) and **?** for the keyboard-shortcut overlay. The next section, *The Deck*, explains the visual language — what the colors, rings, and animations mean.
 
 **After code changes** — the background server serves a production build; run \`npm run build\` then restart (stop.cmd → desktop shortcut) to pick up changes.`,

@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import StatusOrb from "./ui/StatusOrb";
-import { IconSun, IconMoon } from "./icons";
+import { IconSun, IconMoon, IconHelp } from "./icons";
+import { openHelp } from "./HelpDrawer";
 import { useMission } from "./store";
 import { APPEARANCE_EVENT } from "@/lib/appearance";
 import { useNetSettings, NET_DEFAULTS } from "./useNetSettings";
@@ -146,6 +147,17 @@ export default function Header() {
         <div className="font-mono text-[11px] tabular-nums text-ink-dim" suppressHydrationWarning>
           {clock}
         </div>
+        <button
+          type="button"
+          onClick={() => openHelp()}
+          aria-label="Help"
+          title="Help: what this page does, a quick tour, and how-to answers (F1)"
+          className="flex h-8 cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 text-[12px] font-semibold transition-colors hover:bg-white/[0.06]"
+          style={{ borderColor: "var(--page-accent)", color: "var(--page-accent)" }}
+        >
+          <IconHelp width={15} height={15} />
+          Help
+        </button>
         <button
           onClick={toggleTheme}
           aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}

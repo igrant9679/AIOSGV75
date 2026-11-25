@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from "framer-motion";
 
 const SHORTCUTS: { keys: string[]; what: string }[] = [
   { keys: ["Ctrl", "K"], what: "Command palette — jump to any page or agent" },
+  { keys: ["F1"], what: "Help — what this page does, a tour, how-to answers" },
   { keys: ["?"], what: "This overlay" },
   { keys: ["Esc"], what: "Close palette / overlay / dialogs" },
   { keys: ["Enter"], what: "Send message · add task (in composers)" },

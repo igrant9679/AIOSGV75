@@ -471,7 +471,7 @@ export default function RunsSection() {
             <p className="text-[10.5px] leading-4 text-ink-faint">Checks run only when a run works on the machine that started it, so this run will be reviewed but not checked. Start it from {chosen.hostLabel} to use that folder&apos;s checks.</p>
           )}
           <p className="text-[10.5px] leading-4 text-ink-faint">
-            Each task goes to the cheapest worker that fits: routine work to Hermes on a free model, standard work to Codex, hard work to Claude. A task that fails twice at one tier is retried one tier up. Tasks that edit files can be required to pass the folder&apos;s checks, which this machine runs itself; everything else is reviewed by a second model reading the output.
+            Each task goes to the cheapest worker that fits: small text-only work to this machine's local model if it has one, other routine work to Hermes on a free model, standard work to Codex, hard work to Claude. A task that fails twice at one tier is retried one tier up. Tasks that edit files can be required to pass the folder&apos;s checks, which this machine runs itself; everything else is reviewed by a second model reading the output.
           </p>
         </div>
       </Panel>

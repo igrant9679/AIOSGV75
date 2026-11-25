@@ -11,6 +11,7 @@ import Sidebar from "./Sidebar";
 import ApprovalsBar from "./ApprovalsBar";
 import CommandPalette from "./CommandPalette";
 import ShortcutsOverlay from "./ShortcutsOverlay";
+import HelpDrawer from "./HelpDrawer";
 import PageHero from "./ui/PageHero";
 import EventTicker from "./ui/EventTicker";
 import Celebration from "./ui/Celebration";
@@ -55,6 +56,7 @@ function DeckFrame({ children }: { children: ReactNode }) {
 
       <CommandPalette />
       <ShortcutsOverlay />
+      <HelpDrawer />
       <Celebration />
       <div className="deck-frame relative mx-auto flex min-h-dvh w-full max-w-[1600px] flex-col gap-4 p-4 lg:p-5">
         <Header />
