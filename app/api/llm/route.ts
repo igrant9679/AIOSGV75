@@ -18,12 +18,15 @@ interface AccumulatedToolCall {
 
 const MAX_TOOL_ROUNDS = 5;
 
-function buildSystemPrompt(agentName: string, custom: string | undefined, ctx: AgentContext, summary?: string): string {
+function buildSystemPrompt(agentName: string, custom: string | undefined, ctx: AgentContext, summary?: string, readOnly = false): string {
   const persona = custom?.trim() || `You are ${agentName}, an AI agent on the user's local ${productName()} dashboard.`;
   const compacted = summary?.trim()
     ? `\n\nEARLIER CONVERSATION (older messages, summarized):\n${summary.trim()}`
     : "";
   const tools = `\n\nYou have native function tools (search_vault, read_note, save_memory, add_goal, list_goals, append_journal, request_mission) — prefer them over the tag verbs when you need to act.`;
+  if (readOnly) {
+    return `${persona}${compacted}\n\n${memorySystemBlock(ctx, { verbs: false })}\n\nYou have function tools to look things up (search_vault, read_note, list_goals). Answer the question you are asked; use a tool only when the answer needs it.`;
+  }
   return `${persona}${compacted}\n\n${memorySystemBlock(ctx)}${tools}`;
 }
 
@@ -49,15 +52,17 @@ export async function POST(request: Request) {
 
   const lastUser = [...history].reverse().find((m) => m.role === "user")?.content ?? "";
   const ctx = await gatherContext(lastUser);
+  // a local model may read the shared brain but not write to it (see WRITE_TOOLS in lib/llmTools.ts)
+  const readOnly = isLocalEndpoint(llm.baseUrl);
   // convo grows as tool rounds append assistant tool_calls + tool results
   const convo: Record<string, unknown>[] = [
-    { role: "system", content: buildSystemPrompt(llm.name, llm.systemPrompt, ctx, body.summary) },
+    { role: "system", content: buildSystemPrompt(llm.name, llm.systemPrompt, ctx, body.summary, readOnly) },
     ...history,
   ];
 
   const encoder = new TextEncoder();
   // Resolved once per request: the list depends on whether a Brave key exists.
-  const tools = await toolDefs();
+  const tools = await toolDefs({ readOnly });
   const callUpstream = (withTools: boolean) =>
     fetch(`${llm.baseUrl}/chat/completions`, {
       method: "POST",
@@ -169,7 +174,7 @@ export async function POST(request: Request) {
             });
             for (const call of calls) {
               send({ type: "tool", name: call.name, detail: call.args.slice(0, 200) });
-              const result = await executeTool(call.name, call.args, llm.id);
+              const result = await executeTool(call.name, call.args, llm.id, { readOnly });
               send({ type: "tool_result", name: call.name, detail: result.slice(0, 200) });
               convo.push({ role: "tool", tool_call_id: call.id || `call_${Math.abs(call.name.length * 7919)}`, content: result.slice(0, 4000) });
             }

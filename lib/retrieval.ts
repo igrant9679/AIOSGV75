@@ -110,8 +110,12 @@ ${ctx.profile}`);
   return parts.join("\n") + "\n\n";
 }
 
-/** System-message variant for API LLMs. */
-export function memorySystemBlock(ctx: AgentContext): string {
+/**
+ * System-message variant for API LLMs. `verbs: false` leaves out the OS-verb
+ * instructions, for models that must not write to memory, goals or the journal
+ * (local models — see WRITE_TOOLS in lib/llmTools.ts).
+ */
+export function memorySystemBlock(ctx: AgentContext, opts: { verbs?: boolean } = {}): string {
   const parts: string[] = [];
   if (ctx.rules) {
     parts.push(`HOUSE RULES (set by the user in their Agentic OS/Rules note; follow them):\n${ctx.rules}`);
@@ -126,6 +130,7 @@ ${ctx.profile}`);
   if (ctx.passages.length > 0) {
     parts.push(`VAULT CONTEXT (possibly relevant excerpts from the user's notes):\n${passagesText(ctx.passages)}`);
   }
-  parts.push(VERB_HINT);
+  if (opts.verbs !== false) parts.push(VERB_HINT);
+  else parts.push(`You can read the shared memory and notes above. You cannot save to memory, add goals, write to the journal or start missions - if something should be remembered, say so in your answer and the user will decide.`);
   return parts.join("\n\n");
 }

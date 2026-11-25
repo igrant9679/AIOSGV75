@@ -14,6 +14,7 @@ import { pickHermesModel } from "./nousModels";
 import { cliAvailable } from "./cliAvailable";
 import { toolLabel, type SessionTool } from "./sessionTools";
 import { productName } from "./netSettings";
+import { readChecks } from "./projectChecks";
 
 /**
  * Project runs — hand over a brief; it is planned into tasks, each task is done
@@ -42,12 +43,31 @@ import { productName } from "./netSettings";
  * API routes, which are a different module instance from the tick) asks for
  * changes by dropping a file in the run's commands/ folder.
  *
- * Not yet (later phases): executed checks, running tasks on several machines at
- * once, lessons carried between runs, a branch per run.
+ * PHASE 2 — EVIDENCE. A folder can list check commands it trusts
+ * (lib/projectChecks.ts: per machine, never from the vault). A task that changes
+ * files can require some of them by name; when its worker finishes, Mission
+ * Control runs those commands itself, and only a task whose checks pass goes on
+ * to review — with the results in front of the reviewer. A failed check goes
+ * back to the worker with the end of the command's output. Checks run only when
+ * the run works on the machine that drives it.
+ *
+ * Not yet (later phases): running tasks on several machines at once, lessons
+ * carried between runs, a branch per run.
  */
 
 export type RunStatus = "planning" | "awaiting_approval" | "running" | "paused" | "delivering" | "done" | "failed" | "stopped";
-export type TaskStatus = "pending" | "running" | "review" | "done" | "failed";
+export type TaskStatus = "pending" | "running" | "checking" | "review" | "done" | "failed";
+
+export interface CheckResult {
+  name: string;
+  /** false = it could not be started at all (removed from the list since planning, folder gone) */
+  ran: boolean;
+  ok: boolean;
+  exitCode?: number;
+  /** the end of the command's output, or why it could not run */
+  summary: string;
+  at: number;
+}
 export type Tier = "routine" | "standard" | "hard";
 const TIERS: Tier[] = ["routine", "standard", "hard"];
 
@@ -75,6 +95,12 @@ export interface RunTask {
   /** the job in flight; written before the job is started */
   job?: { id: string; mode: "new" | "reply"; at: number };
   jobIds: string[];
+  /** names of this folder's check commands the task must pass (only for tasks that edit files) */
+  checks?: string[];
+  /** results for the CURRENT attempt; cleared when the worker goes again */
+  checkResults?: CheckResult[];
+  /** the check in flight; written before its job is started, like `job` */
+  checkJob?: { id: string; name: string; at: number };
   /** the worker's session — rework replies go here */
   sessionKey?: string;
   result?: string;
@@ -106,6 +132,8 @@ export interface Run {
   planner: "auto" | "claude" | "hermes" | "codex";
   /** tasks may edit files in the folder; off = every task is answer-only */
   allowEdit: boolean;
+  /** check names this folder offered when the run was created (the commands stay on the machine) */
+  checks?: string[];
   status: RunStatus;
   pausedFrom?: RunStatus;
   createdAt: number;
@@ -170,7 +198,7 @@ const STATUS_WORD: Record<RunStatus, string> = {
 function runMarkdown(run: Run): string {
   const mark = (t: RunTask) => (t.status === "done" ? "x" : " ");
   const state = (t: RunTask) =>
-    t.status === "done" ? (t.reviewNote ? `done, ${t.reviewNote}` : "done") : t.status === "failed" ? `FAILED: ${(t.error ?? "").slice(0, 160)}` : t.status === "review" ? "in review" : t.status;
+    t.status === "done" ? (t.reviewNote ? `done, ${t.reviewNote}` : "done") : t.status === "failed" ? `FAILED: ${(t.error ?? "").slice(0, 160)}` : t.status === "review" ? "in review" : t.status === "checking" ? "running its checks" : t.status;
   return [
     `# ${run.title}`,
     ``,
@@ -192,19 +220,40 @@ function runMarkdown(run: Run): string {
     ...(run.tasks.length === 0 ? ["_Not planned yet._"] : []),
     ...run.tasks.map(
       (t) =>
-        `- [${mark(t)}] **${t.id} · ${t.title}** — ${t.tier}${t.workTier !== t.tier ? ` → ${t.workTier}` : ""}${t.needsWeb ? " · web" : ""} · ${t.access}${t.dependsOn.length ? ` · after ${t.dependsOn.join(", ")}` : ""}${t.tool ? ` · ${toolLabel(t.tool)}${t.model ? ` (${t.model})` : ""}` : ""} · ${state(t)}`,
+        `- [${mark(t)}] **${t.id} · ${t.title}** — ${t.tier}${t.workTier !== t.tier ? ` → ${t.workTier}` : ""}${t.needsWeb ? " · web" : ""} · ${t.access}${t.dependsOn.length ? ` · after ${t.dependsOn.join(", ")}` : ""}${t.checks?.length ? ` · must pass ${t.checks.join(", ")}` : ""}${t.tool ? ` · ${toolLabel(t.tool)}${t.model ? ` (${t.model})` : ""}` : ""} · ${state(t)}`,
     ),
     ...(run.planNote ? [``, `_${run.planNote}_`] : []),
     ``,
   ].join("\n");
 }
 
+/**
+ * Replace a file that something else may be holding. The vault is a OneDrive
+ * folder: while OneDrive uploads run.json (or Obsidian or antivirus reads it),
+ * Windows refuses the rename with EPERM/EBUSY for a moment. That threw away a
+ * whole step once. Wait and try again; as a last resort write in place.
+ */
+async function replaceFile(file: string, content: string): Promise<void> {
+  const tmp = `${file}.${process.pid}.tmp`;
+  await fsp.writeFile(tmp, content, "utf8");
+  for (let attempt = 0; attempt < 6; attempt++) {
+    try {
+      await fsp.rename(tmp, file);
+      return;
+    } catch (e) {
+      const code = (e as NodeJS.ErrnoException).code;
+      if (code !== "EPERM" && code !== "EBUSY" && code !== "EACCES") throw e;
+      await new Promise((r) => setTimeout(r, 150 * (attempt + 1)));
+    }
+  }
+  await fsp.writeFile(file, content, "utf8");
+  await fsp.unlink(tmp).catch(() => {});
+}
+
 async function writeRun(run: Run): Promise<void> {
   const dir = dirOf(run.id);
   await fsp.mkdir(dir, { recursive: true });
-  const tmp = path.join(dir, `run.json.${process.pid}.tmp`);
-  await fsp.writeFile(tmp, JSON.stringify(run, null, 1), "utf8");
-  await fsp.rename(tmp, path.join(dir, "run.json"));
+  await replaceFile(path.join(dir, "run.json"), JSON.stringify(run, null, 1));
   const md = runMarkdown(run);
   const mdFile = path.join(dir, "Run.md");
   if ((await fsp.readFile(mdFile, "utf8").catch(() => null)) !== md) await fsp.writeFile(mdFile, md, "utf8").catch(() => {});
@@ -232,6 +281,9 @@ async function writeTaskNote(run: Run, t: RunTask): Promise<void> {
     `## Result`,
     ``,
     t.result?.trim() || (t.error ? `_Failed: ${t.error}_` : "_No result._"),
+    ...((t.checkResults ?? []).length
+      ? [``, `## Checks run by ${productName()}`, ``, ...(t.checkResults ?? []).flatMap((r) => [`**${r.name}** — ${r.ran ? (r.ok ? "passed" : `FAILED (exit code ${r.exitCode ?? "?"})`) : "could not be run"}`, ``, "```", r.summary.trim() || "(no output)", "```", ``])]
+      : []),
     ...(t.feedback ? [``, `## Last review`, ``, t.feedback] : []),
     ``,
   ].join("\n");
@@ -309,6 +361,8 @@ export async function createRun(input: CreateInput): Promise<Run> {
     if (allowEdit && m.acceptsReplies !== "edit") throw new Error(`${m.label} only allows answers from other machines, so tasks there can't edit files.`);
   }
 
+  // Checks are evidence about files, run by this machine: only when tasks may edit, and the run works here.
+  const checks = allowEdit && host === me() && folder !== "~" ? (await readChecks(folder)).map((c) => c.name) : [];
   const title = (input.title?.trim() || brief.split(/\r?\n/)[0]).replace(/\s+/g, " ").slice(0, 90);
   const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 44) || "run";
   const id = `${todayStamp()} ${slug} ${Math.random().toString(36).slice(2, 6).padEnd(4, "0")}`;
@@ -326,6 +380,7 @@ export async function createRun(input: CreateInput): Promise<Run> {
     project: input.project?.slice(0, 80),
     planner,
     allowEdit,
+    checks,
     status: "planning",
     createdAt: Date.now(),
     updatedAt: Date.now(),
@@ -382,9 +437,14 @@ function planPrompt(run: Run): string {
     `- "needsWeb": true only if the task needs current information from the internet.`,
     `- "access": "answer" (read and reply only) or "edit" (may change files in the working folder).${run.allowEdit ? ' Use "edit" only when the task must create or change files.' : ' Use "answer" for every task.'}`,
     `- "accept": one or two sentences — how a reviewer will know the task was done right.`,
+    ...((run.checks ?? []).length
+      ? [
+          `- "checks": names from this list that the task's work must pass: ${(run.checks ?? []).join(", ")}. ${productName()} runs them itself in the folder after the worker finishes, so a task that changes code should name the ones that prove it works. Only for "edit" tasks; leave it [] otherwise. Do not invent names.`,
+        ]
+      : []),
     ``,
     `Return ONLY a JSON array, nothing before or after it:`,
-    `[{"id":"t1","title":"short name","brief":"the full instruction","tier":"routine","needsWeb":false,"access":"answer","dependsOn":[],"accept":"…"}]`,
+    `[{"id":"t1","title":"short name","brief":"the full instruction","tier":"routine","needsWeb":false,"access":"answer","dependsOn":[],"accept":"…"${(run.checks ?? []).length ? `,"checks":[]` : ""}}]`,
   ].join("\n");
 }
 
@@ -408,6 +468,7 @@ function workPrompt(run: Run, t: RunTask): string {
     `- Do this task only. Do not start on other parts of the project.`,
     t.access === "edit" ? `- You may create and change files in the working folder. Do not delete anything you did not create.` : `- You cannot change files in this session. Put everything you produce in your reply.`,
     `- If you cannot finish, start your reply with "BLOCKED:" and say exactly what stopped you. Do not pretend.`,
+    ...(t.access === "edit" ? [`- Delete any scratch or probe files you create along the way. Leave only what the task asks for.`] : []),
     `- End with a line "RESULT:" followed by what you produced${t.access === "edit" ? " and the paths of any files you changed" : ""}.`,
   ].join("\n");
 }
@@ -434,6 +495,13 @@ function reviewPrompt(run: Run, t: RunTask): string {
     clip(t.brief, 2500),
     ``,
     `What "done" means: ${t.accept}`,
+    ...((t.checkResults ?? []).length
+      ? [
+          ``,
+          `Checks ${productName()} ran ITSELF in the project folder after this work. This is evidence, not the worker's claim:`,
+          ...(t.checkResults ?? []).map((r) => `- ${r.name}: ${r.ran ? (r.ok ? "PASSED (exit code 0)" : "FAILED") : `could NOT be run (${r.summary.slice(0, 160)}) - treat what it would have shown as unproven`}`),
+        ]
+      : []),
     ``,
     `The worker's output${(t.result ?? "").length >= MAX_RESULT ? ` (the system kept only the first ${MAX_RESULT.toLocaleString()} characters; a cut at the very end is ours, not the worker's)` : ""}:`,
     `---`,
@@ -441,14 +509,20 @@ function reviewPrompt(run: Run, t: RunTask): string {
     `---`,
     ``,
     `Judge the output against what "done" means and what the worker was told - nothing else. Do not reject it for failing a standard nobody set, and do not ask for polish beyond what the task needs: a rejection costs a whole new attempt.`,
-    `Judge only what is in front of you. If the output claims something happened (a file written, a test passed) that you cannot see evidence of, say so in the feedback rather than taking it on trust.`,
+    ...(t.access === "edit" && run.host === me() && run.folder !== "~"
+      ? [`You are in the project's folder. READ the files this task was meant to change and judge what is actually on disk, not the worker's description of it. You cannot run commands or change files, and do not need to: any check listed above was already run for you.`]
+      : [`Judge only what is in front of you. If the output claims something happened (a file written, a test passed) that you cannot see evidence of, say so in the feedback rather than taking it on trust.`]),
     `Return ONLY JSON: {"pass": true} or {"pass": false, "feedback": "what is wrong and exactly what to change"}`,
   ].join("\n");
 }
 
 function deliverPrompt(run: Run): string {
   // the assembler is told how each piece was checked; left out, it reported reviewed work as unreviewed
-  const checked = (t: RunTask) => (t.reviewNote ? t.reviewNote : t.reviewedBy ? `reviewed and accepted by ${t.reviewedBy} after ${t.attempts + 1} attempt${t.attempts ? "s" : ""}` : "not reviewed");
+  const checked = (t: RunTask) => {
+    const results = t.checkResults ?? [];
+    const ran = results.length ? `checks run by the system: ${results.map((r) => `${r.name} ${r.ran ? (r.ok ? "passed" : "failed") : "could not be run"}`).join(", ")}; ` : "";
+    return `${ran}${t.reviewNote ? t.reviewNote : t.reviewedBy ? `reviewed and accepted by ${t.reviewedBy} after ${t.attempts + 1} attempt${t.attempts ? "s" : ""}` : "not reviewed"}`;
+  };
   const parts = run.tasks.map((t) => `--- ${t.id}: ${t.title} (${t.status === "done" ? checked(t) : "FAILED"}) ---\n${t.status === "done" ? clip(t.result ?? "", DEP_RESULT) : `FAILED: ${t.error ?? "no result"}`}`);
   return [
     `You are assembling the final delivery of a project for its owner.`,
@@ -565,12 +639,15 @@ async function plan(id: string): Promise<void> {
   const run = await readRun(id);
   if (!run || run.status !== "planning") return;
   let agent = PLANNER_AGENT[run.planner];
-  let r = await runAgentText(agent, planPrompt(run), { injectMemory: true });
+  // In the project's folder and read-only: the planner can look at what is there before it plans,
+  // and cannot change anything or stall on a permission prompt. (Local runs with a real folder only.)
+  const look = { cwd: run.host === me() && run.folder !== "~" ? run.folder : undefined, readOnly: true };
+  let r = await runAgentText(agent, planPrompt(run), { injectMemory: true, ...look });
   let note: string | undefined;
   if (r.error && agent !== "claude") {
     note = `The ${run.planner} planner failed (${r.error.slice(0, 120)}); Claude planned instead.`;
     agent = "claude";
-    r = await runAgentText(agent, planPrompt(run), { injectMemory: true });
+    r = await runAgentText(agent, planPrompt(run), { injectMemory: true, ...look });
   }
   if (r.error) {
     await withRun(id, (x) => {
@@ -583,7 +660,7 @@ async function plan(id: string): Promise<void> {
     return;
   }
 
-  type Raw = { id?: unknown; title?: unknown; brief?: unknown; tier?: unknown; needsWeb?: unknown; access?: unknown; dependsOn?: unknown; accept?: unknown };
+  type Raw = { id?: unknown; title?: unknown; brief?: unknown; tier?: unknown; needsWeb?: unknown; access?: unknown; dependsOn?: unknown; accept?: unknown; checks?: unknown };
   let raw = extractJson<Raw[]>(r.text);
   if (!Array.isArray(raw) || raw.length === 0) {
     note = `${note ? `${note} ` : ""}The planner returned no usable plan, so the brief runs as a single task.`;
@@ -613,6 +690,9 @@ async function plan(id: string): Promise<void> {
       attemptsAtTier: 0,
       jobIds: [],
     });
+    // only names this folder really offers, and only on a task that can change files
+    const made = tasks[tasks.length - 1];
+    made.checks = made.access === "edit" ? (Array.isArray(x.checks) ? x.checks : []).map(String).filter((n, i, a) => (run.checks ?? []).includes(n) && a.indexOf(n) === i) : [];
   }
   if (tasks.length === 0) {
     await withRun(id, (x) => {
@@ -623,7 +703,7 @@ async function plan(id: string): Promise<void> {
     return;
   }
 
-  const summary = tasks.map((t) => `${t.id} ${t.title} [${t.tier}${t.needsWeb ? ", web" : ""}${t.access === "edit" ? ", edits files" : ""}]`).join("; ");
+  const summary = tasks.map((t) => `${t.id} ${t.title} [${t.tier}${t.needsWeb ? ", web" : ""}${t.access === "edit" ? ", edits files" : ""}${t.checks?.length ? `, must pass ${t.checks.join("+")}` : ""}]`).join("; ");
   const approval = await createApproval({
     payload: `Project run "${run.title}" — ${tasks.length} task${tasks.length === 1 ? "" : "s"} on ${run.hostLabel}: ${summary}`,
     source: "project run",
@@ -671,6 +751,7 @@ function afterFailure(run: Run, t: RunTask, reason: string): string {
   t.attempts++;
   t.attemptsAtTier++;
   t.job = undefined;
+  t.checkJob = undefined;
   if (t.attempts >= run.caps.maxAttempts) {
     t.status = "failed";
     t.error = `${reason} (gave up after ${t.attempts} attempts)`.slice(0, 500);
@@ -694,7 +775,7 @@ async function review(id: string, taskId: string): Promise<void> {
   const t = run?.tasks.find((x) => x.id === taskId);
   if (!run || !t || t.status !== "review") return;
   const who = reviewerFor(t);
-  const r = await runAgentText(who.agent, reviewPrompt(run, t), { injectMemory: false });
+  const r = await runAgentText(who.agent, reviewPrompt(run, t), { injectMemory: false, cwd: run.host === me() && run.folder !== "~" ? run.folder : undefined, readOnly: true });
   const verdict = r.error ? null : extractJson<{ pass?: boolean; feedback?: string }>(r.text);
   let line = "";
   const after = await withRun(id, (x) => {
@@ -744,12 +825,17 @@ async function deliver(id: string): Promise<void> {
   }
   const ok = done.length > 0;
   const unreviewed = run.tasks.filter((t) => t.reviewNote);
+  const proven = run.tasks.filter((t) => t.status === "done" && (t.checkResults ?? []).some((r) => r.ran && r.ok) && (t.checkResults ?? []).every((r) => r.ran && r.ok));
+  const evidence =
+    proven.length > 0
+      ? `${proven.length} task${proven.length === 1 ? "" : "s"} passed checks that ${productName()} ran itself; the rest were reviewed by a second model reading the output, with nothing executed.`
+      : `"Reviewed" here means a second model read the output; nothing was executed to check it.`;
   const md = [
     `# Delivery — ${run.title}`,
     ``,
     `#agentic-os/run · [[Agentic OS/Runs/${run.id}/Run|the run]]`,
     ``,
-    `> ${done.length} of ${run.tasks.length} tasks done${failed.length ? `, ${failed.length} failed` : ""}${unreviewed.length ? `, ${unreviewed.length} accepted without a review` : ""}. In this phase "reviewed" means a second model read the output; nothing was executed to check it.`,
+    `> ${done.length} of ${run.tasks.length} tasks done${failed.length ? `, ${failed.length} failed` : ""}${unreviewed.length ? `, ${unreviewed.length} accepted without a review` : ""}. ${evidence}`,
     ``,
     body.trim() || "_Nothing was produced: every task failed._",
     ``,
@@ -758,7 +844,9 @@ async function deliver(id: string): Promise<void> {
     ...run.tasks.map((t) => {
       const tries = t.attempts + (t.status === "done" ? 1 : 0);
       const worker = t.tool ? ` · done by ${toolLabel(t.tool)}${t.model ? ` (${t.model})` : ""}${t.workTier !== t.tier ? `, moved up from ${t.tier} to ${t.workTier}` : ""}` : "";
-      const review = t.reviewNote ? ` · ${t.reviewNote}` : t.reviewedBy ? ` · reviewed by ${t.reviewedBy}` : "";
+      const results = t.checkResults ?? [];
+      const checksLine = results.length ? ` · checks: ${results.map((r) => `${r.name} ${r.ran ? (r.ok ? "passed" : "FAILED") : "not run"}`).join(", ")}` : "";
+      const review = `${checksLine}${t.reviewNote ? ` · ${t.reviewNote}` : t.reviewedBy ? ` · reviewed by ${t.reviewedBy}` : ""}`;
       return `- **${t.id} ${t.title}** — ${t.status}${worker}${review} · ${tries} attempt${tries === 1 ? "" : "s"} · [[Agentic OS/Runs/${run.id}/tasks/${t.id}|detail]]${t.status === "failed" ? ` — ${t.error ?? ""}` : ""}`;
     }),
     ``,
@@ -796,6 +884,7 @@ async function step(id: string): Promise<void> {
 
   const lines: string[] = [];
   const overdue: string[] = [];
+  const checksToStart: { taskId: string; jobId: string; name: string }[] = [];
   const toStart: { task: RunTask; mode: "new" | "reply"; prompt: string }[] = [];
   const settled: RunTask[] = [];
   const state = await withRun(id, (run) => {
@@ -820,7 +909,12 @@ async function step(id: string): Promise<void> {
           continue;
         }
         if (job.status === "done") {
-          const text = (job.reply ?? "").trim();
+          let text = (job.reply ?? "").trim();
+          // A reply to a review usually describes only the fix. Keep what the worker said before it,
+          // or the next reviewer sees "I added the VERSION file" and no sign of the actual task.
+          if (text && t.job?.mode === "reply" && t.result?.trim() && !/^\s*BLOCKED:/i.test(text)) {
+            text = `${t.result.trim()}\n\n--- After the review, the worker added ---\n\n${text}`;
+          }
           if (job.resultKey) t.sessionKey = job.resultKey;
           t.job = undefined;
           if (!text) lines.push(afterFailure(run, t, "the worker returned nothing"));
@@ -829,15 +923,51 @@ async function step(id: string): Promise<void> {
             lines.push(afterFailure(run, t, `the worker was blocked: ${text.replace(/\s+/g, " ").slice(8, 160)}`));
           } else {
             t.result = clip(text, MAX_RESULT);
-            t.status = "review";
             t.reviewTries = 0;
-            lines.push(`${t.id} finished by ${toolLabel(t.tool ?? "claude")}${t.model ? ` (${t.model})` : ""} → review.`);
+            t.checkResults = []; // a new attempt has to prove itself again
+            const must = t.checks ?? [];
+            t.status = must.length ? "checking" : "review";
+            lines.push(`${t.id} finished by ${toolLabel(t.tool ?? "claude")}${t.model ? ` (${t.model})` : ""} → ${must.length ? `running ${must.length === 1 ? `the check "${must[0]}"` : `${must.length} checks`}` : "review"}.`);
           }
         } else if (job.status === "error" || job.status === "expired") {
           lines.push(afterFailure(run, t, `${toolLabel(t.tool ?? "claude")} could not run it: ${(job.error ?? job.status).replace(/\s+/g, " ").slice(0, 160)}`));
         }
         if ((t.status as TaskStatus) === "failed") settled.push(t);
       }
+    }
+
+    // 1b. evidence: the task's checks, one at a time, before anyone reviews it
+    for (const t of run.tasks) {
+      if (t.status !== "checking") continue;
+      if (t.checkJob) {
+        const job = jobs.find((j) => j.id === t.checkJob!.id);
+        if (!job) {
+          if (Date.now() - t.checkJob.at > 90_000) checksToStart.push({ taskId: t.id, jobId: t.checkJob.id, name: t.checkJob.name });
+          continue;
+        }
+        if (job.status !== "done" && job.status !== "error" && job.status !== "expired") continue;
+        const name = t.checkJob.name;
+        const ok = job.status === "done" && job.exitCode === 0;
+        (t.checkResults ??= []).push({ name, ran: true, ok, exitCode: job.exitCode, summary: (job.reply ?? "").slice(-1500), at: Date.now() });
+        t.checkJob = undefined;
+        if (!ok) {
+          // the worker is sent the command's own words, not a paraphrase
+          t.feedback = `${productName()} ran the check "${name}" itself after your work, and it FAILED: ${job.error ?? "it did not pass"}\n\nThe end of its output:\n${(job.reply ?? "(no output)").slice(-2500)}`;
+          lines.push(afterFailure(run, t, `the check "${name}" failed (${(job.error ?? "did not pass").slice(0, 100)})`));
+          if ((t.status as TaskStatus) === "failed") settled.push(t);
+          continue;
+        }
+        lines.push(`${t.id} passed the check "${name}".`);
+      }
+      const next = (t.checks ?? []).find((n) => !(t.checkResults ?? []).some((r) => r.name === n));
+      if (!next) {
+        t.status = "review";
+        t.reviewTries = 0;
+        lines.push(`${t.id} → review, with its check results.`);
+        continue;
+      }
+      t.checkJob = { id: newJobId(), name: next, at: Date.now() };
+      checksToStart.push({ taskId: t.id, jobId: t.checkJob.id, name: next });
     }
 
     // 2. a task whose dependency failed can never run
@@ -882,6 +1012,23 @@ async function step(id: string): Promise<void> {
   if (!state) return;
   for (const t of settled) await writeTaskNote(state, t);
   for (const t of state.tasks) if (t.status === "review") detach(`${id}:review:${t.id}`, () => review(id, t.id));
+
+  for (const c of checksToStart) {
+    try {
+      await startJob({ mode: "check", id: c.jobId, folder: state.folder, check: c.name, project: state.project });
+    } catch (e) {
+      // A check that can't even start is not the worker's failure. Record that it did not run, so
+      // the reviewer and the delivery say "unproven" instead of quietly counting it as passed.
+      const why = (e as Error).message;
+      await withRun(id, (run) => {
+        const task = run.tasks.find((x) => x.id === c.taskId);
+        if (!task || task.checkJob?.id !== c.jobId) return;
+        task.checkJob = undefined;
+        (task.checkResults ??= []).push({ name: c.name, ran: false, ok: false, summary: why.slice(0, 300), at: Date.now() });
+      });
+      await log(id, `${c.taskId}: the check "${c.name}" could not be run: ${why}`);
+    }
+  }
 
   for (const s of toStart) {
     const t = s.task;

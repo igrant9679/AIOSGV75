@@ -1,6 +1,28 @@
 # Project runs — design
 
-**Status: phase 1 is built (`lib/runs.ts`, the Runs page) and has completed a real run. Phases 2 to 5 are design. Written 2026-11-24.**
+**Status: phases 1 and 2 are built (`lib/runs.ts`, `lib/projectChecks.ts`, the Runs page) and have completed real runs, including runs whose work had to pass a real test command. Phases 3 to 5 are design. Written 2026-11-24.**
+
+> **Phase 2 as built, and what its runs taught.**
+>
+> - **Checks** are per folder, per machine (`data/project-checks.json`), set on that machine's
+>   Runs page, with a *Try it* button. A plan names them on tasks that edit files; Mission
+>   Control runs them after the worker finishes; only passing work is reviewed; a failure
+>   returns to the worker with the command's own output. Verified both ways in a sandbox
+>   project: pass first time, and fail → sent back → fixed → pass.
+> - **A command can only come from the machine's own list.** An unlisted name, an injected
+>   `test && whoami`, a multi-line command and a folder that is not a known project were all
+>   refused. Checks do not run for another machine's request at all.
+> - **The reviewer stalled on a permission prompt.** Claude, reviewing, tried to run the tests
+>   itself; the app's permission feature held that request for ten minutes waiting for a
+>   person. Planner and reviewer now run read-only in the project folder: they read the real
+>   files and cannot stall. That run was delivered honestly as "checks passed, not reviewed".
+> - **A rework reply replaced the worker's whole result** with a description of the fix, so the
+>   next reviewer saw no sign of the original task. A reply is now appended to what came before.
+> - **OneDrive refused a write to run.json once** (EPERM on rename). State writes now retry.
+> - **The free model completed two of three coding tasks by itself** once checks told it
+>   exactly what was wrong; the third was moved up to Codex.
+> - **Still not done in phase 2:** checks when a run works on another machine; evidence of
+>   *what changed on disk* (a diff) for folders that are git repositories.
 
 > **What phase 1 changed from this design, and what the first run taught.**
 >

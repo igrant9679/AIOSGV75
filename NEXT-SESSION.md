@@ -285,6 +285,16 @@ IdrisArea51 backup). Started as a comparison against a "shared Obsidian memory" 
      "API call failed after 3 retries: Connection error" there even with CLAUDE_*/ANTHROPIC_*
      stripped, while the same call through Mission Control works. Test Hermes through
      /api/hub/sessions, not from the sandboxed shell. (Cause not found.)
+   **Phase 2 (executed checks) built the same night, plus Ollama.** v50 = `b40fcb8` (phase 1).
+   After it, uncommitted when written: `lib/projectChecks.ts`, job mode `check`, checks wired
+   into `lib/runs.ts` (status `checking`), `/api/runs/checks`, the checks editor + Try it on the
+   Runs page; planner/reviewer read-only in the project folder; `replaceFile` retry; Auto climbs
+   the cost ladder on error; local models read-only toward memory. Sandbox project used for the
+   tests: `C:\Users\idris\Documents\mc-run-sandbox` on Raider18 (safe to delete; its `npm test`
+   includes a release check that needs a VERSION file containing 1.0.1).
+   Ollama on Raider18: 0.40.17, `llama3.2` (3B) + `nomic-embed-text`, RTX 5090 Laptop 24 GB.
+   Registered as registry LLM `llama`. llama3.2 saved a junk fact to shared memory on its first
+   question (removed) - hence rule 23. A bigger local model is worth pulling; not done.
    **Project orchestrator: designed; phase 1 built (see above)** - `ROADMAP-ORCHESTRATOR.md`. Real sessions as
    workers, vault-backed resumable state advanced by the master tick, executed checks, lessons.
 4. Nobody logs to the journal (2 files, both July). The rules note now asks agents to; watch

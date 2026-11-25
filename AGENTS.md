@@ -47,7 +47,8 @@ manual is `/guide` (source: `lib/guideContent.ts`).
   `vault.ts` (Obsidian read/write + scaffold + the Rules note),
   `rollup.ts` (weekly roll-up notes + Archive, master duty),
   `conflictCopies.ts` (sweeps OneDrive copies of generated notes),
-  `runs.ts` (project runs: plan → real sessions as workers → review →
+  `projectChecks.ts` (the per-machine list of commands a run may use as proof),
+  `runs.ts` (project runs: plan → real sessions as workers → checks → review →
   escalate → deliver; state in the vault, advanced by the machine that
   started the run), `nousModels.ts` (cheapest Nous model for a Hermes run),
   `sessionTools.ts` (the registry of session tools) + `sessions.ts` /
@@ -153,6 +154,24 @@ manual is `/guide` (source: `lib/guideContent.ts`).
     LLMs with a key are out of `routablePool()` unless `autoRoute` is set.
     Before this, one benched Claude left a single Grok API key as Auto's whole
     pool and every Auto task went to it.
+21. **A run may name a check; only the machine may define one.** Check commands
+    live in `data/project-checks.json` on each machine and are changed only
+    through that machine's `/api/runs/checks`. Never read a command from the
+    vault, a plan, a job or another machine's request: the vault is writable by
+    anything that syncs it. `acceptRequest` refuses mode `check` outright.
+22. **A headless Claude that asks permission waits ten minutes for an answer**
+    (`HEADLESS_WAIT_MS`, lib/permissions.ts). A reviewer that tried to "just run
+    the tests" sat there until its own five-minute limit. Planners and reviewers
+    run with `readOnly` (`--disallowedTools Bash,…`) in the project folder: they
+    read the real files and cannot stall. Timeouts must `killTree`, or the real
+    process outlives the shell that was killed.
+23. **Small local models read the shared brain; they do not write to it.**
+    `WRITE_TOOLS` (lib/llmTools.ts) are withheld from local endpoints and
+    refused at execution; the OS-verb hint is left out of their system prompt.
+24. **The vault is a OneDrive folder: a rename can be refused.** While a file is
+    being uploaded or read, `rename` onto it fails with EPERM/EBUSY for a moment.
+    Use a retrying replace (`replaceFile` in lib/runs.ts) for anything rewritten
+    often, or a step is silently lost.
 
 ## Dev cycle (production server auto-starts at login)
 

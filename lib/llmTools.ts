@@ -117,12 +117,24 @@ export const WEB_SEARCH_TOOL = {
   },
 };
 
+/**
+ * Tools that change the shared brain. A local model does not get them: asked
+ * "what is a write-ahead log?", llama3.2 (3B) called save_memory with a textbook
+ * definition and replied "the fact is now saved" — one question, one junk line
+ * in the memory every agent on every machine reads. A small model can read the
+ * memory and the vault; it does not hold the pen.
+ */
+export const WRITE_TOOLS = new Set(["save_memory", "add_goal", "append_journal", "request_mission"]);
+
 /** The tools to advertise on this call — web search only when it can actually run. */
-export async function toolDefs(): Promise<typeof TOOL_DEFS> {
-  return (await isWebSearchReady()) ? [...TOOL_DEFS, WEB_SEARCH_TOOL] : TOOL_DEFS;
+export async function toolDefs(opts: { readOnly?: boolean } = {}): Promise<typeof TOOL_DEFS> {
+  const all = (await isWebSearchReady()) ? [...TOOL_DEFS, WEB_SEARCH_TOOL] : TOOL_DEFS;
+  return (opts.readOnly ? all.filter((t) => !WRITE_TOOLS.has(t.function.name)) : all) as typeof TOOL_DEFS;
 }
 
-export async function executeTool(name: string, argsJson: string, source: string): Promise<string> {
+export async function executeTool(name: string, argsJson: string, source: string, opts: { readOnly?: boolean } = {}): Promise<string> {
+  // refused here as well as hidden above: a model can call a tool it was never shown
+  if (opts.readOnly && WRITE_TOOLS.has(name)) return "error: this model can read shared memory and the vault but cannot write to them";
   let args: Record<string, unknown> = {};
   try {
     args = JSON.parse(argsJson || "{}") as Record<string, unknown>;

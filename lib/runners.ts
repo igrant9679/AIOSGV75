@@ -90,19 +90,43 @@ export function agentCwd(): string {
   return os.homedir();
 }
 
+/**
+ * Stop a child AND what it started. With `shell: true` the child is cmd.exe, so
+ * child.kill() ends the shell and leaves the real program (claude.exe) running
+ * for as long as it likes — a timed-out review was found still alive nine
+ * minutes later.
+ */
+function killTree(pid: number | undefined): void {
+  if (!pid) return;
+  try {
+    if (process.platform === "win32") spawn("taskkill", ["/pid", String(pid), "/T", "/F"], { stdio: "ignore", windowsHide: true });
+    else process.kill(pid, "SIGTERM");
+  } catch {
+    /* already gone */
+  }
+}
+
+/**
+ * Tools a read-only run may not use. Not about trust: a headless run that asks
+ * for permission to run a command WAITS up to ten minutes for someone to answer
+ * it in the app (lib/permissions.ts), which is longer than a run is given here.
+ * A reviewer that wanted to "just run the tests" sat there until it timed out.
+ */
+const CLAUDE_READ_ONLY = ["--disallowedTools", "Bash,PowerShell,Edit,Write,MultiEdit,NotebookEdit"];
+
 /** extraArgs: e.g. ["--model", "haiku", "--no-session-persistence"] for light housekeeping runs. */
-export function runClaudeText(prompt: string, extraArgs: string[] = []): Promise<RunResult> {
+export function runClaudeText(prompt: string, extraArgs: string[] = [], cwd?: string): Promise<RunResult> {
   const started = Date.now();
   return new Promise((resolve) => {
     const child = spawn("claude", ["-p", "--output-format", "json", ...extraArgs], {
       shell: true,
-      cwd: agentCwd(),
+      cwd: cwd ?? agentCwd(),
       env: cleanEnv(),
     });
     let out = "";
     let err = "";
     const timer = setTimeout(() => {
-      child.kill();
+      killTree(child.pid);
       resolve({ text: out, ms: Date.now() - started, error: "timed out" });
     }, CLI_TIMEOUT_MS);
 
@@ -257,11 +281,11 @@ async function runHermesFree(prompt: string): Promise<RunResult> {
 }
 
 /** Codex for Auto: `codex exec` on the ChatGPT sign-in, read-only (its default sandbox), answer to a file. */
-async function runCodexCli(prompt: string): Promise<RunResult> {
+async function runCodexCli(prompt: string, cwd?: string): Promise<RunResult> {
   const started = Date.now();
   const outFile = path.join(os.tmpdir(), `mc-auto-codex-${process.pid}-${Date.now().toString(36)}.txt`);
   return new Promise<RunResult>((resolve) => {
-    const child = spawn("codex", ["exec", "-", "--skip-git-repo-check", "-o", `"${outFile}"`], { cwd: agentCwd(), shell: true, env: cleanEnv(), windowsHide: true });
+    const child = spawn("codex", ["exec", "-", "--skip-git-repo-check", "-o", `"${outFile}"`], { cwd: cwd ?? agentCwd(), shell: true, env: cleanEnv(), windowsHide: true });
     let err = "";
     const finish = async (error?: string) => {
       const text = (await fsp.readFile(outFile, "utf8").catch(() => "")).trim();
@@ -269,7 +293,7 @@ async function runCodexCli(prompt: string): Promise<RunResult> {
       resolve({ text, ms: Date.now() - started, error: text ? undefined : error || "no output" });
     };
     const timer = setTimeout(() => {
-      child.kill();
+      killTree(child.pid);
       void finish("timed out");
     }, CLI_TIMEOUT_MS);
     child.stderr.on("data", (c: Buffer) => (err = (err + c.toString("utf8")).slice(-1500)));
@@ -291,20 +315,44 @@ async function runCodexCli(prompt: string): Promise<RunResult> {
 export async function runAgentText(
   agentId: string,
   prompt: string,
-  opts: { injectMemory?: boolean } = {},
+  opts: {
+    injectMemory?: boolean;
+    /** Claude and Codex: start in this folder instead of the vault, so the agent can read a project's real files. */
+    cwd?: string;
+    /** Claude: may read, may not run commands or change files — and therefore can never stall on a permission prompt. */
+    readOnly?: boolean;
+  } = {},
 ): Promise<RunResult> {
-  // "auto" is virtual: route to a real agent, with failover to Claude on error
+  // "auto" is virtual: route to a real agent. If the pick errors, climb the cost ladder one
+  // rung at a time — another free worker (a local model when Hermes's free tier is rate-limited
+  // or the machine is offline), then a subscription tool, then Claude — instead of jumping
+  // straight to the most expensive one. Models added by API key are only in the pool if opted in.
   if (agentId === "auto") {
-    const { routeTask } = await import("./router");
+    const { routeTask, routablePool } = await import("./router");
     const decision = await routeTask(prompt);
     let r = await runAgentText(decision.agentId, prompt, opts);
     let reason = decision.reason;
-    if (r.error && decision.agentId !== "claude") {
-      r = await runAgentText("claude", prompt, opts);
-      reason += ` · failover to Claude after ${decision.agentName} errored`;
-      return { ...r, routedTo: "claude", routeReason: reason };
+    let routedTo = decision.agentId;
+    if (r.error) {
+      const bands = ["free", "subscription", "premium", "metered"];
+      const { pool } = await routablePool();
+      const picked = pool.find((c) => c.id === decision.agentId);
+      const from = picked ? bands.indexOf(picked.band) : 0;
+      const ladder = pool
+        .filter((c) => c.id !== decision.agentId && bands.indexOf(c.band) >= from)
+        .sort((a, b) => bands.indexOf(a.band) - bands.indexOf(b.band) || a.costRank - b.costRank);
+      // Claude is the last resort even when the health filter has benched it
+      if (!ladder.some((c) => c.id === "claude") && decision.agentId !== "claude") ladder.push({ id: "claude", name: "Claude", band: "premium", costRank: 9, winRate: null, battles: 0, health: null });
+      let failed = decision.agentName;
+      for (const next of ladder.slice(0, 3)) {
+        r = await runAgentText(next.id, prompt, opts);
+        reason += ` · ${failed} errored → ${next.name}`;
+        routedTo = next.id;
+        if (!r.error) break;
+        failed = next.name;
+      }
     }
-    return { ...r, routedTo: decision.agentId, routeReason: reason };
+    return { ...r, routedTo, routeReason: reason };
   }
 
   const inject = opts.injectMemory !== false;
@@ -312,16 +360,18 @@ export async function runAgentText(
 
   let result: RunResult | null = null;
   if (agentId === "claude") {
-    result = await runClaudeText((inject ? memoryBlock(ctx) : "") + prompt);
+    result = await runClaudeText((inject ? memoryBlock(ctx) : "") + prompt, opts.readOnly ? CLAUDE_READ_ONLY : [], opts.cwd);
   } else if (agentId === "hermes-free") {
     result = await runHermesFree((inject ? memoryBlock(ctx) : "") + prompt);
   } else if (agentId === "codex-cli") {
-    result = await runCodexCli((inject ? memoryBlock(ctx) : "") + prompt);
+    // codex exec is already read-only unless told otherwise, and never stops to ask
+    result = await runCodexCli((inject ? memoryBlock(ctx) : "") + prompt, opts.cwd);
   } else {
     const reg = await readRegistry();
     const llm = reg.llms.find((l) => l.id === agentId);
     if (llm) {
-      const system = `${llm.systemPrompt?.trim() || `You are ${llm.name}, an AI agent on the user's ${productName()} dashboard.`}\n\n${memorySystemBlock(ctx)}`;
+      // a local model reads the shared brain but is not invited to write to it (lib/llmTools.ts WRITE_TOOLS)
+      const system = `${llm.systemPrompt?.trim() || `You are ${llm.name}, an AI agent on the user's ${productName()} dashboard.`}\n\n${memorySystemBlock(ctx, { verbs: !isLocalEndpoint(llm.baseUrl) })}`;
       result = await runLlmText(llm, prompt, system);
     } else {
       const def = AGENT_DEFS.find((d) => d.id === agentId) ?? reg.commandAgents.find((a) => a.id === agentId);

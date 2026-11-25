@@ -15,6 +15,7 @@ import { exportSession, importSession, type HandoffPackage } from "./handoff";
 import { setHidden } from "./sessionNaming";
 import { SESSION_TOOLS, asSessionTool, hermesToolsets, toolLabel } from "./sessionTools";
 import { isModelId } from "./nousModels";
+import { findCheck } from "./projectChecks";
 
 /**
  * Acting on sessions - from the Projects page, the live view and the
@@ -44,7 +45,7 @@ import { isModelId } from "./nousModels";
  * data/session-jobs.json is the source of truth (re-read on every call).
  */
 
-export type JobMode = "reply" | "new" | "thread" | "stop" | "import" | "export";
+export type JobMode = "reply" | "new" | "thread" | "stop" | "import" | "export" | "check";
 export type JobAccess = "answer" | "edit";
 export type JobStatus = "queued" | "sent" | "running" | "done" | "error" | "expired";
 
@@ -89,6 +90,10 @@ export interface SessionJob {
   web?: boolean;
   /** Hermes: the most tool-calling rounds this run may take. Unset = Hermes's own limit. */
   maxTurns?: number;
+  /** mode "check": the NAME of one of this machine's allowed check commands (lib/projectChecks.ts) */
+  check?: string;
+  /** mode "check": how the command ended (-1 = timed out or could not start) */
+  exitCode?: number;
   /** set on the TARGET machine for a job another machine asked for */
   requestedBy?: string;
   requestedByLabel?: string;
@@ -246,6 +251,8 @@ export interface StartInput {
   model?: string;
   web?: boolean;
   maxTurns?: number;
+  /** check: the name of the check to run in `folder` */
+  check?: string;
   /**
    * A job id chosen by the caller. A project run writes the id into its own
    * state BEFORE starting the job, so a crash between the two is recovered by
@@ -319,6 +326,19 @@ export async function startJob(input: StartInput): Promise<SessionJob> {
       const known = folder === "~" || sessions.some((x) => x.host === host && (x.folder === folder || x.cwd === folder));
       if (!folder || !known) throw new Error("Pick a project that has a folder first.");
       job = { ...base, mode: "new", tool, host, hostLabel: labelOf(host), cwd: folder, project: input.project };
+      break;
+    }
+    case "check": {
+      // Runs one of THIS machine's allowed check commands in a project folder. Local only on
+      // purpose: the list of commands never travels (lib/projectChecks.ts), and a request from
+      // another machine to run one is refused in acceptRequest ("unknown request").
+      const folder = input.folder ?? "";
+      const name = input.check ?? "";
+      if (!folder || folder === "~" || !sessions.some((x) => x.host === me() && (x.folder === folder || x.cwd === folder))) {
+        throw new Error("Checks run in a project folder that this machine's sessions use.");
+      }
+      if (!(await findCheck(folder, name))) throw new Error(`No check named "${name}" is allowed for that folder on this machine.`);
+      job = { ...base, mode: "check", tool: "claude", host: me(), hostLabel: myLabel, cwd: folder, project: input.project, title: `check: ${name}`, check: name };
       break;
     }
     case "stop": {
@@ -599,6 +619,7 @@ function runCli(
   extraEnv?: Record<string, string>,
   /** false = start the program directly. Needed when an ARGUMENT can span lines (a prompt): cmd.exe ends the command at the first newline. */
   shell = true,
+  timeoutMs = RUN_TIMEOUT_MS,
 ): Promise<{ out: string; err: string; code: number | null; timedOut: boolean }> {
   return new Promise((resolve) => {
     const child = spawn(cmd, shell ? args.map(q) : args, { cwd, shell, env: { ...cleanEnv(), ...extraEnv }, detached: process.platform !== "win32", windowsHide: true });
@@ -609,7 +630,7 @@ function runCli(
     const timer = setTimeout(() => {
       timedOut = true;
       killTree(child.pid);
-    }, RUN_TIMEOUT_MS);
+    }, timeoutMs);
     child.stdout.on("data", (c: Buffer) => {
       const s = c.toString("utf8");
       out += s;
@@ -717,6 +738,20 @@ async function execute(job: SessionJob): Promise<Partial<SessionJob>> {
   if (!st?.isDirectory()) return done({ status: "error", error: `The folder ${cwd} doesn't exist on ${job.hostLabel} any more.` });
   const setPid = (pid?: number) => void patchJob(job.id, { pid }).catch(() => {});
 
+  if (job.mode === "check") {
+    // The command is looked up by name, here, at the moment of running — never carried in the job.
+    const check = job.check ? await findCheck(job.cwd, job.check) : undefined;
+    if (!check) return done({ status: "error", exitCode: -1, error: `The check "${job.check}" is no longer allowed for this folder on ${job.hostLabel}.` });
+    const r = await runCli(check.command, [], cwd, "", setPid, undefined, { MC_JOB_ID: job.id, CI: "1" }, true, check.timeoutSec * 1000);
+    const cur = (await listJobs()).find((x) => x.id === job.id);
+    if (cur && !isActive(cur)) return {};
+    // the END of the output is where a failing test or compiler says what broke
+    const tail = `${r.out}\n${r.err}`.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "").replace(/\r\n/g, "\n").trim().slice(-6000);
+    if (r.timedOut) return done({ status: "error", exitCode: -1, reply: tail, error: `"${check.command}" was still running after ${check.timeoutSec} seconds and was stopped.` });
+    if (r.code === 0) return done({ status: "done", exitCode: 0, reply: tail });
+    return done({ status: "error", exitCode: r.code ?? -1, reply: tail, error: `"${check.command}" exited with code ${r.code ?? "?"}.` });
+  }
+
   if (job.tool === "claude") {
     // stream-json: one event per line, so the run can be watched live (text + tool calls)
     const args = ["-p", "--output-format", "stream-json", "--verbose"];
@@ -805,7 +840,7 @@ async function pump(minAgeMs = 0): Promise<void> {
       const next = await mutate((jobs) => {
         const running = jobs.filter((j) => j.host === me() && j.status === "running").length;
         if (running >= MAX_RUNNING) return undefined;
-        const j = [...jobs].reverse().find((x) => x.host === me() && x.status === "queued" && (x.mode === "reply" || x.mode === "new") && Date.now() - x.createdAt >= minAgeMs);
+        const j = [...jobs].reverse().find((x) => x.host === me() && x.status === "queued" && (x.mode === "reply" || x.mode === "new" || x.mode === "check") && Date.now() - x.createdAt >= minAgeMs);
         if (!j) return undefined;
         j.status = "running";
         j.startedAt = Date.now();

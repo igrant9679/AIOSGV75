@@ -37,6 +37,7 @@ const TIER: Record<Tier, { label: string; accent: Accent; hint: string }> = {
 const TASK_STATE: Record<RunTask["status"], { label: string; accent: Accent }> = {
   pending: { label: "waiting", accent: "cyan" },
   running: { label: "working", accent: "amber" },
+  checking: { label: "running checks", accent: "cyan" },
   review: { label: "in review", accent: "violet" },
   done: { label: "done", accent: "lime" },
   failed: { label: "failed", accent: "rose" },
@@ -73,6 +74,11 @@ function TaskRow({ t }: { t: RunTask }) {
         </Pill>
         {t.needsWeb && <Pill accent="cyan" title="This task needs the internet, so its worker gets web search">web</Pill>}
         {t.access === "edit" && <Pill accent="amber" title="This task may create and change files in the folder">edits files</Pill>}
+        {(t.checks ?? []).length > 0 && (
+          <Pill accent="lime" title="After the worker finishes, this machine runs these commands itself. The task only goes to review if they pass.">
+            must pass {(t.checks ?? []).join(", ")}
+          </Pill>
+        )}
         {t.tool && (
           <span className="font-mono text-[10px] text-ink-dim" title={t.why}>
             {toolLabel(t.tool)}
@@ -96,6 +102,14 @@ function TaskRow({ t }: { t: RunTask }) {
               {t.reviewNote ? t.reviewNote : t.reviewedBy ? `reviewed by ${t.reviewedBy}` : ""}
             </p>
           )}
+          {(t.checkResults ?? []).map((r) => (
+            <details key={`${r.name}-${r.at}`} className="rounded-lg border border-line px-2.5 py-1.5">
+              <summary className="cursor-pointer font-mono text-[10.5px]" style={{ color: ACCENTS[r.ran && r.ok ? "lime" : "rose"].base }}>
+                check {r.name}: {r.ran ? (r.ok ? "passed" : `failed${typeof r.exitCode === "number" ? ` (exit code ${r.exitCode})` : ""}`) : "could not be run"}
+              </summary>
+              <pre className="mt-1.5 max-h-56 overflow-auto whitespace-pre-wrap font-mono text-[10.5px] leading-4 text-ink-dim">{r.summary || "(no output)"}</pre>
+            </details>
+          ))}
           {t.error && <p style={{ color: ACCENTS.rose.base }}>{t.error}</p>}
           {t.feedback && t.status !== "done" && (
             <p>
@@ -203,6 +217,125 @@ function RunCard({ run, host, reload }: { run: Run; host: string; reload: () => 
           {msg && <p className="text-[11px] text-ink-dim">{msg}</p>}
         </div>
       )}
+    </div>
+  );
+}
+
+interface CheckRow {
+  name: string;
+  command: string;
+  timeoutSec?: number;
+}
+
+/**
+ * The commands this machine may run in one folder to prove a task. Per machine, set
+ * only here: a plan can name a check, nothing can add a command from outside.
+ */
+function ChecksEditor({ folder }: { folder: string }) {
+  const [rows, setRows] = useState<CheckRow[] | null>(null);
+  const [saved, setSaved] = useState("");
+  const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [trial, setTrial] = useState<{ name: string; state: "running" | "passed" | "failed"; output: string } | null>(null);
+
+  // Run a saved check once, so you know the command works here before a run depends on it.
+  const tryIt = async (name: string) => {
+    setTrial({ name, state: "running", output: "" });
+    try {
+      const res = await fetch("/api/runs/checks", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "run", folder, name }) });
+      const b = (await res.json()) as { jobId?: string; error?: string };
+      if (!b.jobId) return setTrial({ name, state: "failed", output: b.error ?? "Couldn't start it." });
+      for (;;) {
+        await new Promise((r) => setTimeout(r, 2000));
+        const j = (await (await fetch(`/api/runs/checks?job=${b.jobId}`)).json()) as { status?: string; exitCode?: number; output?: string; error?: string };
+        if (j.status === "done") return setTrial({ name, state: "passed", output: j.output ?? "" });
+        if (j.status === "error" || j.status === "expired" || !j.status) return setTrial({ name, state: "failed", output: `${j.error ?? "It did not pass."}\n\n${j.output ?? ""}`.trim() });
+      }
+    } catch (e) {
+      setTrial({ name, state: "failed", output: (e as Error).message });
+    }
+  };
+
+  useEffect(() => {
+    let live = true;
+    setRows(null);
+    setMsg(null);
+    setTrial(null);
+    fetch(`/api/runs/checks?folder=${encodeURIComponent(folder)}`)
+      .then((r) => r.json())
+      .then((b: { checks?: CheckRow[] }) => {
+        if (!live) return;
+        setRows(b.checks ?? []);
+        setSaved(JSON.stringify(b.checks ?? []));
+      })
+      .catch(() => live && setRows([]));
+    return () => {
+      live = false;
+    };
+  }, [folder]);
+
+  if (!rows) return null;
+  const dirty = JSON.stringify(rows) !== saved;
+  const set = (i: number, patch: Partial<CheckRow>) => setRows(rows.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+  const save = async () => {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const res = await fetch("/api/runs/checks", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ folder, checks: rows.filter((r) => r.name.trim() || r.command.trim()) }) });
+      const b = (await res.json()) as { checks?: CheckRow[]; error?: string };
+      if (!res.ok || b.error) setMsg({ text: b.error ?? "Couldn't save.", ok: false });
+      else {
+        setRows(b.checks ?? []);
+        setSaved(JSON.stringify(b.checks ?? []));
+        setMsg({ text: "Saved. New runs in this folder can require these.", ok: true });
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+  const input = "rounded-md border border-line bg-transparent px-2 py-1 font-mono text-[11px] text-ink outline-none placeholder:text-ink-faint focus:border-line-bright";
+  return (
+    <div className="flex flex-col gap-1.5 rounded-xl border border-line px-3 py-2.5">
+      <p className="text-[11px] leading-4 text-ink-dim">
+        <span className="font-semibold text-ink">Checks for this folder.</span> Commands this machine runs itself after a task finishes, to prove the work: a test run, a build, a type check. A task only moves on if they pass. Only commands listed here can ever be run, and a check runs whatever that command does in the folder, including code a worker just changed.
+      </p>
+      {rows.map((r, i) => (
+        <div key={i} className="flex flex-wrap items-center gap-1.5">
+          <input value={r.name} onChange={(e) => set(i, { name: e.target.value })} placeholder="name, e.g. test" aria-label="Check name" className={`${input} w-28`} />
+          <input value={r.command} onChange={(e) => set(i, { command: e.target.value })} placeholder="command, e.g. npm test" aria-label="Check command" className={`${input} min-w-0 flex-1`} />
+          {!dirty && r.name && (
+            <SmallButton onClick={() => void tryIt(r.name)} disabled={trial?.state === "running"} title="Run this command now in the folder and show what it says">
+              {trial?.name === r.name && trial.state === "running" ? "Running…" : "Try it"}
+            </SmallButton>
+          )}
+          <SmallButton onClick={() => setRows(rows.filter((_, j) => j !== i))} title="Remove this check">
+            Remove
+          </SmallButton>
+        </div>
+      ))}
+      {trial && trial.state !== "running" && (
+        <details open className="rounded-lg border border-line px-2.5 py-1.5">
+          <summary className="cursor-pointer font-mono text-[10.5px]" style={{ color: ACCENTS[trial.state === "passed" ? "lime" : "rose"].base }}>
+            {trial.name}: {trial.state === "passed" ? "passed here" : "did not pass here"}
+          </summary>
+          <pre className="mt-1.5 max-h-48 overflow-auto whitespace-pre-wrap font-mono text-[10.5px] leading-4 text-ink-dim">{trial.output || "(no output)"}</pre>
+        </details>
+      )}
+      <div className="flex flex-wrap items-center gap-1.5">
+        <SmallButton onClick={() => setRows([...rows, { name: "", command: "" }])} disabled={rows.length >= 8}>
+          + Add a check
+        </SmallButton>
+        {dirty && (
+          <SmallButton accent disabled={busy} onClick={() => void save()}>
+            {busy ? "Saving…" : "Save checks"}
+          </SmallButton>
+        )}
+        {msg && (
+          <span className="text-[11px]" style={{ color: msg.ok ? ACCENTS.lime.base : ACCENTS.rose.base }}>
+            {msg.text}
+          </span>
+        )}
+      </div>
     </div>
   );
 }
@@ -333,8 +466,12 @@ export default function RunsSection() {
               {msg.text}
             </p>
           )}
+          {allowEdit && chosen && chosen.folder !== "~" && chosen.host === hub?.host && <ChecksEditor folder={chosen.folder} />}
+          {allowEdit && chosen && chosen.folder !== "~" && chosen.host !== hub?.host && (
+            <p className="text-[10.5px] leading-4 text-ink-faint">Checks run only when a run works on the machine that started it, so this run will be reviewed but not checked. Start it from {chosen.hostLabel} to use that folder&apos;s checks.</p>
+          )}
           <p className="text-[10.5px] leading-4 text-ink-faint">
-            Each task goes to the cheapest worker that fits: routine work to Hermes on a free model, standard work to Codex, hard work to Claude. A task that fails review twice is retried one tier up. Review here is a second model reading the output; nothing is executed to check it yet.
+            Each task goes to the cheapest worker that fits: routine work to Hermes on a free model, standard work to Codex, hard work to Claude. A task that fails twice at one tier is retried one tier up. Tasks that edit files can be required to pass the folder&apos;s checks, which this machine runs itself; everything else is reviewed by a second model reading the output.
           </p>
         </div>
       </Panel>
