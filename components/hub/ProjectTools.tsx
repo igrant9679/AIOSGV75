@@ -9,6 +9,7 @@ import type { SearchHit } from "@/lib/sessionSearch";
 import { launchSurface, LAUNCH_SURFACE_META, LAUNCH_SURFACE_ORDER, type LaunchSurface } from "@/lib/launchSurface";
 import { Chip, ago, SourcePill } from "./common";
 import { SmallButton, sessionsPost } from "./SessionPanel";
+import { SESSION_TOOL_IDS, toolLabel, toolShort, type SessionTool } from "@/lib/sessionTools";
 
 /**
  * Projects page tools: filters you can save ("open sessions on Legion7"),
@@ -17,7 +18,7 @@ import { SmallButton, sessionsPost } from "./SessionPanel";
 
 export interface SessionFilter {
   host: string;
-  tool: "" | "claude" | "codex";
+  tool: "" | SessionTool;
   state: "" | "open" | "closed";
   via: "" | LaunchSurface;
 }
@@ -65,7 +66,7 @@ export function useSessionFilter(hub: HubSnapshot | null) {
   const describe = (f: SessionFilter) =>
     [
       f.state === "open" ? "Open" : f.state === "closed" ? "Closed" : "",
-      f.tool === "claude" ? "Claude" : f.tool === "codex" ? "Codex" : "",
+      f.tool ? toolShort(f.tool) : "",
       "sessions",
       f.host ? `on ${machines.find(([h]) => h === f.host)?.[1] ?? f.host}` : "",
       f.via ? `· ${LAUNCH_SURFACE_META[f.via].label}` : "",
@@ -89,9 +90,10 @@ export function useSessionFilter(hub: HubSnapshot | null) {
         ))}
       </select>
       <select className={sel} value={filter.tool} onChange={(e) => setFilter({ ...filter, tool: e.target.value as SessionFilter["tool"] })} aria-label="Tool">
-        <option value="" style={{ background: "var(--color-panel)" }}>Claude + Codex</option>
-        <option value="claude" style={{ background: "var(--color-panel)" }}>Claude Code</option>
-        <option value="codex" style={{ background: "var(--color-panel)" }}>Codex</option>
+        <option value="" style={{ background: "var(--color-panel)" }}>every tool</option>
+        {SESSION_TOOL_IDS.map((t) => (
+          <option key={t} value={t} style={{ background: "var(--color-panel)" }}>{toolLabel(t)}</option>
+        ))}
       </select>
       <select className={sel} value={filter.via} onChange={(e) => setFilter({ ...filter, via: e.target.value as SessionFilter["via"] })} aria-label="Started in">
         <option value="" style={{ background: "var(--color-panel)" }}>started anywhere</option>

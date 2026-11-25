@@ -10,6 +10,7 @@ import type { HubSnapshot } from "@/lib/activity";
 import { ACCENTS } from "@/lib/accents";
 import { ago, stamp } from "./common";
 import { ConversationView } from "./Conversation";
+import { SESSION_TOOLS, SESSION_TOOL_IDS, isSessionTool, resumeCommand, toolLabel, toolRunsOn, toolShort, type SessionTool } from "@/lib/sessionTools";
 
 /**
  * Everything you can DO with a session on the Projects page: read its full
@@ -114,7 +115,7 @@ function ToolEntry({ e }: { e: Extract<ThreadEntry, { kind: "tool" }> }) {
 }
 
 function ThreadEntries({ thread, tool, showTools }: { thread: Thread; tool: string; showTools: boolean }) {
-  const name = tool === "claude" ? "Claude" : "Codex";
+  const name = toolShort(tool);
   const shown = showTools ? thread.entries : thread.entries.filter((e) => e.kind !== "tool");
   return (
     <div className="flex flex-col gap-2">
@@ -349,7 +350,7 @@ function LiveProgress({ progress }: { progress: NonNullable<SessionJob["progress
 export function JobBubble({ job, onOpenSession, knownKeys }: { job: SessionJob; onOpenSession?: (key: string) => void; knownKeys?: Set<string> }) {
   const product = useProductName(); // this network's product name
   const [busy, setBusy] = useState(false);
-  const toolName = job.tool === "claude" ? "Claude" : "Codex";
+  const toolName = toolShort(job.tool);
   const final = !ACTIVE.includes(job.status);
   const status =
     job.status === "queued"
@@ -526,7 +527,7 @@ function Composer({
           className="cursor-pointer rounded-md border px-3 py-1 font-mono text-[11px] font-semibold transition-colors hover:bg-white/[0.06] disabled:cursor-default disabled:opacity-40"
           style={{ borderColor: "var(--page-accent)", color: "var(--page-accent)" }}
         >
-          {busy ? "Sending…" : `Send to ${tool === "codex" ? "Codex" : "Claude"}`}
+          {busy ? "Sending…" : `Send to ${toolShort(tool)}`}
         </button>
       </div>
       <p className="text-[10px] leading-4 text-ink-faint">{hint}</p>
@@ -645,7 +646,7 @@ export function SessionDetail({
   const [msg, setMsg] = useState<string | null>(null);
   const [moving, setMoving] = useState(false);
   const [moveTo, setMoveTo] = useState(s.project === "Unsorted" ? "" : s.project);
-  const resume = s.tool === "claude" ? `claude --resume ${s.id}` : `codex resume ${s.id}`;
+  const resume = resumeCommand(s.tool, s.id);
   const copyCmd = `cd "${s.cwd}" && ${resume}`;
 
   const [stopAsk, setStopAsk] = useState(false);
@@ -717,7 +718,7 @@ export function SessionDetail({
         >
           {s.hidden ? "Unhide" : "Hide"}
         </SmallButton>
-        {s.tool === "claude" && (
+        {SESSION_TOOLS[s.tool].canMove && (
           <SmallButton onClick={() => setHandoff((v) => !v)} title="Continue this session on a different machine">
             {m.local ? "Move to another machine…" : "Bring to this machine…"}
           </SmallButton>
@@ -725,7 +726,7 @@ export function SessionDetail({
         {busy &&
           (stopAsk ? (
             <span className="flex flex-wrap items-center gap-1.5 font-mono text-[10px]" style={{ color: ACCENTS.rose.base }}>
-              {interactive ? `It's open in ${s.tool === "claude" ? "the Claude app or a terminal" : "Codex"} on ${m.label} - stopping ends it there.` : "Stop this run?"}
+              {interactive ? `It's open in ${s.tool === "claude" ? "the Claude app or a terminal" : toolLabel(s.tool)} on ${m.label} - stopping ends it there.` : "Stop this run?"}
               <SmallButton onClick={stop}>Stop it</SmallButton>
               <SmallButton onClick={() => setStopAsk(false)}>Cancel</SmallButton>
             </span>
@@ -775,7 +776,7 @@ export function SessionDetail({
       )}
 
       <p className="font-mono text-[10px] leading-4 text-ink-faint">
-        {s.tool === "claude" ? "Claude Code" : "Codex"} · {m.local ? "this machine" : m.label} · {s.status === "ended" ? "closed" : `open now (${s.status})`}
+        {toolLabel(s.tool)} · {m.local ? "this machine" : m.label} · {s.status === "ended" ? "closed" : `open now (${s.status})`}
         {s.model ? ` · ${s.model}` : ""} · started {stamp(s.startedAt)} · last changed {stamp(s.updatedAt)}
         <br />
         {s.cwd}
@@ -791,11 +792,11 @@ export function SessionDetail({
         placeholder={`Reply to this session…`}
         tool={s.tool}
         allowEdit={m.level === "edit"}
-        showFork={s.tool === "claude"}
+        showFork={SESSION_TOOLS[s.tool].canFork}
         forkDefault={busy}
         forkLocked={m.local && busy}
         disabledReason={!m.local && m.level === "off" ? `Replies to ${m.label} are off - turn on "Replies from my other machines" there (Fleet → Sharing).` : undefined}
-        hint={`Continues this session on ${m.local ? "this machine" : m.label} with your ${s.tool === "claude" ? "Claude" : "ChatGPT"} subscription (${s.tool === "claude" ? "claude --resume" : "codex exec resume"}, in ${s.cwd}). The reply is saved in the session itself, so the ${s.tool === "claude" ? "Claude app and terminal" : "Codex app"} show it too.`}
+        hint={`Continues this session on ${m.local ? "this machine" : m.label} with your ${toolRunsOn(s.tool)} (${s.tool === "claude" ? "claude --resume" : s.tool === "codex" ? "codex exec resume" : "hermes chat --resume"}, in ${s.cwd}). The reply is saved in the session itself, so ${s.tool === "claude" ? "the Claude app and terminal show" : s.tool === "codex" ? "the Codex app shows" : "Hermes shows"} it too.${s.tool === "hermes" ? " Hermes can't stop to ask, so a run from here never gets its terminal, browser or desktop tools: Answer only reads the web and its memory, Can edit files adds file access and its skills." : ""}`}
         onSend={async (prompt, access, fork) => {
           const r = await sessionsPost({ action: "reply", key: s.key, prompt, access, fork });
           reloadJobs();
@@ -826,7 +827,7 @@ export function NewSessionPanel({
   onOpenSession: (key: string) => void;
 }) {
   const m = machineInfo(hub, host);
-  const [tool, setTool] = useState<"claude" | "codex">("claude");
+  const [tool, setTool] = useState<SessionTool>("claude");
   const knownKeys = useMemo(() => new Set(hub?.sessions.map((x) => x.key)), [hub]);
   const started = jobs.filter((j) => j.mode === "new" && (j.project === project || j.cwd === folder)).sort((a, b) => a.createdAt - b.createdAt);
   return (
@@ -842,20 +843,19 @@ export function NewSessionPanel({
         forkDefault={false}
         forkLocked={false}
         disabledReason={!m.local && m.level === "off" ? `This folder is on ${m.label}, which doesn't accept requests from other machines (Fleet → Sharing there).` : undefined}
-        hint={`Runs in ${folder} on ${m.local ? "this machine" : m.label}, with your ${tool === "claude" ? "Claude" : "ChatGPT"} subscription. It becomes a normal session in this project - open it afterwards to keep going.`}
+        hint={`Runs in ${folder} on ${m.local ? "this machine" : m.label}, with your ${toolRunsOn(tool)}. It becomes a normal session in this project - open it afterwards to keep going.`}
         extra={
           <select
             value={tool}
-            onChange={(e) => setTool(e.target.value as "claude" | "codex")}
+            onChange={(e) => setTool(isSessionTool(e.target.value) ? e.target.value : "claude")}
             aria-label="Which tool"
             className="rounded-md border border-line bg-transparent px-1.5 py-1 text-[10px] text-ink"
           >
-            <option value="claude" style={{ background: "var(--color-panel)" }}>
-              Claude Code
-            </option>
-            <option value="codex" style={{ background: "var(--color-panel)" }}>
-              Codex
-            </option>
+            {SESSION_TOOL_IDS.map((t) => (
+              <option key={t} value={t} style={{ background: "var(--color-panel)" }}>
+                {toolLabel(t)}
+              </option>
+            ))}
           </select>
         }
         onSend={async (prompt, access) => {

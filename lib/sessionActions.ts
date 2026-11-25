@@ -13,14 +13,15 @@ import { readThread, type Thread } from "./sessionThread";
 import { PeerUnavailable, peerFetch } from "./peer";
 import { exportSession, importSession, type HandoffPackage } from "./handoff";
 import { setHidden } from "./sessionNaming";
+import { HERMES_TOOLSETS, SESSION_TOOLS, asSessionTool, toolLabel } from "./sessionTools";
 
 /**
  * Acting on sessions - from the Projects page, the live view and the
  * run-somewhere box:
  *
- *  - reply   continue an existing Claude Code / Codex session (claude -p
- *            --resume / codex exec resume) in its own folder. A Claude session
- *            that is open right now is forked (--fork-session) instead.
+ *  - reply   continue an existing session (claude -p --resume / codex exec
+ *            resume / hermes chat -q --resume) in its own folder. A Claude
+ *            session that is open right now is forked (--fork-session) instead.
  *  - new     start a new session in a project's folder (or the home folder).
  *  - thread  fetch the full thread of a session on another machine.
  *  - stop    stop a running session or Mission Control run.
@@ -270,14 +271,14 @@ export async function startJob(input: StartInput): Promise<SessionJob> {
         cwd: s.cwd,
         project: s.project,
         title: s.title,
-        // Codex can't fork; Claude forks when asked or when the session is open right now
-        fork: s.tool === "claude" && input.mode === "reply" && (Boolean(input.fork) || (local && s.status !== "ended")),
+        // only Claude can fork: it does when asked, or when the session is open right now
+        fork: SESSION_TOOLS[s.tool].canFork && input.mode === "reply" && (Boolean(input.fork) || (local && s.status !== "ended")),
       };
       break;
     }
     case "new": {
       const host = input.host || me();
-      const tool: SessionTool = input.tool === "codex" ? "codex" : "claude";
+      const tool: SessionTool = asSessionTool(input.tool);
       const folder = input.folder ?? "";
       // only folders that sessions on that machine actually used (or its home folder) - never an arbitrary path
       const known = folder === "~" || sessions.some((x) => x.host === host && (x.folder === folder || x.cwd === folder));
@@ -430,7 +431,7 @@ export async function acceptRequest(r: SessionJob, via: "lan" | "vault", content
   const job: SessionJob = {
     id: r.id,
     mode: r.mode,
-    tool: r.tool === "codex" ? "codex" : "claude",
+    tool: asSessionTool(r.tool),
     host: me(),
     hostLabel: myLabel,
     cwd: "",
@@ -455,7 +456,7 @@ export async function acceptRequest(r: SessionJob, via: "lan" | "vault", content
       const s = known(r.key);
       if (!s) throw new Error("That session isn't on this machine.");
       Object.assign(job, { key: s.key, sessionId: s.id, tool: s.tool, cwd: s.cwd, title: s.title });
-      job.fork = s.tool === "claude" && r.mode === "reply" && (Boolean(r.fork) || s.status !== "ended");
+      job.fork = SESSION_TOOLS[s.tool].canFork && r.mode === "reply" && (Boolean(r.fork) || s.status !== "ended");
       if (r.mode === "reply" && !job.prompt.trim()) throw new Error("Empty message.");
       break;
     }
@@ -558,9 +559,11 @@ function runCli(
   onSpawn: (pid?: number) => void,
   onOut?: (chunk: string) => void,
   extraEnv?: Record<string, string>,
+  /** false = start the program directly. Needed when an ARGUMENT can span lines (a prompt): cmd.exe ends the command at the first newline. */
+  shell = true,
 ): Promise<{ out: string; err: string; code: number | null; timedOut: boolean }> {
   return new Promise((resolve) => {
-    const child = spawn(cmd, args.map(q), { cwd, shell: true, env: { ...cleanEnv(), ...extraEnv }, detached: process.platform !== "win32" });
+    const child = spawn(cmd, shell ? args.map(q) : args, { cwd, shell, env: { ...cleanEnv(), ...extraEnv }, detached: process.platform !== "win32", windowsHide: true });
     onSpawn(child.pid);
     let out = "";
     let err = "";
@@ -705,6 +708,29 @@ async function execute(job: SessionJob): Promise<Partial<SessionJob>> {
     return done({ status: "error", error: (r.err.trim() || text || `claude exited with code ${r.code}`).slice(-800) });
   }
 
+  if (job.tool === "hermes") {
+    // `hermes chat -q … -Q`: the reply on stdout, "session_id: <id>" on stderr. (`hermes -z` is
+    // cleaner but ignores --resume.) Neither mode can stop and ask, so what the run may do is
+    // set by the toolsets it is given: an explicit -t list REPLACES the configured one.
+    const args = ["chat", "-q", job.prompt, "-Q", "-t", HERMES_TOOLSETS[job.access]];
+    // --no-restore-cwd: we already start in the session's folder; without it Hermes prints a "restored workspace dir" line into the reply
+    if (job.mode === "reply") args.push("--resume", job.sessionId!, "--no-restore-cwd");
+    const r = await runCli(process.env.HERMES_BIN || "hermes", args, cwd, "", setPid, undefined, { MC_JOB_ID: job.id }, false);
+    const cur = (await listJobs()).find((x) => x.id === job.id);
+    if (cur && !isActive(cur)) return {}; // stopped meanwhile - keep that outcome
+    const plain = (t: string) => t.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "");
+    const reply = plain(r.out)
+      .replace(/\r\n/g, "\n")
+      .replace(/^↪ restored workspace dir:[^\n]*\n?/m, "")
+      .trim();
+    if (r.timedOut) return done({ status: "error", error: "Stopped after 20 minutes.", reply });
+    const sid = plain(r.err).match(/session_id:\s*([\w.-]+)/)?.[1];
+    // Hermes prints a failure (signed out, no credit, bad model) where the reply would go, and exits non-zero
+    if (r.code !== 0) return done({ status: "error", error: (plain(r.err).replace(/session_id:[^\n]*/g, "").trim() || reply.replace(/\s+/g, " ") || `hermes exited with code ${r.code}`).slice(-800) });
+    if (!reply) return done({ status: "error", error: "Hermes finished without writing a reply." });
+    return done({ status: "done", reply, resultKey: sid ? `hermes:${sid}` : job.key });
+  }
+
   // Codex
   const outFile = path.join(os.tmpdir(), `mc-codex-${job.id}.txt`);
   const args = ["exec"];
@@ -803,7 +829,9 @@ async function stopLocal(job: SessionJob): Promise<Partial<SessionJob>> {
     return { status: "done", reply: `Stopped ${s.title}.` };
   }
   const pids = processesMatching(s.id);
-  if (!pids.length) throw new Error("This Codex session runs inside the Codex app - stop it there.");
+  if (!pids.length) {
+    throw new Error(s.tool === "codex" ? "This Codex session runs inside the Codex app - stop it there." : `No ${toolLabel(s.tool)} process for this session was found on this machine - stop it where it is open.`);
+  }
   for (const pid of pids) killTree(pid);
   return { status: "done", reply: `Stopped ${s.title}.` };
 }
@@ -973,7 +1001,7 @@ export function openTerminal(cwd: string, command: string): void {
 
 /** The command that resumes a session interactively. */
 export function resumeCommand(s: Pick<SessionSummary, "tool" | "id">): string {
-  return s.tool === "claude" ? `claude --resume ${s.id}` : `codex resume ${s.id}`;
+  return SESSION_TOOLS[s.tool].resume(s.id);
 }
 
 export async function openLocal(what: OpenWhat, target: { key?: string; folder?: string; tool?: SessionTool }): Promise<string> {
@@ -989,7 +1017,7 @@ export async function openLocal(what: OpenWhat, target: { key?: string; folder?:
     const folder = target.folder ?? "";
     if (!folder || !snap.sessions.some((s) => s.folder === folder || s.cwd === folder)) throw new Error("That folder isn't one of this machine's projects.");
     cwd = folder;
-    command = target.tool === "codex" ? "codex" : "claude";
+    command = SESSION_TOOLS[asSessionTool(target.tool)].cli;
   }
   const st = await fsp.stat(cwd).catch(() => null);
   if (!st?.isDirectory()) throw new Error(`The folder ${cwd} doesn't exist any more.`);

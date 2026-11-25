@@ -2,6 +2,7 @@ import { readConfig } from "@/lib/cluster";
 import { sessionsSnapshot } from "@/lib/sessions";
 import { mergeRemoteSessions, readRemoteSessions } from "@/lib/sessionShare";
 import { conversationFor } from "@/lib/sessionDigest";
+import { SESSION_KEY_RE } from "@/lib/sessionTools";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +13,7 @@ export const dynamic = "force-dynamic";
  */
 export async function GET(req: Request) {
   const key = new URL(req.url).searchParams.get("key") ?? "";
-  if (!/^(claude|codex):[\w-]+$/.test(key)) return Response.json({ error: "bad key" }, { status: 400 });
+  if (!SESSION_KEY_RE.test(key)) return Response.json({ error: "bad key" }, { status: 400 });
   try {
     const snap = await sessionsSnapshot();
     const { sessions } = await mergeRemoteSessions(snap.sessions);

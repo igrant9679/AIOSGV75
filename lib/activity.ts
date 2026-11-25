@@ -7,6 +7,7 @@ import { listOrchestrations, type Orchestration } from "./orchestrator";
 import { collectAttention, type AttentionItem } from "./attention";
 import { listExchanges } from "./conversations";
 import { readMemory } from "./vault";
+import { toolLabel } from "./sessionTools";
 
 /**
  * The hub snapshot behind the five "second brain" pages (Command, Timeline,
@@ -19,7 +20,7 @@ import { readMemory } from "./vault";
  * instead of failing the whole page.
  */
 
-export type ActivitySource = "claude" | "codex" | "chat" | "mission" | "orchestration" | "memory";
+export type ActivitySource = "claude" | "codex" | "hermes" | "chat" | "mission" | "orchestration" | "memory";
 export type ActivityStatus = "running" | "waiting" | "idle" | "done" | "error";
 
 export interface ActivityItem {
@@ -108,7 +109,7 @@ export async function hubSnapshot(): Promise<HubSnapshot> {
       id: s.key,
       ts: s.updatedAt,
       source: s.tool,
-      agent: s.tool === "claude" ? "Claude Code" : "Codex",
+      agent: toolLabel(s.tool),
       title: s.title,
       detail: `${s.userTurns} prompt${s.userTurns === 1 ? "" : "s"}${s.model ? ` · ${s.model}` : ""}`,
       project: s.project,

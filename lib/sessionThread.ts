@@ -2,6 +2,7 @@ import fs from "fs";
 import readline from "readline";
 import { cleanPromptText, findSessionFile, readCodexText, textOf, type SessionSummary } from "./sessions";
 import { redactSecrets } from "./sessionDigest";
+import { hermesMessages } from "./hermesSessions";
 
 /**
  * The COMPLETE thread of a Claude Code / Codex session, for the Projects page:
@@ -221,11 +222,48 @@ async function codexThread(file: string): Promise<ThreadEntry[]> {
   return out;
 }
 
-/** Full thread of a session on THIS machine; null when its file isn't here. `limit` keeps the newest entries. */
+/** Hermes: messages from its database. An assistant message lists its tool calls; a `tool` message answers one by id. */
+function hermesThread(id: string): ThreadEntry[] {
+  const out: ThreadEntry[] = [];
+  const calls = new Map<string, Extract<ThreadEntry, { kind: "tool" }>>();
+  for (const m of hermesMessages(id)) {
+    if (m.role === "user") {
+      const text = cleanPromptText(m.text);
+      if (text) out.push({ kind: "user", ts: m.ts, text: tidy(text, MAX_TEXT) });
+    } else if (m.role === "assistant") {
+      if (m.text.trim()) out.push({ kind: "assistant", ts: m.ts, text: tidy(m.text.trim(), MAX_TEXT) });
+      for (const c of m.toolCalls) {
+        const t: Extract<ThreadEntry, { kind: "tool" }> = { kind: "tool", ts: m.ts, id: c.id, name: c.name, summary: summarize(c.name, c.args), input: tidy(stringify(c.args ?? ""), MAX_TOOL_IN) };
+        calls.set(c.id, t);
+        out.push(t);
+      }
+    } else if (m.role === "tool") {
+      const t = m.toolCallId ? calls.get(m.toolCallId) : undefined;
+      const output = tidy(m.text, MAX_TOOL_OUT);
+      const failed = /^\s*\{\s*"success"\s*:\s*false\b/.test(m.text);
+      if (t) {
+        t.output = output;
+        if (failed) t.isError = true;
+      } else {
+        // a result whose call was compacted away: show it rather than drop it
+        out.push({ kind: "tool", ts: m.ts, id: m.toolCallId ?? `result-${out.length}`, name: m.toolName ?? "tool", summary: m.toolName ?? "tool", input: "", output, isError: failed || undefined });
+      }
+    }
+  }
+  return out;
+}
+
+/** Full thread of a session on THIS machine; null when it isn't here. `limit` keeps the newest entries. */
 export async function readThread(s: Pick<SessionSummary, "key" | "tool">, limit = 600): Promise<Thread | null> {
-  const file = await findSessionFile(s.key);
-  if (!file) return null;
-  const all = s.tool === "claude" ? await claudeThread(file) : await codexThread(file);
+  let all: ThreadEntry[];
+  if (s.tool === "hermes") {
+    all = hermesThread(s.key.slice("hermes:".length));
+    if (all.length === 0) return null;
+  } else {
+    const file = await findSessionFile(s.key);
+    if (!file) return null;
+    all = s.tool === "claude" ? await claudeThread(file) : await codexThread(file);
+  }
   const entries = limit > 0 && all.length > limit ? all.slice(all.length - limit) : all;
   return { key: s.key, entries, total: all.length, truncated: entries.length < all.length };
 }

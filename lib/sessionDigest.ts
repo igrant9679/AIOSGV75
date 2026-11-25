@@ -5,6 +5,8 @@ import os from "os";
 import path from "path";
 import readline from "readline";
 import { cleanPromptText, findSessionFile, readCodexText, textOf, type SessionSummary } from "./sessions";
+import { hermesMessages } from "./hermesSessions";
+import { toolShort } from "./sessionTools";
 import { launchSurface } from "./launchSurface";
 import { vaultInfo } from "./vault";
 
@@ -133,12 +135,38 @@ export async function readTurns(file: string, tool: SessionSummary["tool"]): Pro
   return tool === "claude" ? claudeTurns(file) : codexTurns(file);
 }
 
+/** Hermes keeps messages in its database: user messages and the assistant's words, tool traffic left out. */
+function hermesTurns(id: string): Turn[] {
+  const turns: Turn[] = [];
+  for (const m of hermesMessages(id)) {
+    if (m.role === "user") {
+      const text = cleanPromptText(m.text);
+      if (text) turns.push({ role: "user", ts: m.ts, text });
+    } else if (m.role === "assistant" && m.text.trim()) {
+      const last = turns[turns.length - 1];
+      if (last?.role === "assistant") last.text += `\n\n${m.text.trim()}`;
+      else turns.push({ role: "assistant", ts: m.ts, text: m.text.trim() });
+    }
+  }
+  return turns;
+}
+
+/** A session's conversation turns, wherever its tool keeps them. Null when the session isn't on this machine. */
+export async function turnsOf(s: Pick<SessionSummary, "key" | "id" | "tool">): Promise<Turn[] | null> {
+  if (s.tool === "hermes") {
+    const turns = hermesTurns(s.id);
+    return turns.length > 0 ? turns : null;
+  }
+  const file = await findSessionFile(s.key);
+  return file ? readTurns(file, s.tool) : null;
+}
+
 // ─── markdown ───
 
 const when = (ts: number) => (ts ? new Date(ts).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "");
 
 export function digestMarkdown(s: SessionSummary, turns: Turn[], machine: string): string {
-  const toolName = s.tool === "claude" ? "Claude" : "Codex";
+  const toolName = toolShort(s.tool);
   const fm = [
     "---",
     `session: ${s.key}`,
@@ -218,10 +246,9 @@ export async function publishDigests(sessions: SessionSummary[], machine: string
       const st = await fsp.stat(existing).catch(() => null);
       if (st && st.mtimeMs >= s.updatedAt) continue;
     }
-    const file = await findSessionFile(s.key);
-    if (!file) continue;
     try {
-      const turns = await readTurns(file, s.tool);
+      const turns = await turnsOf(s);
+      if (!turns) continue;
       if (!turns.some((t) => t.role === "user")) continue;
       const md = digestMarkdown(s, turns, machine);
       const target = existing ?? path.join(dir, `${new Date(s.startedAt).toISOString().slice(0, 10)} ${safeName(s.title)} ${id8(s)}.md`);
@@ -242,8 +269,8 @@ export async function publishDigests(sessions: SessionSummary[], machine: string
  */
 export async function conversationFor(s: SessionSummary, machineLabel: string): Promise<{ markdown: string; source: "local" | "vault" } | null> {
   if (s.host === os.hostname()) {
-    const file = await findSessionFile(s.key);
-    if (file) return { markdown: digestMarkdown(s, await readTurns(file, s.tool), machineLabel), source: "local" };
+    const turns = await turnsOf(s);
+    if (turns) return { markdown: digestMarkdown(s, turns, machineLabel), source: "local" };
   }
   const machines = await fsp.readdir(digestRoot()).catch(() => [] as string[]);
   for (const m of machines) {

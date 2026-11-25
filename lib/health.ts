@@ -12,6 +12,7 @@ import { sendTelegram } from "./telegram";
 import { effectiveNetSettings, productName } from "./netSettings";
 import { readRemoteSessions, readShareState } from "./sessionShare";
 import { API_KEY_VARS, subscriptionOnly } from "./runners";
+import { hermesHome } from "./hermesSessions";
 import { isLocalEndpoint, readRegistry } from "./registry";
 
 /**
@@ -481,6 +482,33 @@ const OPENCLAW_LINKS = [
   { label: "OpenClaw on GitHub", url: "https://github.com/openclaw/openclaw" },
 ];
 
+/**
+ * Installed is not signed in. Hermes signs in to a provider of its own (Nous
+ * Portal, or an OAuth plan chosen in `hermes model`), and a signed-out Hermes
+ * looks healthy right up to the moment a run fails. Asks Hermes itself
+ * (`hermes auth status <provider>`); its auth file is never opened.
+ */
+async function checkHermesLogin(bin: string): Promise<HealthCheck> {
+  const base = { id: "hermes-login", label: "Hermes sign-in", impact: "Hermes chats, missions that use Hermes, goal mode and Hermes sessions started from here all fail on this machine." };
+  // model.provider is the first `provider:` in config.yaml (the `model:` block comes first)
+  const cfgFile = path.join(hermesHome(), "config.yaml");
+  const provider = (await fsp.readFile(cfgFile, "utf8").catch(() => "")).match(/^\s+provider:\s*["']?([\w.-]+)/m)?.[1];
+  if (!provider) return { ...base, level: "info", detail: "Hermes has no provider chosen yet.", fix: "Open a terminal and run `hermes model`." };
+  const r = await run(bin, ["auth", "status", provider]);
+  const line = r.out.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "").split(/\r?\n/).map((l) => l.trim()).find((l) => l.toLowerCase().startsWith(provider.toLowerCase())) ?? "";
+  if (/logged out|not logged in|no access token|expired/i.test(line)) {
+    return {
+      ...base,
+      level: "warn",
+      detail: `Signed out of ${provider} - ${line.replace(/^[^:]*:\s*/, "")}`,
+      fix: provider === "nous" ? "Open a terminal and run `hermes portal` to sign in to Nous Portal. Then press Re-check." : "Open a terminal and run `hermes model`, pick the provider and sign in. Then press Re-check.",
+    };
+  }
+  if (/logged in|authenticated|configured|ready/i.test(line)) return { ...base, level: "ok", detail: `Signed in to ${provider}.` };
+  // an API-key provider has no login to report; say what we know instead of guessing
+  return { ...base, level: "info", detail: line ? `Provider ${provider}: ${line.replace(/^[^:]*:\s*/, "")}` : `Couldn't read ${provider}'s sign-in status${r.code === null ? " (timed out)" : ""}.`, fix: "Run `hermes status` in a terminal to see every provider." };
+}
+
 async function checkCompanions(): Promise<HealthCheck[]> {
   const win = process.platform === "win32";
   const out: HealthCheck[] = [];
@@ -489,6 +517,7 @@ async function checkCompanions(): Promise<HealthCheck[]> {
   const hermesBin = process.env.HERMES_BIN;
   if (hermesBin && fs.existsSync(hermesBin)) {
     out.push({ id: "hermes", label: "Hermes (companion)", level: "ok", detail: `Installed - its dashboard starts with ${productName()}.` });
+    out.push(await checkHermesLogin(hermesBin));
   } else {
     out.push({
       id: "hermes",

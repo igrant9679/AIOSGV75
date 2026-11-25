@@ -19,17 +19,24 @@ import {
   type TitleSource,
 } from "./projectNames";
 import { readNames } from "./sessionNaming";
+import type { SessionTool } from "./sessionTools";
+import { hermesInstalled, hermesSessions } from "./hermesSessions";
 
 /**
  * Native session reader — the "capture" layer of the second brain. Reads the
- * session files that Claude Code and Codex write on THIS machine, including
+ * sessions that Claude Code, Codex and Hermes keep on THIS machine, including
  * sessions that never went through Mission Control (terminal, desktop app,
- * IDE). Read-only: nothing here writes to ~/.claude or ~/.codex.
+ * IDE). Read-only: nothing here writes to ~/.claude, ~/.codex or Hermes's home.
  *
  *   Claude Code  ~/.claude/projects/<encoded-cwd>/<session-id>.jsonl
  *                ~/.claude/sessions/<pid>.json   (one per open process: status)
  *   Codex        ~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl(.zst)
  *                ~/.codex/session_index.jsonl  (thread titles)
+ *   Hermes       <hermes home>/state.db — a database, not files, so it is
+ *                queried fresh each time instead of going through the file
+ *                cache below (lib/hermesSessions.ts)
+ *
+ * The list of tools, their labels and commands is lib/sessionTools.ts.
  *
  * Claude history can run to gigabytes, so summaries are cached by
  * path + mtime + size in data/sessions-cache.json (derived, per-machine,
@@ -42,7 +49,7 @@ import { readNames } from "./sessionNaming";
  * ~/.claude/.credentials.json or ~/.codex/auth.json.
  */
 
-export type SessionTool = "claude" | "codex";
+export type { SessionTool } from "./sessionTools";
 export type SessionStatus = "running" | "waiting" | "idle" | "ended";
 
 export interface SessionSummary {
@@ -752,6 +759,37 @@ export async function sessionsSnapshot(): Promise<SessionsSnapshot> {
     sessions.push({ ...rest, ...named, lastOpenedAt, hidden, host, status });
   }
 
+  // Hermes: one row per session from its own store. No indexing stubs — the query is the index.
+  for (const h of hermesSessions()) {
+    const key = `hermes:${h.id}`;
+    const firstPrompt = cleanPrompt(h.firstPrompt) || undefined;
+    // This app's own Hermes runs (agent chats, missions) start with its context preamble.
+    const fromApp = h.firstPrompt.includes(MC_PREAMBLE_END);
+    const base: CachedEntry["summary"] = {
+      key,
+      id: h.id,
+      tool: "hermes",
+      title: "",
+      cwd: h.cwd,
+      project: "",
+      startedAt: h.startedAt,
+      updatedAt: h.updatedAt,
+      userTurns: h.userTurns,
+      tokensIn: h.tokensIn,
+      tokensOut: h.tokensOut,
+      tokensCached: h.tokensCached,
+      model: h.model,
+      // read by launchSurface(): *_exec = background, *_cli = terminal, anything else (telegram, cron…) = other
+      origin: fromApp ? "hermes_exec" : h.source === "cli" ? "hermes_cli" : `hermes ${h.source}`,
+      firstPrompt,
+      aiTitle: h.title,
+    };
+    const named = resolveNames(base, { override: names.sessions[key], job: jobTitle(firstPrompt, h.startedAt, jobs) });
+    // mid-turn = not closed, touched in the last few minutes, and the last word isn't Hermes's
+    const open = !h.ended && now - h.updatedAt < RUNNING_WINDOW_MS && h.lastRole !== "assistant";
+    sessions.push({ ...base, ...named, hidden: names.sessions[key]?.hidden || undefined, host, status: open ? "running" : "ended" });
+  }
+
   sessions.sort((a, b) => b.updatedAt - a.updatedAt);
   return {
     host,
@@ -904,6 +942,23 @@ async function buildMeters(cache: CacheFile, foundTools: Set<SessionTool>): Prom
         : "From the usage limits Codex records in its session files.",
     observedAt: rl?.ts,
   });
+
+  if (hermesInstalled()) {
+    const rows = hermesSessions();
+    const t = Date.now();
+    const used = (windowMs: number) => rows.filter((h) => t - h.updatedAt < windowMs).reduce((n, h) => n + h.tokensIn + h.tokensOut, 0);
+    const provider = rows.find((h) => h.billingProvider)?.billingProvider;
+    meters.push({
+      id: "hermes",
+      tool: "hermes",
+      label: "Hermes",
+      plan: provider,
+      tokens5h: used(H5),
+      tokens7d: used(D7),
+      status: rows.length > 0 ? "unknown" : "not_set_up",
+      note: rows.length > 0 ? "Tokens from Hermes's own session store. Hermes doesn't record its plan's limits." : "Hermes is installed, but has no sessions on this machine yet.",
+    });
+  }
 
   meters.push({
     id: "kimi",

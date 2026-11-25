@@ -33,7 +33,7 @@ interface ClusterView {
   nodes: ClusterNode[];
 }
 
-const TOOLS: SubscriptionMeter["tool"][] = ["claude", "codex", "kimi"];
+const TOOLS: SubscriptionMeter["tool"][] = ["claude", "codex", "hermes", "kimi"];
 
 /**
  * Fleet — machines × subscriptions. This machine's cells are live (read from
@@ -96,7 +96,7 @@ export default function FleetSection() {
       <IndexingNote hub={hub} />
       <Panel title="Machines × subscriptions">
         <div className="overflow-x-auto p-4">
-          <div className="grid min-w-[640px] gap-2" style={{ gridTemplateColumns: "180px repeat(3, minmax(0, 1fr))" }}>
+          <div className="grid min-w-[640px] gap-2" style={{ gridTemplateColumns: `180px repeat(${TOOLS.length}, minmax(0, 1fr))` }}>
             <span />
             {TOOLS.map((t) => (
               <span key={t} className="flex justify-center">
@@ -215,7 +215,10 @@ function FleetRow({
           );
         }
         const { meter, sessions, open } = cell(m.host, t);
-        const notSetUp = meter?.status === "not_set_up";
+        // No meter at all = that machine runs a version that doesn't report this tool yet.
+        // Showing "idle · 0 total" there would claim the tool is installed and unused.
+        const noData = !meter && sessions.length === 0;
+        const notSetUp = meter?.status === "not_set_up" || noData;
         const accent: Accent = meter?.status === "limited" ? "rose" : meter?.status === "near" ? "amber" : "lime";
         return (
           <button
@@ -226,7 +229,7 @@ function FleetRow({
             style={{ borderColor: isSel ? "var(--page-accent)" : "var(--color-line)" }}
           >
             {notSetUp ? (
-              <span className="font-mono text-[10px] text-ink-faint">not set up</span>
+              <span className="font-mono text-[10px] text-ink-faint">{noData ? "no data yet" : "not set up"}</span>
             ) : (
               <>
                 <span className="flex justify-between font-mono text-[10px]">

@@ -12,6 +12,7 @@ import type { Candidate } from "@/lib/dispatch";
 import type { HubSnapshot } from "@/lib/activity";
 import { ago, fmtTokens, SourcePill } from "./common";
 import { JobBubble, SmallButton, sessionsPost, useSessionJobs } from "./SessionPanel";
+import { SESSION_TOOL_IDS, isSessionTool, toolLabel, type SessionTool } from "@/lib/sessionTools";
 
 /**
  * Command page panels for running the whole machine group from one place:
@@ -68,7 +69,7 @@ function StopButton({ l, onDone }: { l: LiveSession; onDone: () => void }) {
   if (confirm) {
     return (
       <span className="flex flex-wrap items-center gap-1.5 font-mono text-[10px]" style={{ color: ACCENTS.rose.base }}>
-        {l.interactive ? `Open in ${l.tool === "claude" ? "the Claude app / a terminal" : "Codex"} on ${l.hostLabel} - stopping ends it there.` : "Stop this run?"}
+        {l.interactive ? `Open in ${l.tool === "claude" ? "the Claude app / a terminal" : toolLabel(l.tool)} on ${l.hostLabel} - stopping ends it there.` : "Stop this run?"}
         <SmallButton onClick={stop}>Stop it</SmallButton>
         <SmallButton onClick={() => setConfirm(false)}>Cancel</SmallButton>
       </span>
@@ -184,7 +185,7 @@ export function RunSomewherePanel({ hub }: { hub: HubSnapshot | null }) {
   const product = useProductName(); // this network's product name
   const [prompt, setPrompt] = useState("");
   const [project, setProject] = useState("");
-  const [tool, setTool] = useState<"claude" | "codex">("claude");
+  const [tool, setTool] = useState<SessionTool>("claude");
   const [access, setAccess] = useState<"answer" | "edit">("answer");
   const [ranked, setRanked] = useState<Candidate[] | null>(null);
   const [pick, setPick] = useState<string>("");
@@ -266,13 +267,12 @@ export function RunSomewherePanel({ hub }: { hub: HubSnapshot | null }) {
               </option>
             ))}
           </select>
-          <select value={tool} onChange={(e) => setTool(e.target.value as "claude" | "codex")} aria-label="Tool" className="rounded-md border border-line bg-transparent px-1.5 py-1 text-[10px] text-ink">
-            <option value="claude" style={{ background: "var(--color-panel)" }}>
-              Claude Code
-            </option>
-            <option value="codex" style={{ background: "var(--color-panel)" }}>
-              Codex
-            </option>
+          <select value={tool} onChange={(e) => setTool(isSessionTool(e.target.value) ? e.target.value : "claude")} aria-label="Tool" className="rounded-md border border-line bg-transparent px-1.5 py-1 text-[10px] text-ink">
+            {SESSION_TOOL_IDS.map((t) => (
+              <option key={t} value={t} style={{ background: "var(--color-panel)" }}>
+                {toolLabel(t)}
+              </option>
+            ))}
           </select>
           <select value={access} onChange={(e) => setAccess(e.target.value as "answer" | "edit")} aria-label="What it may do" className="rounded-md border border-line bg-transparent px-1.5 py-1 text-[10px] text-ink">
             <option value="answer" style={{ background: "var(--color-panel)" }}>

@@ -211,8 +211,26 @@ IdrisArea51 backup). Started as a comparison against a "shared Obsidian memory" 
    session layer only knows `claude` and `codex` (`SessionTool`). Gemini exists only as an API
    preset / Studio image key; Kimi as a `kimi-coding` API preset and a "not installed" meter.
    Roadmap Phase 2 ("Install + wire the Kimi CLI") covers Kimi; Gemini CLI is not on the roadmap.
-3. **Cross-machine control is Claude Code + Codex only.** Hermes, Gemini, Kimi sessions cannot be
-   listed, resumed or started from another machine.
+3. **Cross-machine control: Claude Code, Codex and (uncommitted when written, see below) Hermes.**
+   Gemini and Kimi sessions cannot be listed, resumed or started from another machine.
+
+   **Hermes sessions, added later the same day.** `lib/sessionTools.ts` is now the one registry
+   of session tools; `lib/hermesSessions.ts` reads Hermes's SQLite store (`<hermes home>/state.db`,
+   `node:sqlite`, read-only) because Hermes keeps a database, not a file per session. Hermes
+   sessions list on Projects / Timeline / Fleet, open as full threads (tool calls paired with
+   results), publish conversation digests, and take **reply** and **new** jobs
+   (`hermes chat -q … -Q -t <toolsets> [--resume id --no-restore-cwd]`, prompt as an argument,
+   `shell: false`). Found from Hermes's source: `hermes -z` ignores `--resume`, and an explicit
+   `-t` list replaces the configured toolsets — that is how Answer only / Can edit files are
+   enforced, since Hermes can't stop and ask.
+   **Verified on Raider18 after Idris signed Hermes in to Nous Portal:** a reply to an existing
+   session came back clean with the same session id; a new session returned its new id; and an
+   Answer-only session asked to create a file answered that it had no tool that could (no file
+   appeared). Before sign-in the same job surfaced Hermes's "No access token found" error
+   cleanly, and the new Health check "Hermes sign-in" reported it — Health used to show Hermes
+   green merely for being installed.
+   Not done for Hermes: live view (no process list), session search inside the Projects page,
+   moving a session between machines, fork.
 4. Nobody logs to the journal (2 files, both July). The rules note now asks agents to; watch
    whether `Journal/` starts filling before trusting the weekly notes' Journal section.
 5. `collectVaultFiles()` (Library, graph, reports) still stops at 3,000 files in directory order —

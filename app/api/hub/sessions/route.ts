@@ -5,11 +5,12 @@ import { readThread } from "@/lib/sessionThread";
 import { readShareSettings } from "@/lib/sessionShare";
 import { renameSessions, setHidden } from "@/lib/sessionNaming";
 import { dismissJob, listJobs, openLocal, readJobThread, refreshLanJobs, sessionJobsTick, startJob, type JobAccess, type JobMode, type OpenWhat } from "@/lib/sessionActions";
+import { SESSION_KEY_RE, asSessionTool } from "@/lib/sessionTools";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-const KEY_RE = /^(claude|codex):[\w-]+$/;
+const KEY_RE = SESSION_KEY_RE;
 
 /**
  * GET                     → { host, jobs, remoteReplies }
@@ -113,7 +114,7 @@ export async function POST(req: Request) {
           fork: b.fork === true,
           host: b.host,
           folder: b.folder,
-          tool: b.tool === "codex" ? "codex" : "claude",
+          tool: asSessionTool(b.tool),
           project: typeof b.project === "string" ? b.project.slice(0, 80) : undefined,
           jobId: typeof b.jobId === "string" ? b.jobId : undefined,
           openTerminal: b.openTerminal === true,
@@ -128,7 +129,7 @@ export async function POST(req: Request) {
         const message = await openLocal(what, {
           key: b.key && KEY_RE.test(b.key) ? b.key : undefined,
           folder: b.folder,
-          tool: b.tool === "codex" ? "codex" : "claude",
+          tool: asSessionTool(b.tool),
         });
         return Response.json({ ok: true, message });
       }

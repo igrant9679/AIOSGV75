@@ -34,6 +34,7 @@ export function useHub(intervalMs = 15_000) {
 export const SOURCE_META: Record<ActivitySource | "kimi", { label: string; accent: Accent }> = {
   claude: { label: "Claude", accent: "violet" },
   codex: { label: "Codex", accent: "lime" },
+  hermes: { label: "Hermes", accent: "amber" },
   kimi: { label: "Kimi", accent: "rose" },
   chat: { label: "Chat", accent: "cyan" },
   mission: { label: "Mission", accent: "cyan" },

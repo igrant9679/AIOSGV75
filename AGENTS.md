@@ -47,6 +47,9 @@ manual is `/guide` (source: `lib/guideContent.ts`).
   `vault.ts` (Obsidian read/write + scaffold + the Rules note),
   `rollup.ts` (weekly roll-up notes + Archive, master duty),
   `conflictCopies.ts` (sweeps OneDrive copies of generated notes),
+  `sessionTools.ts` (the registry of session tools) + `sessions.ts` /
+  `hermesSessions.ts` (readers) + `sessionActions.ts` (reply / new / stop,
+  locally and on other machines),
   `registry.ts`, `usage.ts`,
   `arena.ts`, `evals.ts`, `llmTools.ts`, `telegram.ts`, `guideContent.ts`.
 - Operator pages beyond chat: `/tasks` (kanban + Orchestrator panel),
@@ -118,6 +121,21 @@ manual is `/guide` (source: `lib/guideContent.ts`).
     OS-verb tag syntax (`VERB_HINT`) stays in code, because the harvester parses
     it. Keep literal verb tags out of any default rules text — an agent quoting
     its rules in a chat reply would have the quoted tag executed.
+16. **Never ask "is it Claude?" and treat everything else as Codex.** The
+    session layer did that in ~50 places, plus four regexes that only accepted
+    `claude:` / `codex:` keys, so a third tool would have been labelled,
+    resumed and billed as Codex with no error. Tools live in ONE registry,
+    `lib/sessionTools.ts` (client-safe): use `toolLabel` / `toolShort` /
+    `toolRunsOn` / `resumeCommand` / `asSessionTool` / `SESSION_KEY_RE`, and
+    capability flags (`canFork`, `canMove`) instead of naming a tool. Adding a
+    tool = a registry entry, a session reader (`lib/hermesSessions.ts` is the
+    pattern for a tool that keeps a database instead of files), and a branch in
+    `execute()` in `lib/sessionActions.ts`.
+17. **A CLI that cannot stop and ask must be limited by what it is given.**
+    Hermes's non-interactive modes auto-approve, so access levels are enforced
+    with `-t <toolsets>` (`HERMES_TOOLSETS`; an explicit list replaces the
+    configured one — checked in Hermes's source, not assumed). Prompts go as an
+    argument with `shell: false`: through cmd.exe a newline ends the command.
 
 ## Dev cycle (production server auto-starts at login)
 

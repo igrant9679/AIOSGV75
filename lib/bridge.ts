@@ -9,6 +9,7 @@ import { createApproval, listApprovals } from "./approvals";
 import { listMissions, startMission } from "./missions";
 import { hubSnapshot } from "./activity";
 import { listSchedules } from "./schedules";
+import { toolLabel } from "./sessionTools";
 
 /**
  * Vault bridge for cloud agents with no API - Claude Duet, OpenAI Dots, or
@@ -372,12 +373,12 @@ async function writeStatus(): Promise<void> {
   ];
   if (!pending.length && !waiting.length && !hub.attention.length) lines.push("- Nothing is waiting on the owner.");
   for (const a of pending.slice(0, 10)) lines.push(`- Approval ${a.id} (${a.source}): ${a.payload.split("\n")[0].slice(0, 140)}`);
-  for (const s of waiting.slice(0, 10)) lines.push(`- ${s.tool === "claude" ? "Claude Code" : "Codex"} session waiting on ${label(s.host)}: "${s.title}" (${s.project})`);
+  for (const s of waiting.slice(0, 10)) lines.push(`- ${toolLabel(s.tool)} session waiting on ${label(s.host)}: "${s.title}" (${s.project})`);
   for (const a of hub.attention.filter((x) => x.kind !== "approval").slice(0, 8)) lines.push(`- ${a.label}: ${a.detail}`);
 
   lines.push("", "## Running now", "");
   if (!running.length) lines.push("- No AI sessions are running right now.");
-  for (const s of running.slice(0, 15)) lines.push(`- ${label(s.host)} · ${s.tool === "claude" ? "Claude Code" : "Codex"} · ${s.project}: "${s.title}" (since ${fmtTime(s.startedAt)})`);
+  for (const s of running.slice(0, 15)) lines.push(`- ${label(s.host)} · ${toolLabel(s.tool)} · ${s.project}: "${s.title}" (since ${fmtTime(s.startedAt)})`);
 
   lines.push("", "## Machine health", "");
   if (!health.length) lines.push("- No health reports yet.");

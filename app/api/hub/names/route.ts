@@ -1,6 +1,7 @@
 import { sessionsSnapshot } from "@/lib/sessions";
 import { mergeRemoteSessions } from "@/lib/sessionShare";
 import { aiNameSessions, needsNaming, readNames, renameSessions } from "@/lib/sessionNaming";
+import { SESSION_KEY_RE } from "@/lib/sessionTools";
 
 /** This machine's sessions plus the rest of the machine group's. */
 async function allSessions() {
@@ -36,7 +37,7 @@ export async function POST(req: Request) {
   }
   try {
     if (body.action === "rename") {
-      const keys = Array.isArray(body.keys) ? body.keys.filter((k): k is string => typeof k === "string" && /^(claude|codex):/.test(k)).slice(0, 500) : [];
+      const keys = Array.isArray(body.keys) ? body.keys.filter((k): k is string => typeof k === "string" && SESSION_KEY_RE.test(k)).slice(0, 500) : [];
       if (keys.length === 0) return Response.json({ error: "no sessions given" }, { status: 400 });
       const title = typeof body.title === "string" ? body.title : undefined;
       const project = typeof body.project === "string" ? body.project : undefined;

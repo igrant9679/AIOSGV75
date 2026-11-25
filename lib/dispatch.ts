@@ -4,6 +4,7 @@ import { sessionsSnapshot, type SessionTool, type SubscriptionMeter } from "./se
 import { mergeRemoteSessions } from "./sessionShare";
 import { listJobs } from "./sessionActions";
 import { modeOf, readNetwork } from "./peer";
+import { toolLabel, toolShort } from "./sessionTools";
 
 /**
  * "Run this somewhere": rank the machines that could take a task right now.
@@ -30,7 +31,7 @@ export interface Candidate {
 export async function rankMachines(input: { project?: string; tool: SessionTool }): Promise<Candidate[]> {
   const snap = await sessionsSnapshot();
   const [{ sessions, remote }, cfg, jobs, net] = await Promise.all([mergeRemoteSessions(snap.sessions), readConfig().catch(() => null), listJobs(), readNetwork()]);
-  const toolName = input.tool === "claude" ? "Claude" : "ChatGPT / Codex";
+  const toolName = input.tool === "codex" ? "ChatGPT / Codex" : toolShort(input.tool);
   const machines = [
     { host: os.hostname(), label: cfg?.label || os.hostname(), local: true, online: true, via: "self", accepts: "edit", subs: snap.subscriptions as SubscriptionMeter[] },
     ...remote.map((m) => ({ host: m.host, label: m.label, local: false, online: !m.stale, via: m.via, accepts: m.acceptsReplies as string, subs: m.subscriptions })),
@@ -55,7 +56,8 @@ export async function rankMachines(input: { project?: string; tool: SessionTool 
     const meter = m.subs.find((s) => s.tool === input.tool);
     let used = 50;
     if (!meter || meter.status === "not_set_up") {
-      if (!blocked && input.tool === "codex") blocked = "Codex isn't set up there";
+      // Claude is the one tool every machine in the group is assumed to have
+      if (!blocked && input.tool !== "claude") blocked = `${toolLabel(input.tool)} isn't set up there`;
     } else if (meter.status === "limited") {
       if (!blocked) blocked = `${toolName} limit reached${meter.resetsAt ? ` (resets ${new Date(meter.resetsAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })})` : ""}`;
     } else if (typeof meter.usedPercent === "number") {

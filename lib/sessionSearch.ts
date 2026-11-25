@@ -9,6 +9,7 @@ import { localSessionFiles, readCodexText, sessionsSnapshot, textOf, type Sessio
 import { readRemoteSessions } from "./sessionShare";
 import { PeerUnavailable, peerFetch } from "./peer";
 import { redactSecrets } from "./sessionDigest";
+import { toolOfKey } from "./sessionTools";
 
 /**
  * Search the full threads of every session on every machine - messages,
@@ -146,7 +147,7 @@ async function searchDigests(machineLabel: string, host: string, ql: string, lim
     const updated = Date.parse(text.match(/^updated:\s*(\S+)/m)?.[1] ?? "") || 0;
     const sn = snippet(text.replace(/^---[\s\S]*?\n---\n/, ""), ql);
     if (!key || !sn) continue;
-    hits.push({ key, host, hostLabel: machineLabel, tool: key.startsWith("codex:") ? "codex" : "claude", title, project, updatedAt: updated, via: "vault", snippets: [{ role: "Conversation", text: sn }] });
+    hits.push({ key, host, hostLabel: machineLabel, tool: toolOfKey(key) ?? "claude", title, project, updatedAt: updated, via: "vault", snippets: [{ role: "Conversation", text: sn }] });
   }
   return hits;
 }

@@ -9,6 +9,7 @@ import { mergeRemoteSessions } from "./sessionShare";
 import { eventsBetween, readAlertSettings } from "./sessionEvents";
 import { listJobs } from "./sessionActions";
 import { sendTelegram } from "./telegram";
+import { SESSION_TOOL_IDS, toolLabel } from "./sessionTools";
 
 /**
  * Once a day (after 6 AM, run by the master) a note on what every machine did
@@ -52,11 +53,13 @@ export async function buildDailySummary(day: Date): Promise<{ markdown: string; 
     const finishedLong = ev.filter((e) => e.kind === "finished" && e.long);
     const waited = ev.filter((e) => e.kind === "waiting").length;
     const files = ev.reduce((n, e) => n + (e.filesChanged ?? 0), 0);
-    const claude = mine.filter((s) => s.tool === "claude").length;
+    // one count per tool that was actually used that day ("15 Claude Code, 2 Hermes")
+    const byTool = SESSION_TOOL_IDS.map((t) => [t, mine.filter((s) => s.tool === t).length] as const).filter(([t, n]) => n > 0 || t === "claude");
+    const toolCounts = byTool.map(([t, n]) => `${n} ${toolLabel(t)}`).join(", ");
     lines.push(
       `## ${labelOf(h)}`,
       "",
-      `- **${mine.length} sessions active** (${claude} Claude Code, ${mine.length - claude} Codex) · ${started} started that day`,
+      `- **${mine.length} sessions active** (${toolCounts}) · ${started} started that day`,
       `- Projects: ${top.map(([p, n]) => `${p} (${n})`).join(", ") || "—"}`,
       ev.length ? `- ${ev.filter((e) => e.kind === "finished").length} turns finished${files ? ` · ${files} file edits` : ""} · waited on you ${waited} time${waited === 1 ? "" : "s"}` : "- No session alerts recorded (the hook may not be installed there yet)",
       ...finishedLong.map((e) => `  - Long run: **${e.title}** - ${Math.round((e.turnMs ?? 0) / 60_000)} min${e.filesChanged ? `, ${e.filesChanged} files changed` : ""}`),
