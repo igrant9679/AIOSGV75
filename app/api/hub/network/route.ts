@@ -1,6 +1,6 @@
 import os from "os";
 import { clusterStatus } from "@/lib/cluster";
-import { lanAddresses, PEER_PORT } from "@/lib/netAddrs";
+import { lanAddresses, localNetworks, networkOf, PEER_PORT } from "@/lib/netAddrs";
 import { modeOf, peerListening, probePeer, readNetwork, setHostNetwork, type NetMode } from "@/lib/peer";
 
 export const dynamic = "force-dynamic";
@@ -11,17 +11,20 @@ async function view(probe: boolean) {
   const others = st.nodes.filter((n) => !n.self);
   const probes = probe ? await Promise.all(others.map((n) => (modeOf(net, n.host) === "offlan" ? Promise.resolve(null) : probePeer(n.host)))) : others.map(() => null);
   return {
-    self: { host: os.hostname(), label: st.config.label, addrs: lanAddresses(), port: PEER_PORT, listening: await peerListening() },
+    self: { host: os.hostname(), label: st.config.label, addrs: lanAddresses(), nets: localNetworks().map((n) => n.label), port: PEER_PORT, listening: await peerListening() },
     clusterOn: st.config.enabled,
     machines: others.map((n, i) => {
       const k = Object.keys(net.hosts).find((h) => h.toLowerCase() === n.host.toLowerCase());
+      const address = k ? net.hosts[k].address ?? "" : "";
+      const lanAddrs = (n as { lanAddrs?: string[] }).lanAddrs ?? [];
       return {
         host: n.host,
         label: n.label,
         online: n.online,
         mode: modeOf(net, n.host),
-        address: k ? net.hosts[k].address ?? "" : "",
-        lanAddrs: (n as { lanAddrs?: string[] }).lanAddrs ?? [],
+        address,
+        lanAddrs,
+        network: networkOf(address ? [address] : lanAddrs),
         probe: probes[i],
       };
     }),

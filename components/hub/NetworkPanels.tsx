@@ -20,7 +20,7 @@ import { SmallButton } from "./SessionPanel";
  */
 
 interface NetView {
-  self: { host: string; label: string; addrs: string[]; port: number; listening: boolean };
+  self: { host: string; label: string; addrs: string[]; nets?: string[]; port: number; listening: boolean };
   clusterOn: boolean;
   machines: {
     host: string;
@@ -29,6 +29,8 @@ interface NetView {
     mode: "lan" | "offlan" | "auto";
     address: string;
     lanAddrs: string[];
+    /** whether its address is on one of this machine's networks */
+    network?: "same" | "other" | "unknown";
     probe: { ok: boolean; ms?: number; address?: string; error?: string } | null;
   }[];
 }
@@ -99,18 +101,37 @@ export function NetworkPanel() {
         {view && view.machines.length === 0 && <p className="text-[11px] text-ink-faint">No other machines in the group yet.</p>}
         {view?.machines.map((m) => {
           const p = m.probe;
-          const tone = m.mode === "offlan" ? ACCENTS.violet : p?.ok ? ACCENTS.lime : ACCENTS.amber;
+          // A machine on another network is not a fault: it is online and reached through OneDrive.
+          // Amber is kept for the cases worth a look - offline, or on this network and not answering.
+          const elsewhere = !p?.ok && m.online && m.network === "other";
+          const accent = !m.online ? "amber" : m.mode === "offlan" || elsewhere ? "violet" : p?.ok ? "lime" : "amber";
+          const tone = ACCENTS[accent];
+          const theirs = (m.address ? [m.address] : m.lanAddrs).join(", ");
           return (
             <div key={m.host} className="flex flex-col gap-1.5 rounded-xl border border-line px-3 py-2">
               <div className="flex flex-wrap items-center gap-2">
-                <StatusOrb accent={m.mode === "offlan" ? "violet" : p?.ok ? "lime" : "amber"} size={7} />
+                <StatusOrb accent={accent} size={7} />
                 <span className="text-xs font-semibold text-ink">{m.label}</span>
-                <span className="font-mono text-[10px]" style={{ color: tone.base }}>
-                  {m.mode === "offlan"
-                    ? "Off-LAN · OneDrive only"
-                    : p?.ok
-                      ? `LAN ✓ ${p.address ?? ""} · ${p.ms} ms`
-                      : `LAN unreachable → OneDrive${p?.error ? ` (${p.error})` : ""}`}
+                <span
+                  className="font-mono text-[10px]"
+                  style={{ color: tone.base }}
+                  title={
+                    elsewhere
+                      ? `${m.label} reports ${theirs}, which is not on this PC's network (${view.self.nets?.join(", ") || view.self.addrs.join(", ")}). It is probably connected to a different router, a guest network or another building. Everything still works through OneDrive, just slower (1-2 minutes). To make it direct, connect it to the same network as this PC.`
+                      : undefined
+                  }
+                >
+                  {!m.online
+                    ? "offline · no heartbeat lately"
+                    : m.mode === "offlan"
+                      ? "online · Off-LAN · OneDrive only"
+                      : p?.ok
+                        ? `LAN ✓ ${p.address ?? ""} · ${p.ms} ms`
+                        : elsewhere
+                          ? `online · other network (${theirs}) → via OneDrive`
+                          : p
+                            ? `online · LAN not answering → via OneDrive${p.error ? ` (${p.error})` : ""}`
+                            : "online"}
                 </span>
                 <span className="flex-1" />
                 {MODES.map(([v, label, hint]) => (
