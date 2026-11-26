@@ -87,7 +87,7 @@ export async function POST(req: Request) {
     ].join("\n"),
   );
 
-  const r = await runClaudeText(prompt, ["--model", "haiku", "--no-session-persistence", "--disallowedTools", "Bash,PowerShell,Edit,Write,MultiEdit,NotebookEdit,Read,Glob,Grep,WebFetch,WebSearch,Task"]);
+  const r = await runClaudeText(prompt, ["--model", "haiku", "--no-session-persistence", "--strict-mcp-config", "--disallowedTools", "Bash,PowerShell,Edit,Write,MultiEdit,NotebookEdit,Read,Glob,Grep,WebFetch,WebSearch,Task"]);
   if (r.error || !r.text.trim()) {
     const why = r.error ?? "no answer";
     const signedOut = /login|auth|401|credential/i.test(why);

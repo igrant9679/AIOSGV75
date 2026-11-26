@@ -35,8 +35,19 @@
 >   `mc/run-…`; each accepted edit task is one commit; its reviewer is shown the real diff; a task
 >   that fails for good is committed as "[not accepted]"; at delivery the folder returns to its
 >   branch and the delivery says how to look and merge. Edit tasks now take turns in a folder.
-> - **Still open from phase 3:** continuing a task past the 20-minute job limit (a worker that
->   needs longer is stopped and retried), and per-run budgets beyond the task and attempt caps.
+> - **Continuing past the 20-minute job limit.** A Claude worker reports its session id as soon as
+>   it starts (`liveKey`); one stopped for time on standard or hard work is told to carry on in
+>   that session, twice without counting as a failure, then as counted attempts that still keep
+>   the session. Tested with budgets scaled down (`budgetScale` in data/worker-models.json): eight
+>   files written across four sittings, all kept, committed, passed review. Codex and Hermes
+>   workers that run out of time still start over (their session id comes only at the end).
+> - **Found while testing, fixed:** Hermes at answer level cannot read files, so tasks that must
+>   read the folder (`readsFolder`) skip it and the local model; a run's Hermes workers get no
+>   memory or session search (one "remembered" an unmerged branch); headless Claude runs started
+>   every MCP server the owner has, two WanGP servers at ~3.9 GB each, which crashed the server
+>   and Ollama on memory, so run work uses `--strict-mcp-config`; and a crashed server's CLI
+>   children are now stopped by the next server instead of running on.
+> - **Still open:** per-run budgets beyond the task and attempt caps.
 
 > **Phase 2 as built, and what its runs taught.**
 >

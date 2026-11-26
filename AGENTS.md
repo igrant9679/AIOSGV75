@@ -205,6 +205,19 @@ manual is `/guide` (source: `lib/guideContent.ts`).
     clean working tree (lib/runGit.ts); nothing is pushed, merged, reset or
     deleted; hooks run. Edit tasks take turns in a folder, so each task's diff
     and commit hold only its own changes.
+28. **A headless Claude starts every MCP server the owner has.** On Raider18
+    that included two WanGP servers reserving ~3.9 GB of memory each, per
+    `claude -p`. A planner, a worker and a reviewer at once pushed the PC to its
+    commit limit and Mission Control and Ollama crashed (0xC0000409). Mission
+    Control's own work passes `--strict-mcp-config` (`noMcp` in runAgentText,
+    `isolated` jobs, Help); chats, missions and schedules keep the owner's
+    servers because they may use them.
+29. **A server that dies leaves its CLI children running.** On Windows the
+    recorded pid is the shell, which dies too, while `claude` (its child) kept
+    running for fifteen minutes in a project folder, allowed to edit files, with
+    nobody to read its output. Jobs carry `serverPid`; a new server stops
+    the ones an earlier process left running, found by parent id and checked by
+    command line and start time (`orphanProcesses` in lib/sessionActions.ts).
 
 ## Dev cycle (production server auto-starts at login)
 

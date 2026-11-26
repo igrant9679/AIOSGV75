@@ -110,7 +110,7 @@ function TaskRow({ t, runHost }: { t: RunTask; runHost: string }) {
                   {n.tool ? workerLabel(n.tool) : "worker"}
                   {n.model ? ` (${n.model})` : ""} · {n.tier}
                   {n.host ? ` · ${n.host}` : ""} ·{" "}
-                  <span style={{ color: ACCENTS[n.outcome === "passed" ? "lime" : n.outcome === "not picked up" || n.outcome === "unreviewed" ? "amber" : "rose"].base }}>{n.outcome}</span>
+                  <span style={{ color: ACCENTS[n.outcome === "passed" ? "lime" : n.outcome === "not picked up" || n.outcome === "unreviewed" || n.outcome === "continued" ? "amber" : "rose"].base }}>{n.outcome}</span>
                   {n.note && n.outcome !== "passed" ? ` - ${n.note}` : ""}
                 </li>
               ))}

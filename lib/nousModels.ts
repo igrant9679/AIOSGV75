@@ -51,6 +51,11 @@ export interface WorkerModelSettings {
   avoid?: string[];
   /** false = project runs never hand a task to this machine's local model (lib/runs.ts) */
   local?: boolean;
+  /**
+   * Multiplies every run worker's time budget (lib/runs.ts TIME_BUDGET_MS), 0.05 to 3. For testing
+   * what happens when a worker runs out of time without waiting 19 minutes; unset = 1.
+   */
+  budgetScale?: number;
 }
 
 const MODEL_ID_RE = /^[\w.:~/-]{1,120}$/;
@@ -134,6 +139,7 @@ export async function readWorkerModelSettings(): Promise<WorkerModelSettings> {
       web: isModelId(j.web) ? j.web : undefined,
       avoid: Array.isArray(j.avoid) ? j.avoid.filter(isModelId) : [],
       local: j.local === false ? false : undefined,
+      budgetScale: typeof j.budgetScale === "number" && j.budgetScale >= 0.05 && j.budgetScale <= 3 ? j.budgetScale : undefined,
     };
   } catch {
     return { avoid: [] };

@@ -328,6 +328,14 @@ export async function runAgentText(
      * cannot bench a healthy agent.
      */
     drill?: string[];
+    /**
+     * Claude: start without the owner's MCP servers (--strict-mcp-config). Each headless Claude
+     * otherwise starts every MCP server the owner has configured; on Raider18 that included two
+     * WanGP servers reserving ~3.9 GB of memory each, per run, and a planner, a worker and a
+     * reviewer at once pushed the PC to its memory limit: Mission Control and Ollama crashed.
+     * Mission Control's own work (project runs, Help) needs none of them.
+     */
+    noMcp?: boolean;
   } = {},
 ): Promise<RunResult> {
   // "auto" is virtual: route to a real agent. If the pick errors, climb the cost ladder one
@@ -369,7 +377,7 @@ export async function runAgentText(
 
   let result: RunResult | null = null;
   if (agentId === "claude") {
-    result = await runClaudeText((inject ? memoryBlock(ctx) : "") + prompt, opts.readOnly ? CLAUDE_READ_ONLY : [], opts.cwd);
+    result = await runClaudeText((inject ? memoryBlock(ctx) : "") + prompt, [...(opts.readOnly ? CLAUDE_READ_ONLY : []), ...(opts.noMcp ? ["--strict-mcp-config"] : [])], opts.cwd);
   } else if (agentId === "hermes-free") {
     result = await runHermesFree((inject ? memoryBlock(ctx) : "") + prompt);
   } else if (agentId === "codex-cli") {

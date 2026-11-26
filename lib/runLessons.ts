@@ -25,7 +25,7 @@ import type { Run, RunTask, Tier } from "./runs";
  * agent behaviour lives in the vault, and the owner decides what goes into Rules).
  */
 
-export type Outcome = "passed" | "unreviewed" | "rejected" | "check failed" | "blocked" | "error" | "timed out" | "not picked up";
+export type Outcome = "passed" | "unreviewed" | "rejected" | "check failed" | "blocked" | "error" | "timed out" | "continued" | "not picked up";
 
 export interface AttemptNote {
   at: number;
@@ -68,6 +68,7 @@ function taskLessons(t: RunTask): string[] {
     else if (n.outcome === "rejected") parts.push(`${who(n)} at ${n.tier} was rejected: "${n.note ?? ""}"`);
     else if (n.outcome === "check failed") parts.push(`${who(n)}'s work failed a check (${n.note ?? ""})`);
     else if (n.outcome === "timed out") parts.push(`${who(n)} ran out of time at ${n.tier}`);
+    else if (n.outcome === "continued") parts.push(`${who(n)} needed more than one sitting at ${n.tier}`);
     else parts.push(`${who(n)} at ${n.tier}: ${n.outcome}${n.note ? ` (${n.note})` : ""}`);
   }
   const end = h[h.length - 1];

@@ -75,11 +75,18 @@ export interface SessionJob {
   error?: string;
   /** the session the result landed in (differs from `key` when forked / new / moved) */
   resultKey?: string;
+  /**
+   * The session a Claude run is writing to, known as soon as it starts (resultKey only comes at
+   * the end). A project run that stops a worker for time uses it to continue in that session.
+   */
+  liveKey?: string;
   costUsd?: number;
   /** how a cross-machine job travels */
   via?: "lan" | "vault";
   /** process of a running local job (for Stop) */
   pid?: number;
+  /** the Mission Control server process that started it: a job left "running" by an earlier one is an orphan */
+  serverPid?: number;
   /** import / export: where the session goes on the receiving machine, and what then */
   handoff?: { fromHost: string; fromLabel: string; oldCwd: string; targetCwd: string; openTerminal: boolean; hideSource: boolean };
   /** run-somewhere: why this machine was picked */
@@ -90,7 +97,7 @@ export interface SessionJob {
   web?: boolean;
   /** Hermes: the most tool-calling rounds this run may take. Unset = Hermes's own limit. */
   maxTurns?: number;
-  /** Hermes: a project run's worker - no memory, no searching other sessions (hermesToolsets) */
+  /** a project run's worker: Hermes gets no memory or session search (hermesToolsets), Claude no MCP servers */
   isolated?: boolean;
   /** mode "check": the NAME of one of this machine's allowed check commands (lib/projectChecks.ts) */
   check?: string;
@@ -219,6 +226,7 @@ const resultOf = (job: SessionJob) => ({
   reply: job.reply,
   error: job.error,
   resultKey: job.resultKey,
+  liveKey: job.liveKey,
   costUsd: job.costUsd,
   progress: job.progress,
 });
@@ -716,6 +724,7 @@ function describeTool(name: string, input: Record<string, unknown> = {}): string
 function streamParser(jobId: string) {
   let buf = "";
   let text = "";
+  let liveKey = "";
   const steps: string[] = [];
   let result: ClaudeResult | null = null;
   let dirty = false;
@@ -729,6 +738,11 @@ function streamParser(jobId: string) {
   };
   const timer = setInterval(save, 1000);
   const onEvent = (e: { type?: string; message?: { content?: unknown }; [k: string]: unknown }) => {
+    // the first event ("system" init) names the session: record it at once, while the run is still going
+    if (!liveKey && typeof e.session_id === "string" && /^[\w.-]+$/.test(e.session_id)) {
+      liveKey = `claude:${e.session_id}`;
+      saving = saving.then(() => patchJob(jobId, { liveKey })).catch(() => {});
+    }
     if (e.type === "assistant" && Array.isArray(e.message?.content)) {
       for (const b of e.message.content as { type?: string; text?: string; name?: string; input?: Record<string, unknown> }[]) {
         if (b.type === "text" && b.text?.trim()) text += (text ? "\n\n" : "") + b.text.trim();
@@ -801,6 +815,8 @@ async function execute(job: SessionJob): Promise<Partial<SessionJob>> {
     }
     if (job.access === "edit") args.push("--permission-mode", "acceptEdits");
     if (job.model) args.push("--model", job.model);
+    // a project run's worker starts without the owner's MCP servers (see `noMcp` in lib/runners.ts)
+    if (job.isolated) args.push("--strict-mcp-config");
     const live = streamParser(job.id);
     const r = await runCli("claude", args, cwd, job.prompt, setPid, live.push, { MC_JOB_ID: job.id });
     live.end();
@@ -887,6 +903,7 @@ async function pump(minAgeMs = 0): Promise<void> {
         if (!j) return undefined;
         j.status = "running";
         j.startedAt = Date.now();
+        j.serverPid = process.pid;
         return { ...j };
       });
       if (!next) break;
@@ -958,6 +975,33 @@ async function stopLocal(job: SessionJob): Promise<Partial<SessionJob>> {
   return { status: "done", reply: `Stopped ${s.title}.` };
 }
 
+/**
+ * The processes still running for a job an earlier server started: the recorded process itself if
+ * it is alive, and its children. On Windows the recorded process is the shell, which dies with the
+ * server while the CLI it started (its child) keeps going, so children are found by the parent id
+ * they still carry. To be sure nothing that merely reused a number is killed, a process counts only
+ * if its command line names the job's tool and it started within a minute of the job.
+ */
+function orphanProcesses(pid: number, tool: string, startedAt: number): number[] {
+  if (!/^[a-z]+$/.test(tool) || !Number.isInteger(pid) || pid <= 0) return [];
+  const names = new RegExp(`\\b${tool}\\b`, "i");
+  if (process.platform !== "win32") {
+    const r = spawnSync("ps", ["-ax", "-o", "pid=,ppid=,command="], { encoding: "utf8" });
+    return (r.stdout || "")
+      .split("\n")
+      .map((l) => l.trim().match(/^(\d+)\s+(\d+)\s+(.*)$/))
+      .filter((m): m is RegExpMatchArray => !!m && (Number(m[1]) === pid || Number(m[2]) === pid) && names.test(m[3]))
+      .map((m) => Number(m[1]));
+  }
+  const ps = `Get-CimInstance Win32_Process -Filter "ProcessId=${pid} or ParentProcessId=${pid}" | ForEach-Object { "{0}|{1}|{2}" -f $_.ProcessId, ([DateTimeOffset]$_.CreationDate).ToUnixTimeMilliseconds(), $_.CommandLine }`;
+  const r = spawnSync("powershell", ["-NoProfile", "-Command", ps], { encoding: "utf8", timeout: 20_000 });
+  return (r.stdout || "")
+    .split(/\r?\n/)
+    .map((l) => l.split("|"))
+    .filter(([id, born, ...cmd]) => Number(id) > 0 && Math.abs(Number(born) - startedAt) < 60_000 && names.test(cmd.join("|")))
+    .map(([id]) => Number(id));
+}
+
 // ─── the background tick (every machine) ───
 
 let ticking = false;
@@ -965,13 +1009,21 @@ export async function sessionJobsTick(minAgeMs = 10_000): Promise<void> {
   if (ticking) return;
   ticking = true;
   try {
+    const orphans: { pid: number; tool: string; startedAt: number }[] = [];
     await mutate((jobs) => {
       for (const j of jobs) {
-        if (j.host === me() && j.status === "running" && Date.now() - (j.startedAt ?? j.createdAt) > RUN_TIMEOUT_MS + 5 * 60_000) {
-          Object.assign(j, { status: "error", error: `Interrupted (${productName()} restarted while it ran).`, finishedAt: Date.now(), pid: undefined });
+        if (j.host !== me() || j.status !== "running") continue;
+        // Started by an earlier server process that has since died: nothing can collect its output any
+        // more, but the CLI it started keeps going (once, a run's worker, allowed to edit files, ran on
+        // for fifteen minutes after a crash). Stop it now instead of waiting out the 20-minute limit.
+        const orphan = j.serverPid !== undefined && j.serverPid !== process.pid;
+        if (orphan || Date.now() - (j.startedAt ?? j.createdAt) > RUN_TIMEOUT_MS + 5 * 60_000) {
+          if (orphan && j.pid && j.mode !== "check") orphans.push({ pid: j.pid, tool: j.tool, startedAt: j.startedAt ?? j.createdAt });
+          Object.assign(j, { status: "error", error: `Interrupted (${productName()} restarted while it ran${orphan ? "; its process was stopped" : ""}).`, finishedAt: Date.now(), pid: undefined });
         }
       }
     });
+    for (const o of orphans) for (const pid of orphanProcesses(o.pid, o.tool, o.startedAt)) killTree(pid);
     if (await groupOn()) await takeVaultRequests();
     await collectResults();
     await pump(minAgeMs);
@@ -1050,6 +1102,7 @@ async function collectOne(j: SessionJob): Promise<void> {
       reply: res.reply,
       error: res.error,
       resultKey: res.resultKey,
+      liveKey: res.liveKey,
       costUsd: res.costUsd,
       progress: res.progress,
     };

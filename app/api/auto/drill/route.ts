@@ -22,10 +22,10 @@ export async function POST(req: Request) {
   const rungs = b.rungs === 2 ? 2 : 1;
   const first = await routeTask(PROMPT);
   const fail = [first.agentId];
-  let r = await runAgentText("auto", PROMPT, { injectMemory: false, drill: fail });
+  let r = await runAgentText("auto", PROMPT, { injectMemory: false, noMcp: true, drill: fail });
   if (rungs === 2 && r.routedTo && r.routedTo !== first.agentId && !r.error) {
     fail.push(r.routedTo);
-    r = await runAgentText("auto", PROMPT, { injectMemory: false, drill: fail });
+    r = await runAgentText("auto", PROMPT, { injectMemory: false, noMcp: true, drill: fail });
   }
   const ok = !r.error && !!r.routedTo && !fail.includes(r.routedTo);
   return Response.json({

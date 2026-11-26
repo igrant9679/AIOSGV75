@@ -153,6 +153,10 @@ export interface RunTask {
   checkJob?: { id: string; name: string; at: number };
   /** the worker's session — rework replies go here */
   sessionKey?: string;
+  /** times a worker stopped for time was told to carry on in its own session (not failures; at most MAX_CONTINUE) */
+  continued?: number;
+  /** the next start is a continuation in `sessionKey`, not a rework */
+  continueNext?: boolean;
   result?: string;
   /** what the reviewer wants changed (drives the next attempt) */
   feedback?: string;
@@ -226,6 +230,13 @@ const PICKUP_PATIENCE_MS = { lan: 4 * 60_000, vault: 12 * 60_000 };
 /** Tool-calling rounds a Hermes worker may take, by tier, and how long any worker may run. */
 const HERMES_TURNS: Record<Tier, number> = { routine: 20, standard: 35, hard: 50 };
 const TIME_BUDGET_MS: Record<Tier, number> = { routine: 8 * 60_000, standard: 15 * 60_000, hard: 19 * 60_000 };
+/**
+ * A Claude worker on standard or hard work that runs out of time is not failed at once: it is
+ * stopped (its session, and any files it changed, are kept) and told to carry on in the same
+ * session, up to this many times. That is how a task outlasts the 20-minute job limit. A routine
+ * worker that runs out of time has gone wrong, not run long: it fails as before (rule 19).
+ */
+const MAX_CONTINUE = 2;
 const DEFAULT_CAPS = { maxTasks: 8, maxAttempts: 4 };
 const ACTIVE: RunStatus[] = ["planning", "awaiting_approval", "running", "delivering"];
 const RUN_ID_RE = /^\d{4}-\d{2}-\d{2} [a-z0-9-]{1,48} [a-z0-9]{4}$/;
@@ -580,6 +591,18 @@ function afterRework(t: RunTask, before: string, reply: string): string {
   return before.length > 400 && reply.length < before.length * 0.4 ? appended : reply;
 }
 
+function continuePrompt(t: RunTask, minutes: number): string {
+  return [
+    `You were stopped after about ${minutes} minutes on "${t.title}" because of the time limit for one sitting. Everything you did is kept${t.access === "edit" ? ", including the files you changed" : ""}.`,
+    ``,
+    `Carry on from where you stopped and finish the task. What "done" means: ${t.accept}`,
+    ``,
+    t.access === "edit"
+      ? `When you finish, say what you changed. If you cannot finish, start with "BLOCKED:" and say why. End with a separate line starting "RESULT:" with what you produced and the paths of the files you changed.`
+      : `When you finish, give the complete result, the whole thing once. If you cannot finish, start with "BLOCKED:" and say why. End with a separate line starting "RESULT:".`,
+  ].join("\n");
+}
+
 function reworkPrompt(t: RunTask): string {
   return [
     `Your work on "${t.title}" was reviewed and is not accepted yet.`,
@@ -854,7 +877,7 @@ async function plan(id: string): Promise<void> {
   let agent = PLANNER_AGENT[run.planner];
   // In the project's folder and read-only: the planner can look at what is there before it plans,
   // and cannot change anything or stall on a permission prompt. (Local runs with a real folder only.)
-  const look = { cwd: run.host === me() && run.folder !== "~" ? run.folder : undefined, readOnly: true };
+  const look = { cwd: run.host === me() && run.folder !== "~" ? run.folder : undefined, readOnly: true, noMcp: true };
   const past = { lessons: await readLessons(run).catch(() => ""), record: recordText(workerRecord(await listRuns(40).catch(() => []))) };
   let r = await runAgentText(agent, planPrompt(run, past), { injectMemory: true, ...look });
   let note: string | undefined;
@@ -987,6 +1010,9 @@ function afterFailure(run: Run, t: RunTask, reason: string, outcome: Outcome = "
   t.attemptsAtTier++;
   t.job = undefined;
   t.checkJob = undefined;
+  // A worker stopped for time (standard or hard Claude work) keeps its session for the next try, so
+  // its progress is not thrown away. Any other failure is a rework or a fresh start, never a continuation.
+  t.continueNext = outcome === "timed out" && t.tool === "claude" && t.workTier !== "routine" && !!t.sessionKey ? true : undefined;
   if (t.attempts >= run.caps.maxAttempts) {
     t.status = "failed";
     t.error = `${reason} (gave up after ${t.attempts} attempts)`.slice(0, 500);
@@ -998,11 +1024,12 @@ function afterFailure(run: Run, t: RunTask, reason: string, outcome: Outcome = "
     t.workTier = up;
     t.attemptsAtTier = 0;
     t.sessionKey = undefined; // a fresh, stronger worker; it is shown the rejected output
+    t.continueNext = undefined;
     t.status = "pending";
     return `${t.id} failed twice as ${TIERS[TIERS.indexOf(up) - 1]} work → retrying as ${up}: ${reason}`;
   }
   t.status = "pending";
-  return `${t.id} attempt ${t.attempts} failed → trying again: ${reason}`;
+  return t.continueNext ? `${t.id} attempt ${t.attempts} ran out of time → continuing in the same session, counted as an attempt: ${reason}` : `${t.id} attempt ${t.attempts} failed → trying again: ${reason}`;
 }
 
 /**
@@ -1058,7 +1085,7 @@ async function review(id: string, taskId: string): Promise<void> {
       if (task) task.diff = diff.slice(0, 4000);
     });
   }
-  const r = await runAgentText(who.agent, reviewPrompt(run, t, diff), { injectMemory: false, cwd: run.host === me() && run.folder !== "~" ? run.folder : undefined, readOnly: true });
+  const r = await runAgentText(who.agent, reviewPrompt(run, t, diff), { injectMemory: false, cwd: run.host === me() && run.folder !== "~" ? run.folder : undefined, readOnly: true, noMcp: true });
   const verdict = r.error ? null : extractJson<{ pass?: boolean; feedback?: string }>(r.text);
   let line = "";
   const after = await withRun(id, (x) => {
@@ -1122,7 +1149,7 @@ async function deliver(id: string): Promise<void> {
   let body = "";
   if (done.length === 1 && run.tasks.length === 1) body = done[0].result ?? "";
   else if (done.length > 0) {
-    const r = await runAgentText("claude", deliverPrompt(run), { injectMemory: false });
+    const r = await runAgentText("claude", deliverPrompt(run), { injectMemory: false, noMcp: true });
     // if the assembler fails, the pieces are still the delivery — stitched, and labelled as such
     body = r.error || !r.text.trim() ? `_Assembled without an editor (${(r.error ?? "no output").slice(0, 100)}); the pieces follow as the workers wrote them._\n\n${done.map((t) => `## ${t.title}\n\n${t.result}`).join("\n\n")}` : r.text;
   }
@@ -1190,13 +1217,15 @@ async function step(id: string): Promise<void> {
   const snap = await sessionsSnapshot();
   const { sessions, remote } = await mergeRemoteSessions(snap.sessions);
   const machines = placementMachines(run0, snap.subscriptions, sessions, remote, jobs);
+  const scale = (await readWorkerModelSettings()).budgetScale ?? 1;
+  const budget = (tier: Tier) => Math.round(TIME_BUDGET_MS[tier] * scale);
 
   // decide which workers ready tasks get BEFORE taking the lock (it may fetch the Nous price list)
   const ready = run0.tasks.filter((t) => t.status === "pending" && t.dependsOn.every((d) => run0.tasks.find((x) => x.id === d)?.status === "done"));
   const picks = new Map<string, Worker>();
   let local: LocalModel | null | undefined; // looked up once, and only if some task could use it
   for (const t of ready) {
-    if (t.sessionKey && t.feedback) continue;
+    if (t.sessionKey && (t.feedback || t.continueNext)) continue;
     if (local === undefined && fitsLocal(run0, t)) local = await localWorker(run0);
     const w = await chooseWorker(run0, t, machines, local ?? null);
     picks.set(t.id, w);
@@ -1221,7 +1250,7 @@ async function step(id: string): Promise<void> {
         const job: SessionJob | undefined = jobs.find((j) => j.id === t.job!.id);
         if (!job) {
           // the id was recorded but the job never got created (a crash in between): start it again under the same id
-          if (Date.now() - t.job.at > 90_000) toStart.push({ task: t, mode: t.job.mode, prompt: t.job.mode === "reply" ? reworkPrompt(t) : workPrompt(run, t) });
+          if (Date.now() - t.job.at > 90_000) toStart.push({ task: t, mode: t.job.mode, prompt: t.job.mode === "reply" ? (t.continueNext ? continuePrompt(t, Math.round(budget(t.workTier) / 60_000)) : reworkPrompt(t)) : workPrompt(run, t) });
           continue;
         }
         // A job sent to another machine that has not started there in time: that machine is off,
@@ -1242,15 +1271,31 @@ async function step(id: string): Promise<void> {
         }
         // A worker that is still going past its tier's time budget is stopped and counted as a
         // failed attempt, so the task moves to another model or up a tier instead of sitting there.
-        if (job.status === "running" && job.startedAt && Date.now() - job.startedAt > TIME_BUDGET_MS[t.workTier]) {
+        if (job.status === "running" && job.startedAt && Date.now() - job.startedAt > budget(t.workTier)) {
           overdue.push(job.id);
-          lines.push(afterFailure(run, t, `${workerLabel(t.tool ?? "claude")} was still working after ${Math.round(TIME_BUDGET_MS[t.workTier] / 60_000)} minutes and was stopped`, "timed out"));
+          const minutes = Math.max(1, Math.round(budget(t.workTier) / 60_000));
+          const mins = `${minutes} minute${minutes === 1 ? "" : "s"}`;
+          // the session it was writing to: where a continuation (or a counted retry) picks up
+          if (job.liveKey && t.tool === "claude" && t.workTier !== "routine") t.sessionKey = job.liveKey;
+          // a long piece of real work carries on in its own session instead of starting over (MAX_CONTINUE)
+          if (job.liveKey && t.tool === "claude" && t.workTier !== "routine" && (t.continued ?? 0) < MAX_CONTINUE) {
+            t.continued = (t.continued ?? 0) + 1;
+            t.continueNext = true;
+            t.job = undefined;
+            t.status = "pending";
+            noteAttempt(t, "continued", `stopped after ${mins}, continuing in the same session (${t.continued} of ${MAX_CONTINUE})`);
+            lines.push(`${t.id}: ${workerLabel(t.tool)} was still working after ${mins} → stopped, and told to carry on in the same session (${t.continued} of ${MAX_CONTINUE}; not counted as a failure).`);
+            continue;
+          }
+          lines.push(afterFailure(run, t, `${workerLabel(t.tool ?? "claude")} was still working after ${mins} and was stopped`, "timed out"));
           if ((t.status as TaskStatus) === "failed") settled.push(t);
           continue;
         }
         if (job.status === "done") {
           let text = (job.reply ?? "").trim();
-          if (text && t.job?.mode === "reply" && t.result?.trim() && !/^\s*BLOCKED:/i.test(text)) text = afterRework(t, t.result.trim(), text);
+          const wasContinuation = !!t.continueNext;
+          t.continueNext = undefined;
+          if (text && t.job?.mode === "reply" && !wasContinuation && t.result?.trim() && !/^\s*BLOCKED:/i.test(text)) text = afterRework(t, t.result.trim(), text);
           if (job.resultKey) t.sessionKey = job.resultKey;
           t.job = undefined;
           if (!text) lines.push(afterFailure(run, t, "the worker returned nothing"));
@@ -1327,7 +1372,8 @@ async function step(id: string): Promise<void> {
     for (const t of run.tasks) {
       if (t.status !== "pending" || !t.dependsOn.every((d) => byId(d)?.status === "done")) continue;
       if (t.access === "edit" && run.tasks.some((o) => o !== t && holdsFolder(o))) continue;
-      const reply = !!(t.sessionKey && t.feedback);
+      const cont = !!(t.sessionKey && t.continueNext);
+      const reply = cont || !!(t.sessionKey && t.feedback);
       if (!reply) {
         const w = picks.get(t.id);
         if (!w) continue; // became ready during this pass; next tick picks its worker
@@ -1354,7 +1400,11 @@ async function step(id: string): Promise<void> {
       t.jobIds.push(t.job.id);
       t.status = "running";
       t.startedAt ??= Date.now();
-      toStart.push({ task: { ...t }, mode: t.job.mode, prompt: reply ? reworkPrompt(t) : workPrompt(run, t) });
+      toStart.push({ task: { ...t }, mode: t.job.mode, prompt: cont ? continuePrompt(t, Math.round(budget(t.workTier) / 60_000)) : reply ? reworkPrompt(t) : workPrompt(run, t) });
+      if (cont) {
+        lines.push(`${t.id} continuing in the same ${workerLabel(t.tool ?? "claude")} session.`);
+        continue;
+      }
       lines.push(reply ? `${t.id} sent back to the same ${workerLabel(t.tool ?? "claude")} session${elsewhere(run, t) ? ` on ${t.hostLabel}` : ""} with the review.` : `${t.id} started: ${t.why}.`);
     }
 
