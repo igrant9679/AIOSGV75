@@ -21,6 +21,8 @@ param(
 )
 
 $ErrorActionPreference = 'Continue'
+# npm and git print UTF-8; read it as such, or the log shows mojibake for every check mark
+try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }
 $Repo = Split-Path -Parent $PSScriptRoot
 Set-Location $Repo
 $Data = Join-Path $Repo 'data'
@@ -103,7 +105,7 @@ function BuiltCommit {
 # Google fonts and failed about one time in three; the fonts are in app/fonts now.)
 function Build {
   $c = Run 'npm.cmd' @('run', 'build')
-  if ($c -ne 0) { Log "build failed (exit $c) - trying once more"; Start-Sleep -Seconds 30; $c = Run 'npm.cmd' @('run', 'build') }
+  if ($c -ne 0) { Log "first build attempt ended with exit code $c; trying once more"; Start-Sleep -Seconds 30; $c = Run 'npm.cmd' @('run', 'build') }
   return $c
 }
 
