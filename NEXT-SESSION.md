@@ -165,6 +165,35 @@ helper scripts now live in vault **`Agentic OS/Cluster/`** — all idempotent, a
   not `costUsd`, so no fabricated dollars appear — but the per-agent tag reads BILLED. Fix only
   if the Analytics split starts mattering.
 
+## ✅ DONE 2026-11-26 (Raider18) — Fleet → Versions: update any machine from one place
+
+Commits `2619577` (feature), `d028651` (docs), `b39b121`, `8b9deae` (fixes found by testing).
+AGENTS.md rule 30; guide "Run every machine's sessions from here" → Versions.
+
+- Each build is stamped (`scripts/stamp-build.mjs` → `.next/mc-build.json`; the server copies it
+  with its pid to `data/running-build.json` at start). Machines publish it in their session
+  summary; the viewing machine fetches origin (every 30 min / **Check GitHub**) and shows
+  up to date / N behind / local commits per machine.
+- **Update** = session job mode `update` (LAN or vault, re-checked by the target, needs its
+  *Replies from my other machines* on and its new *Updates from my other machines* on — default
+  on). The target waits until `updateBlockers()` is empty and holds new jobs; then the detached
+  `scripts/self-update.ps1` pulls (install.ps1 -RepairOnly), npm installs if the lock changed,
+  builds (one retry), rolls back with `git reset --keep` on a failed build, restarts via the
+  watchdog task. Mac: `self-update.sh` wraps update.sh (no rollback, untested).
+- **Every other machine still needs update.cmd ONCE** (they publish no version yet). After that,
+  Fleet → Versions → **Update all** does the rest.
+
+Found by testing, fixed:
+1. `powershell.exe` spawned detached from Node exits 0 at once and runs nothing (no console);
+   `conhost --headless` under a detached cmd too. A detached `cmd /d /c powershell …` works and
+   outlives the server. A job whose script never writes a step now errors after 2 minutes.
+2. In PowerShell a function named `Git` shadows git.exe (functions first, case-insensitive): the
+   script's commit reads came back empty, so a failed build could not roll back.
+3. **next/font/google failed ~1 build in 3** on Turbopack ("queries have exactly one entry"),
+   twice in a row inside an update. Fonts now live in `app/fonts` (latin woff2, SIL OFL) via
+   next/font/local: builds need no network for fonts on any machine.
+4. Testing tip: stepping a folder back past the commit that added a script removes the script.
+
 ## ✅ DONE 2026-11-25/26 (overnight, Raider18) — runs phases 3-5, and four silent problems found by testing
 
 Commits `206f5f6`, `e9dc300`, `0d72d92` (after `6d65bc2` Help). Details: ROADMAP-ORCHESTRATOR.md
