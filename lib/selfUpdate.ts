@@ -133,26 +133,31 @@ export interface OriginInfo {
 
 let fetching: Promise<OriginInfo | null> | null = null;
 
+async function readOrigin(branch: string, fetchedAt: number, error?: string): Promise<OriginInfo> {
+  const log = await run("git", ["log", "-1", "--format=%H%x1f%s%x1f%ct", `origin/${branch}`], 10_000);
+  const [commit = "", subject = "", at = "0"] = log.code === 0 ? log.out.split("\x1f") : [];
+  return { branch, commit, short: commit.slice(0, 7), subject: subject.slice(0, 160), at: Number(at) * 1000, fetchedAt, error };
+}
+
 /** The newest commit on GitHub for this install's branch (git fetch at most every 30 minutes, or when asked). */
 export function originInfo(force = false): Promise<OriginInfo | null> {
   const cached = readJson<OriginInfo>(ORIGIN_FILE);
-  if (cached && !force && Date.now() - cached.fetchedAt < ORIGIN_TTL_MS) return Promise.resolve(cached);
+  if (cached && !force && Date.now() - cached.fetchedAt < ORIGIN_TTL_MS && BRANCH_RE.test(cached.branch)) {
+    // Not fetched again yet, but the clone may already know a newer commit (a pull or an update
+    // fetched it): reading the local ref is instant, and the comparisons use it anyway.
+    return run("git", ["rev-parse", `origin/${cached.branch}`], 10_000).then(async (r) => {
+      if (r.code !== 0 || r.out === cached.commit) return cached;
+      const info = await readOrigin(cached.branch, cached.fetchedAt, cached.error);
+      if (info.commit) writeJson(ORIGIN_FILE, info);
+      return info.commit ? info : cached;
+    });
+  }
   if (fetching) return fetching;
   fetching = (async () => {
     const b = buildInfo()?.branch || (await run("git", ["branch", "--show-current"], 10_000)).out || "main";
     const branch = BRANCH_RE.test(b) ? b : "main";
     const f = await run("git", ["fetch", "--quiet", "origin", branch], 90_000);
-    const log = await run("git", ["log", "-1", "--format=%H%x1f%s%x1f%ct", `origin/${branch}`], 10_000);
-    const [commit = "", subject = "", at = "0"] = log.code === 0 ? log.out.split("\x1f") : [];
-    const info: OriginInfo = {
-      branch,
-      commit,
-      short: commit.slice(0, 7),
-      subject: subject.slice(0, 160),
-      at: Number(at) * 1000,
-      fetchedAt: Date.now(),
-      error: f.code !== 0 ? `git fetch failed: ${f.out.split(/\r?\n/).slice(-2).join(" ").slice(0, 200)}` : undefined,
-    };
+    const info = await readOrigin(branch, Date.now(), f.code !== 0 ? `git fetch failed: ${f.out.split(/\r?\n/).slice(-2).join(" ").slice(0, 200)}` : undefined);
     if (!info.commit && cached) return { ...cached, error: info.error };
     try {
       writeJson(ORIGIN_FILE, info);

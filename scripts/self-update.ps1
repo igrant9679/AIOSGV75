@@ -57,8 +57,18 @@ function Step([string]$name, [string]$text) {
   Log ("=== {0} {1}" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $text)
 }
 
-function Tail([int]$n = 4) {
-  try { return ((Get-Content $LogFile -Tail 60 -Encoding UTF8 | Where-Object { $_.Trim() -and $_ -notmatch '^===' } | Select-Object -Last $n) -join ' | ') } catch { return '' }
+# The reason, in a few lines: error lines from the end of the log, without colour codes, stack
+# frames or the code excerpts a build prints.
+function Tail([int]$n = 3) {
+  try {
+    $esc = [char]27
+    $lines = @(Get-Content $LogFile -Tail 300 -Encoding UTF8 | ForEach-Object { ($_ -replace "$esc\[[0-9;]*m", '').Trim() } | Where-Object { $_ -and $_ -notmatch '^(===|> |at |\||>?\s*\d+ \||-)' })
+    $err = @($lines | Where-Object { $_ -match 'error|failed|fatal|not found|denied|cannot|can.t' } | Select-Object -Last $n)
+    if (-not $err.Count) { $err = @($lines | Select-Object -Last $n) }
+    $t = $err -join ' | '
+    if ($t.Length -gt 400) { $t = $t.Substring(0, 400) + '...' }
+    return $t
+  } catch { return '' }
 }
 
 function Finish([string]$state, [string]$note) {
@@ -77,8 +87,10 @@ function Run([string]$exe, [string[]]$argv) {
   return $LASTEXITCODE
 }
 
-function Git([string[]]$argv) {
-  $out = & git @argv 2>$null
+# Named GitOut, and git.exe spelled out everywhere: PowerShell looks up functions before
+# programs and ignores case, so inside a function called "Git", "git" was the function itself.
+function GitOut([string[]]$argv) {
+  $out = & git.exe @argv 2>$null
   if ($LASTEXITCODE -ne 0) { return '' }
   return ([string]($out | Select-Object -First 1)).Trim()
 }
@@ -87,18 +99,18 @@ function BuiltCommit {
   try { return ((Get-Content (Join-Path $Repo '.next\mc-build.json') -Raw | ConvertFrom-Json).commit) } catch { return '' }
 }
 
-# One retry: a build also fetches web fonts (next/font/google), and a network blip fails it with
-# "Module not found" in a font file - seen on Raider18 - which is no reason to roll back.
+# One retry before rolling back: a fluke is no reason to go back a version. (Builds used to fetch
+# Google fonts and failed about one time in three; the fonts are in app/fonts now.)
 function Build {
   $c = Run 'npm.cmd' @('run', 'build')
-  if ($c -ne 0) { Log "build failed (exit $c) - trying once more"; Start-Sleep -Seconds 10; $c = Run 'npm.cmd' @('run', 'build') }
+  if ($c -ne 0) { Log "build failed (exit $c) - trying once more"; Start-Sleep -Seconds 30; $c = Run 'npm.cmd' @('run', 'build') }
   return $c
 }
 
 function DepsChanged([string]$a, [string]$b) {
   if (-not (Test-Path (Join-Path $Repo 'node_modules'))) { return $true }
   if ($a -eq $b) { return $false }
-  $files = & git diff --name-only $a $b -- package.json package-lock.json 2>$null
+  $files = & git.exe diff --name-only $a $b -- package.json package-lock.json 2>$null
   return [bool]$files
 }
 
@@ -135,11 +147,11 @@ Log ''
 Log ("===== {0} update asked by {1} (job {2}) =====" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $By, $JobId)
 
 # ---- 1. the code ----
-$old = Git @('rev-parse', 'HEAD')
+$old = GitOut @('rev-parse', 'HEAD')
 $status.oldHead = $old
 Step 'pull' 'Getting the new code'
 $code = Run 'powershell.exe' @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $Repo 'install.ps1'), '-RepairOnly', '-Yes', '-RepoDir', $Repo)
-$new = Git @('rev-parse', 'HEAD')
+$new = GitOut @('rev-parse', 'HEAD')
 $status.newHead = $new
 if ($code -ne 0) {
   if ($new -and $new -ne $old) { Log "pull reported a problem but HEAD moved to $new - carrying on" }
@@ -168,7 +180,7 @@ if ($buildFailed) {
   $why = Tail 3
   if ($new -ne $old -and $old) {
     Step 'rollback' ("Build failed - going back to {0}" -f $old.Substring(0, 7))
-    $r = Run 'git' @('reset', '--keep', $old)
+    $r = Run 'git.exe' @('reset', '--keep', $old)
     if ($r -eq 0) {
       if (DepsChanged $new $old) { Run 'npm.cmd' @('install', '--no-audit', '--no-fund') | Out-Null }
       if ((Build) -eq 0) {

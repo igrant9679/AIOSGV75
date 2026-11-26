@@ -1,40 +1,44 @@
 import type { Metadata } from "next";
-import {
-  Space_Grotesk,
-  JetBrains_Mono,
-  Inter,
-  IBM_Plex_Sans,
-  IBM_Plex_Mono,
-  Atkinson_Hyperlegible,
-  Source_Serif_4,
-  Fira_Code,
-  Plus_Jakarta_Sans,
-} from "next/font/google";
+import localFont from "next/font/local";
 import Shell from "@/components/Shell";
 import { appearanceBootScript } from "@/lib/appearance";
 import "./globals.css";
 
+// Fonts live in app/fonts (latin subset, SIL Open Font License; see app/fonts/README.md).
+// They used to come from next/font/google, which fetches them at EVERY build: Turbopack's
+// Google-font loader failed about one build in three ("next/font/google queries have exactly
+// one entry"), which made remote updates (Fleet → Versions) fail at random. Local files
+// build the same every time, with no network.
+
 // The default interface face (MissionCommand look).
-const jakarta = Plus_Jakarta_Sans({ variable: "--font-jakarta", subsets: ["latin"], weight: ["400", "500", "600", "700", "800"] });
+const jakarta = localFont({ variable: "--font-jakarta", src: "./fonts/plus-jakarta-sans-var.woff2", weight: "200 800" });
 
-const spaceGrotesk = Space_Grotesk({
-  variable: "--font-space-grotesk",
-  subsets: ["latin"],
+const spaceGrotesk = localFont({ variable: "--font-space-grotesk", src: "./fonts/space-grotesk-var.woff2", weight: "300 700" });
+
+const jetbrains = localFont({ variable: "--font-jetbrains", src: "./fonts/jetbrains-mono-var.woff2", weight: "100 800" });
+
+// Optional faces for Appearance → fonts. Preload is off so a face's files are only fetched once it's chosen.
+const inter = localFont({ variable: "--font-inter", src: "./fonts/inter-var.woff2", weight: "100 900", preload: false });
+const plexSans = localFont({ variable: "--font-plex-sans", src: "./fonts/ibm-plex-sans-var.woff2", weight: "100 700", preload: false });
+const plexMono = localFont({
+  variable: "--font-plex-mono",
+  src: [
+    { path: "./fonts/ibm-plex-mono-400.woff2", weight: "400", style: "normal" },
+    { path: "./fonts/ibm-plex-mono-500.woff2", weight: "500", style: "normal" },
+    { path: "./fonts/ibm-plex-mono-700.woff2", weight: "700", style: "normal" },
+  ],
+  preload: false,
 });
-
-const jetbrains = JetBrains_Mono({
-  variable: "--font-jetbrains",
-  subsets: ["latin"],
+const atkinson = localFont({
+  variable: "--font-atkinson",
+  src: [
+    { path: "./fonts/atkinson-hyperlegible-400.woff2", weight: "400", style: "normal" },
+    { path: "./fonts/atkinson-hyperlegible-700.woff2", weight: "700", style: "normal" },
+  ],
+  preload: false,
 });
-
-// Optional faces for Appearance → fonts. Self-hosted by next/font at build
-// time; preload is off so a face's files are only fetched once it's chosen.
-const inter = Inter({ variable: "--font-inter", subsets: ["latin"], preload: false });
-const plexSans = IBM_Plex_Sans({ variable: "--font-plex-sans", subsets: ["latin"], weight: ["400", "500", "600", "700"], preload: false });
-const plexMono = IBM_Plex_Mono({ variable: "--font-plex-mono", subsets: ["latin"], weight: ["400", "500", "700"], preload: false });
-const atkinson = Atkinson_Hyperlegible({ variable: "--font-atkinson", subsets: ["latin"], weight: ["400", "700"], preload: false });
-const sourceSerif = Source_Serif_4({ variable: "--font-source-serif", subsets: ["latin"], preload: false });
-const firaCode = Fira_Code({ variable: "--font-fira-code", subsets: ["latin"], preload: false });
+const sourceSerif = localFont({ variable: "--font-source-serif", src: "./fonts/source-serif-4-var.woff2", weight: "200 900", preload: false });
+const firaCode = localFont({ variable: "--font-fira-code", src: "./fonts/fira-code-var.woff2", weight: "300 700", preload: false });
 
 const FONT_VARS = [jakarta, spaceGrotesk, jetbrains, inter, plexSans, plexMono, atkinson, sourceSerif, firaCode].map((f) => f.variable).join(" ");
 
