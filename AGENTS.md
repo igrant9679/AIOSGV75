@@ -55,6 +55,8 @@ manual is `/guide` (source: `lib/guideContent.ts`).
   lessons + the worker record, given to the next planner), `runGit.ts` (a
   branch per run, one commit per accepted edit task, the diff for reviewers),
   `nousModels.ts` (cheapest Nous model for a Hermes run),
+  `selfUpdate.ts` (Fleet -> Versions: build stamp, how far each machine is behind
+  GitHub, wait-until-idle, the detached `scripts/self-update.ps1` / `.sh`),
   `sessionTools.ts` (the registry of session tools) + `sessions.ts` /
   `hermesSessions.ts` (readers) + `sessionActions.ts` (reply / new / stop,
   locally and on other machines),
@@ -218,6 +220,19 @@ manual is `/guide` (source: `lib/guideContent.ts`).
     nobody to read its output. Jobs carry `serverPid`; a new server stops
     the ones an earlier process left running, found by parent id and checked by
     command line and start time (`orphanProcesses` in lib/sessionActions.ts).
+30. **An update must outlive the server it replaces, and must not cut anything off.**
+    Fleet -> Versions -> Update is a session job (mode `update`), so it travels and is
+    re-checked like a reply. The target waits until `updateBlockers()` is empty (rule 11)
+    and holds new jobs meanwhile; only the scheduler's module instance starts it, because
+    only that instance can see project-run steps in flight. The work is a DETACHED script
+    (it is what kills the server) that reports through `data/update-status.json`; the job
+    is settled by the server that comes back, when it is serving the new commit
+    (`data/running-build.json`, written at start from the build stamp
+    `.next/mc-build.json`). Jobs of mode `update` are exempt from the orphan sweep. A
+    request names no code, command or address: the target pulls its own branch from its
+    own remote, and a failed build goes back with `git reset --keep`. Bump `SELF_UPDATE`
+    when the contract changes. Testing tip: stepping a folder back past the commit that
+    added a script removes the script too.
 
 ## Dev cycle (production server auto-starts at login)
 

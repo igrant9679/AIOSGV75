@@ -130,8 +130,15 @@ Settings are stored in this browser (\`localStorage\`: \`mc-appearance\`, theme 
   {
     id: "fleet-control",
     title: "Run every machine's sessions from here — live view, alerts, LAN link",
-    keywords: "live sessions stuck looping stop session needs you waiting permission alerts hook notification telegram browser notification long run finished lan off-lan network firewall 3101 peer direct onedrive fallback hand off move session another machine bring here run somewhere dispatch pick machine search all sessions saved filters bulk select hide move daily summary",
+    keywords: "live sessions stuck looping stop session needs you waiting permission alerts hook notification telegram browser notification long run finished lan off-lan network firewall 3101 peer direct onedrive fallback hand off move session another machine bring here run somewhere dispatch pick machine search all sessions saved filters bulk select hide move daily summary versions update all machines upgrade latest version github behind rollback self-update",
     body: `Everything below works across your machines. Machines on the same local network talk to each other **directly** (seconds); the rest go through OneDrive (1-2 minutes).
+
+**Versions — update every machine from here** (Fleet → Versions)
+- One row per machine: the version it is running (the commit it was built from, with its date), and how that compares with GitHub: *up to date*, *N commits behind*, or *local commits not on GitHub* (a machine where code was changed by hand, which is left for you to update yourself so nothing is lost). **Check GitHub** looks again now; otherwise it looks every 30 minutes.
+- **Update** on a row (this machine included) asks that machine to update itself. It waits until nothing Mission Control started is running there (session runs, missions, orchestrations, project-run steps, agent processes) and starts nothing new while it waits; the row shows what it is waiting for. Then it gets the latest code from its own GitHub branch, installs packages if they changed, builds, and restarts through the watchdog, usually in 2-4 minutes. **Update all N behind** does every machine that is behind.
+- **If the new version doesn't build**, the machine goes back to the version it had, rebuilds that and keeps running it; the row says so in rose. Its full output is data\\update.log on that machine.
+- An update request carries no code and no commands: it can only make a machine install what is already on its own GitHub branch. Each machine decides for itself with **Updates from my other machines** (on by default; it also needs *Replies from my other machines* to be on).
+- A machine on a version from before this feature shows *older — run update.cmd there once*. Double-click update.cmd in its Mission Control folder one time; from then on it can be updated from here. (Macs update through update.sh the same way, without the automatic going back.)
 
 **Network — LAN and Off-LAN** (Fleet → Network)
 - Each Mission Control runs a small listener on **port 3101** that only answers other Mission Controls (they share a key kept in the vault, Agentic OS/Cluster/peer-key.txt). The app itself stays on 127.0.0.1:3000, unreachable from the network.
