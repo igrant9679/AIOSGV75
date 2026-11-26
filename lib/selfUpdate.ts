@@ -270,8 +270,12 @@ export function launchUpdate(jobId: string, by: string): void {
   const win = process.platform === "win32";
   const script = path.join(REPO, "scripts", win ? "self-update.ps1" : "self-update.sh");
   if (!fs.existsSync(script)) throw new Error(`${path.basename(script)} is missing from this install.`);
+  // Windows: through cmd.exe. powershell.exe started DETACHED by itself (no console) exits at once
+  // with code 0 and runs nothing - found by testing; so does conhost --headless under a detached
+  // cmd. A detached cmd that starts powershell works and outlives this server. jobId matches
+  // ID_RE and safeBy is letters, digits, spaces, dots and dashes, so nothing here means anything to cmd.
   const child = win
-    ? spawn("powershell.exe", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-File", script, "-JobId", jobId, "-By", safeBy], {
+    ? spawn("cmd.exe", ["/d", "/c", "powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-File", script, "-JobId", jobId, "-By", safeBy], {
         cwd: REPO,
         detached: true,
         stdio: "ignore",

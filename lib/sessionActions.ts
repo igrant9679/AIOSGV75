@@ -1070,11 +1070,16 @@ async function updateJobsTick(): Promise<void> {
     return;
   }
   if (mine) {
+    // the script writes its first step within seconds; nothing after two minutes = it never started
+    if (mine.step === "starting" && !mine.steps.length && now - mine.at > 2 * 60_000) {
+      await patchJob(job.id, { status: "error", error: "The update script didn't start, so nothing was changed.", finishedAt: now });
+      return;
+    }
     if (now - mine.at > UPDATE_STALL_MS) {
       await patchJob(job.id, { status: "error", error: `The update stopped reporting at "${mine.step}". Its log is data/update.log on that machine.`, finishedAt: now });
       return;
     }
-    const text = mine.steps.at(-1)?.replace(/^\d\d:\d\d:\d\d /, "") ?? "Updating…";
+    const text = mine.steps.at(-1)?.replace(/^\d\d:\d\d:\d\d /, "") ?? "Starting the update";
     // rewrite only on change (or every 5 minutes as a sign of life): a vault result is a OneDrive upload
     if (job.reply !== text || now - (job.progress?.updatedAt ?? 0) > 5 * 60_000) await patchJob(job.id, { status: "running", reply: text, progress: progress(text) });
     return;

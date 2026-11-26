@@ -87,8 +87,12 @@ function BuiltCommit {
   try { return ((Get-Content (Join-Path $Repo '.next\mc-build.json') -Raw | ConvertFrom-Json).commit) } catch { return '' }
 }
 
+# One retry: a build also fetches web fonts (next/font/google), and a network blip fails it with
+# "Module not found" in a font file - seen on Raider18 - which is no reason to roll back.
 function Build {
-  return (Run 'npm.cmd' @('run', 'build'))
+  $c = Run 'npm.cmd' @('run', 'build')
+  if ($c -ne 0) { Log "build failed (exit $c) - trying once more"; Start-Sleep -Seconds 10; $c = Run 'npm.cmd' @('run', 'build') }
+  return $c
 }
 
 function DepsChanged([string]$a, [string]$b) {
