@@ -52,7 +52,7 @@ export interface SharedSessionsFile {
   runWorker?: number;
 }
 
-/** Version of the run-worker contract this build honours: model, web and turn cap on a job, and the pickup rules in lib/runs.ts. */
+/** Version of the run-worker contract this build honours: model, web, turn cap and isolation on a job, and the pickup rules in lib/runs.ts. */
 export const RUN_WORKER = 1;
 
 export interface RemoteMachine {

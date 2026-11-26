@@ -128,7 +128,16 @@ export const HERMES_TOOLSETS: Record<"answer" | "edit", string> = {
  * internet shouldn't be able to spend on it, and a free model given no web tool
  * can't wander off searching. Undefined keeps the default (web on).
  */
-export function hermesToolsets(access: "answer" | "edit", web?: boolean): string {
+export function hermesToolsets(access: "answer" | "edit", web?: boolean, isolated?: boolean): string {
   const sets = HERMES_TOOLSETS[access].split(",");
-  return (web === false ? sets.filter((s) => s !== "web") : sets).join(",");
+  return sets.filter((s) => !(web === false && s === "web") && !(isolated && ISOLATED_OUT.includes(s))).join(",");
 }
+
+/**
+ * Left out for a project run's worker (`isolated`). With session_search a free model "remembered"
+ * a function it had added in an earlier run - on a branch that was never merged - and put it in
+ * its answer; the reviewer, reading the real file, rejected it. A run worker should know the
+ * project from its brief and the folder, not from other sessions; and it should not save what it
+ * did to Hermes's memory either, where the next session would take it for the truth.
+ */
+const ISOLATED_OUT = ["memory", "session_search"];

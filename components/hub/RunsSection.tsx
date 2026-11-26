@@ -75,6 +75,11 @@ function TaskRow({ t, runHost }: { t: RunTask; runHost: string }) {
         </Pill>
         {t.needsWeb && <Pill accent="cyan" title="This task needs the internet, so its worker gets web search">web</Pill>}
         {t.access === "edit" && <Pill accent="amber" title="This task may create and change files in the folder">edits files</Pill>}
+        {t.access === "answer" && t.readsFolder && (
+          <Pill accent="cyan" title="Its worker has to read files in the folder, so it skips the local model and Hermes, which can't read files in answer-only mode">
+            reads folder
+          </Pill>
+        )}
         {(t.checks ?? []).length > 0 && (
           <Pill accent="lime" title="After the worker finishes, this machine runs these commands itself. The task only goes to review if they pass.">
             must pass {(t.checks ?? []).join(", ")}

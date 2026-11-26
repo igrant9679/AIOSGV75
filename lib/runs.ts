@@ -107,6 +107,12 @@ export interface RunTask {
   /** what it is being worked at now — rises when a tier keeps failing */
   workTier: Tier;
   needsWeb: boolean;
+  /**
+   * The worker must read files in the run's folder. An answer-only task like that cannot go to the
+   * local model (it gets text only) or to Hermes (at answer level it has no tool that reads files:
+   * its file toolset also writes). Unset on older runs.
+   */
+  readsFolder?: boolean;
   access: JobAccess;
   dependsOn: string[];
   /** how a reviewer will know it is done right */
@@ -503,6 +509,9 @@ function planPrompt(run: Run, past: { lessons: string; record: string } = { less
     `    "standard" a contained change, analysing several files, careful writing`,
     `    "hard"     design, reasoning across many parts, debugging, anything where a wrong answer is expensive`,
     `- "needsWeb": true only if the task needs current information from the internet.`,
+    ...(run.folder !== "~"
+      ? [`- "readsFolder": true if the worker has to read files in the working folder to do the task (anything about the project's own code or documents); false if the brief and the results it depends on are enough. The cheapest workers cannot read files, so be accurate.`]
+      : []),
     `- "access": "answer" (read and reply only) or "edit" (may change files in the working folder).${run.allowEdit ? ' Use "edit" only when the task must create or change files.' : ' Use "answer" for every task.'}`,
     `- "accept": one or two sentences — how a reviewer will know the task was done right.`,
     ...((run.checks ?? []).length
@@ -521,7 +530,7 @@ function planPrompt(run: Run, past: { lessons: string; record: string } = { less
     ...(past.record ? [``, `HOW WORKERS HAVE DONE RECENTLY (attempts that passed review, by tier; raise a tier where the record is poor):`, past.record] : []),
     ``,
     `Return ONLY a JSON array, nothing before or after it:`,
-    `[{"id":"t1","title":"short name","brief":"the full instruction","tier":"routine","needsWeb":false,"access":"answer","dependsOn":[],"accept":"…"${(run.checks ?? []).length ? `,"checks":[]` : ""}}]`,
+    `[{"id":"t1","title":"short name","brief":"the full instruction","tier":"routine","needsWeb":false,${run.folder !== "~" ? `"readsFolder":true,` : ""}"access":"answer","dependsOn":[],"accept":"…"${(run.checks ?? []).length ? `,"checks":[]` : ""}}]`,
   ].join("\n");
 }
 
@@ -676,7 +685,7 @@ interface LocalModel {
  */
 const LOCAL_PROMPT_MAX = 6000;
 function fitsLocal(run: Run, t: RunTask): boolean {
-  return t.workTier === "routine" && t.access === "answer" && !t.needsWeb && !t.triedLocal && t.attempts === 0 && !(t.checks ?? []).length && workPrompt(run, t, { local: true }).length <= LOCAL_PROMPT_MAX;
+  return t.workTier === "routine" && t.access === "answer" && !t.needsWeb && !t.readsFolder && !t.triedLocal && t.attempts === 0 && !(t.checks ?? []).length && workPrompt(run, t, { local: true }).length <= LOCAL_PROMPT_MAX;
 }
 
 /**
@@ -727,7 +736,9 @@ async function chooseWorker(run: Run, t: RunTask, machines: PlacementMachine[], 
   if (local && fitsLocal(run, t)) {
     return { tool: "local", agent: local.id, model: local.model, host: me(), hostLabel: run.driverLabel, folder: "~", why: `routine text-only task → the local model on ${run.driverLabel} (${local.model}: free, uses no subscription, nothing leaves the PC)` };
   }
-  const order: SessionTool[] = t.workTier === "routine" ? ["hermes", "codex", "claude"] : t.workTier === "standard" ? ["codex", "claude"] : ["claude", "codex"];
+  // Hermes answer-only cannot read files (its file toolset also writes), so a task that must read the folder skips it
+  const hermesBlind = t.access === "answer" && !!t.readsFolder;
+  const order: SessionTool[] = t.workTier === "routine" ? (hermesBlind ? ["codex", "claude"] : ["hermes", "codex", "claude"]) : t.workTier === "standard" ? ["codex", "claude"] : ["claude", "codex"];
   const pinned = !run.spread || t.access === "edit" || (t.checks ?? []).length > 0;
   const place = placeTask(machines, { tools: order, pinned, avoid: t.avoid }) ?? { tool: "claude" as SessionTool, host: run.host, label: run.hostLabel, folder: run.folder, home: true, why: "on the run's machine", skipped: order.filter((x) => x !== "claude") };
   const tool = place.tool;
@@ -746,7 +757,7 @@ async function chooseWorker(run: Run, t: RunTask, machines: PlacementMachine[], 
     const model = t.workTier === "routine" ? "haiku" : t.workTier === "standard" ? "sonnet" : undefined;
     return { tool, model, ...where, why: `${t.workTier} task → Claude${model ? ` (${model})` : ""}${note}${at}` };
   }
-  return { tool, ...where, why: `${t.workTier} task → ${toolLabel(tool)} on its subscription${note}${at}` };
+  return { tool, ...where, why: `${t.workTier} task → ${toolLabel(tool)} on its subscription${hermesBlind && t.workTier === "routine" ? " (it has to read the folder, which Hermes can't do in answer-only mode)" : ""}${note}${at}` };
 }
 
 type SessionLite = { host: string; status: string; project?: string; folder?: string; cwd: string; updatedAt: number };
@@ -863,7 +874,7 @@ async function plan(id: string): Promise<void> {
     return;
   }
 
-  type Raw = { id?: unknown; title?: unknown; brief?: unknown; tier?: unknown; needsWeb?: unknown; access?: unknown; dependsOn?: unknown; accept?: unknown; checks?: unknown };
+  type Raw = { id?: unknown; title?: unknown; brief?: unknown; tier?: unknown; needsWeb?: unknown; readsFolder?: unknown; access?: unknown; dependsOn?: unknown; accept?: unknown; checks?: unknown };
   let raw = extractJson<Raw[]>(r.text);
   if (!Array.isArray(raw) || raw.length === 0) {
     note = `${note ? `${note} ` : ""}The planner returned no usable plan, so the brief runs as a single task.`;
@@ -884,6 +895,8 @@ async function plan(id: string): Promise<void> {
       tier,
       workTier: tier,
       needsWeb: x.needsWeb === true,
+      // in a real folder, unless the planner says the brief is enough: a wrong "false" sends the task to a worker that cannot see the files
+      readsFolder: run.folder !== "~" && x.readsFolder !== false,
       access: run.allowEdit && x.access === "edit" ? "edit" : "answer",
       // only earlier tasks: a plan can't depend on itself or on something later
       dependsOn: (Array.isArray(x.dependsOn) ? x.dependsOn : []).map((d) => idMap.get(String(d))).filter((d): d is string => !!d && d !== id2),
@@ -1381,8 +1394,8 @@ async function step(id: string): Promise<void> {
     try {
       const job = await startJob(
         s.mode === "reply"
-          ? { mode: "reply", id: t.job.id, key: t.sessionKey, host: t.host ?? state.host, folder: t.folder ?? state.folder, prompt: s.prompt, access: t.access, model: t.tool === "hermes" ? t.model : undefined, web: t.tool === "hermes" ? t.needsWeb : undefined, maxTurns: t.tool === "hermes" ? HERMES_TURNS[t.workTier] : undefined }
-          : { mode: "new", id: t.job.id, host: t.host ?? state.host, folder: t.folder ?? state.folder, tool: t.tool, project: state.project, prompt: s.prompt, access: t.access, model: t.model, web: t.tool === "hermes" ? t.needsWeb : undefined, maxTurns: t.tool === "hermes" ? HERMES_TURNS[t.workTier] : undefined, dispatch: `run ${state.title.slice(0, 60)} · ${t.id}` },
+          ? { mode: "reply", id: t.job.id, key: t.sessionKey, host: t.host ?? state.host, folder: t.folder ?? state.folder, prompt: s.prompt, access: t.access, model: t.tool === "hermes" ? t.model : undefined, web: t.tool === "hermes" ? t.needsWeb : undefined, maxTurns: t.tool === "hermes" ? HERMES_TURNS[t.workTier] : undefined, isolated: true }
+          : { mode: "new", id: t.job.id, host: t.host ?? state.host, folder: t.folder ?? state.folder, tool: t.tool, project: state.project, prompt: s.prompt, access: t.access, model: t.model, web: t.tool === "hermes" ? t.needsWeb : undefined, maxTurns: t.tool === "hermes" ? HERMES_TURNS[t.workTier] : undefined, isolated: true, dispatch: `run ${state.title.slice(0, 60)} · ${t.id}` },
       );
       // a refusal comes back as an error job, picked up on the next pass like any other failure
       void job;

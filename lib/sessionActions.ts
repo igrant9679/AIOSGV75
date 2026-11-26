@@ -90,6 +90,8 @@ export interface SessionJob {
   web?: boolean;
   /** Hermes: the most tool-calling rounds this run may take. Unset = Hermes's own limit. */
   maxTurns?: number;
+  /** Hermes: a project run's worker - no memory, no searching other sessions (hermesToolsets) */
+  isolated?: boolean;
   /** mode "check": the NAME of one of this machine's allowed check commands (lib/projectChecks.ts) */
   check?: string;
   /** mode "check": how the command ended (-1 = timed out or could not start) */
@@ -266,6 +268,7 @@ export interface StartInput {
   model?: string;
   web?: boolean;
   maxTurns?: number;
+  isolated?: boolean;
   /** check: the name of the check to run in `folder` */
   check?: string;
   /**
@@ -305,6 +308,7 @@ export async function startJob(input: StartInput): Promise<SessionJob> {
     model: isModelId(input.model) ? input.model : undefined,
     web: typeof input.web === "boolean" ? input.web : undefined,
     maxTurns: turnCap(input.maxTurns),
+    isolated: input.isolated === true ? true : undefined,
   };
 
   let job: SessionJob;
@@ -533,6 +537,7 @@ export async function acceptRequest(r: SessionJob, via: "lan" | "vault", content
     model: isModelId(r.model) ? r.model : undefined,
     web: typeof r.web === "boolean" ? r.web : undefined,
     maxTurns: turnCap(r.maxTurns),
+    isolated: r.isolated === true ? true : undefined,
   };
   if (r.access === "edit" && job.access !== "edit") throw Object.assign(new Error(`${myLabel} only allows answers (no file edits) from other machines.`), { status: 403 });
 
@@ -821,7 +826,7 @@ async function execute(job: SessionJob): Promise<Partial<SessionJob>> {
     // `hermes chat -q … -Q`: the reply on stdout, "session_id: <id>" on stderr. (`hermes -z` is
     // cleaner but ignores --resume.) Neither mode can stop and ask, so what the run may do is
     // set by the toolsets it is given: an explicit -t list REPLACES the configured one.
-    const args = ["chat", "-q", job.prompt, "-Q", "-t", hermesToolsets(job.access, job.web)];
+    const args = ["chat", "-q", job.prompt, "-Q", "-t", hermesToolsets(job.access, job.web, job.isolated)];
     if (job.model) args.push("-m", job.model);
     // A small model does not always know when it has read enough: one research task made 66
     // web calls in nine minutes. The cap ends the run with whatever it has by then.
