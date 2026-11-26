@@ -1059,7 +1059,13 @@ async function updateJobsTick(): Promise<void> {
     }
     const serving = buildInfo()?.commit;
     if (mine.upToDate || (mine.newHead && serving === mine.newHead)) {
-      const reply = mine.upToDate ? `Already up to date (${short(serving ?? mine.newHead)}).` : `Updated ${short(mine.oldHead)} → ${short(mine.newHead)} and restarted.`;
+      // name the BUILD it replaced: the folder can already hold the new commit, unbuilt
+      const from = mine.fromBuild || mine.oldHead;
+      const reply = mine.upToDate
+        ? `Already up to date (${short(serving ?? mine.newHead)}).`
+        : from && from !== mine.newHead
+          ? `Updated ${short(from)} → ${short(mine.newHead)} and restarted.`
+          : `Rebuilt ${short(mine.newHead)} and restarted.`;
       await patchJob(job.id, { status: "done", reply, progress: progress(reply), finishedAt: now });
       return;
     }

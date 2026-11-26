@@ -150,6 +150,9 @@ Log ("===== {0} update asked by {1} (job {2}) =====" -f (Get-Date -Format 'yyyy-
 
 # ---- 1. the code ----
 $old = GitOut @('rev-parse', 'HEAD')
+# what the server was built from (the folder can be ahead of it: pulled or committed, not rebuilt)
+$built = BuiltCommit
+$status.fromBuild = $built
 $status.oldHead = $old
 Step 'pull' 'Getting the new code'
 $code = Run 'powershell.exe' @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $Repo 'install.ps1'), '-RepairOnly', '-Yes', '-RepoDir', $Repo)
@@ -160,7 +163,6 @@ if ($code -ne 0) {
   else { Finish 'failed' ("Couldn't get the new code, so nothing was changed. {0}" -f (Tail 3)) }
 }
 
-$built = BuiltCommit
 if ($new -eq $old -and $built -eq $new) {
   $status.upToDate = $true
   Finish 'done' ("Already up to date ({0})." -f $new.Substring(0, 7))

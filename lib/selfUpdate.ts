@@ -252,6 +252,8 @@ export interface UpdateStatus {
   steps: string[];
   oldHead?: string;
   newHead?: string;
+  /** the commit the running server was built from when the update began */
+  fromBuild?: string;
   note?: string;
   upToDate?: boolean;
   rolledBack?: boolean;
