@@ -10,6 +10,7 @@ import { useHub, SourcePill, ViaTag, StatusDot, MeterRow, HubError, IndexingNote
 import type { ActivityItem } from "@/lib/activity";
 import { useSort } from "./SortControl";
 import HealthPanel from "./HealthPanel";
+import { FleetPausePanel } from "./FleetPause";
 import { ACTIVITY_SORTS } from "./sorts";
 import { LiveSessionsPanel, RunSomewherePanel, useSessionAlerts } from "./LivePanels";
 import { ActivityChart, MiniBars, perDay } from "./Charts";
@@ -56,6 +57,7 @@ export default function CommandSection() {
       <HubError error={error} />
       <IndexingNote hub={hub} />
       <HealthPanel />
+      <FleetPausePanel />
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <GlowTile accent="amber" label="Running now" value={view ? view.running : "—"} />

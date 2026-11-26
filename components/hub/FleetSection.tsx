@@ -7,6 +7,8 @@ import Panel from "../ui/Panel";
 import StatusOrb from "../ui/StatusOrb";
 import { ACCENTS, type Accent } from "@/lib/accents";
 import type { SessionSummary, SubscriptionMeter } from "@/lib/sessions";
+import type { MachineLoad } from "@/lib/machineLoad";
+import { MEM_FULL, MEM_WARN } from "@/lib/runPlacement";
 import { useSort } from "./SortControl";
 import { SESSION_SORTS } from "./sorts";
 import SharingPanel from "./SharingPanel";
@@ -25,6 +27,7 @@ interface ClusterNode {
   online: boolean;
   self: boolean;
   isMaster: boolean;
+  load?: MachineLoad;
 }
 
 interface ClusterView {
@@ -63,12 +66,20 @@ export default function FleetSection() {
 
   const machines = useMemo(() => {
     const self = hub?.host ?? cluster?.self ?? "this machine";
-    const rows: { host: string; label: string; online: boolean; self: boolean; role?: string; seen?: number; master?: boolean }[] = [
-      { host: self, label: cluster?.config.enabled ? cluster.config.label : self, online: true, self: true, role: cluster?.config.enabled ? cluster.config.role : undefined, master: cluster?.master === self },
+    const rows: { host: string; label: string; online: boolean; self: boolean; role?: string; seen?: number; master?: boolean; load?: MachineLoad }[] = [
+      {
+        host: self,
+        label: cluster?.config.enabled ? cluster.config.label : self,
+        online: true,
+        self: true,
+        role: cluster?.config.enabled ? cluster.config.role : undefined,
+        master: cluster?.master === self,
+        load: cluster?.nodes.find((n) => n.self || n.host === self)?.load,
+      },
     ];
     for (const n of cluster?.nodes ?? []) {
       if (n.self || n.host === self) continue;
-      rows.push({ host: n.host, label: n.label, online: n.online, self: false, role: n.role, seen: n.ts, master: n.isMaster });
+      rows.push({ host: n.host, label: n.label, online: n.online, self: false, role: n.role, seen: n.ts, master: n.isMaster, load: n.load });
     }
     // machines that share sessions but aren't in this machine's node list (yet)
     for (const r of hub?.machines ?? []) {
@@ -179,13 +190,39 @@ export default function FleetSection() {
   );
 }
 
+/** CPU · memory · GPU under a machine's name; memory turns amber / rose as it nears the limit that crashes it. */
+function LoadLine({ load }: { load?: MachineLoad }) {
+  if (!load || Date.now() - load.at > 5 * 60_000) return null;
+  const mem = typeof load.commitUsed === "number" ? load.commitUsed : load.memUsed;
+  const accent: Accent | null = mem >= MEM_FULL ? "rose" : mem >= MEM_WARN ? "amber" : null;
+  const gpu = load.gpus?.[0];
+  const title = [
+    `RAM ${load.memUsed}% of ${load.memTotalGb} GB`,
+    typeof load.commitUsed === "number" ? `Commit ${load.commitUsed}% of ${load.commitLimitGb} GB (RAM + page file; Windows refuses memory at 100%)` : "",
+    ...(load.gpus ?? []).map((g, i) => `GPU${load.gpus!.length > 1 ? ` ${i + 1}` : ""} ${g.util}% · ${(g.memUsedMb / 1024).toFixed(1)} of ${(g.memTotalMb / 1024).toFixed(0)} GB`),
+    load.top.length ? `Biggest: ${load.top.map((p) => `${p.name}${p.count > 1 ? ` ×${p.count}` : ""} ${p.gb.toFixed(1)} GB`).join(", ")}` : "",
+    `sampled ${ago(load.at)} ago`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+  return (
+    <span className="block truncate font-mono text-[10px] text-ink-faint" title={title}>
+      {typeof load.cpu === "number" ? `CPU ${load.cpu}% · ` : ""}
+      <span style={accent ? { color: ACCENTS[accent].base } : undefined}>
+        {typeof load.commitUsed === "number" ? `mem ${load.commitUsed}%` : `RAM ${load.memUsed}%`}
+      </span>
+      {gpu ? ` · GPU ${gpu.util}%` : ""}
+    </span>
+  );
+}
+
 function FleetRow({
   m,
   cell,
   selected,
   onPick,
 }: {
-  m: { host: string; label: string; online: boolean; self: boolean; role?: string; seen?: number; master?: boolean; shares: boolean; publishedAt?: number };
+  m: { host: string; label: string; online: boolean; self: boolean; role?: string; seen?: number; master?: boolean; shares: boolean; publishedAt?: number; load?: MachineLoad };
   cell: (host: string, tool: SubscriptionMeter["tool"]) => { meter?: SubscriptionMeter; sessions: unknown[]; open: unknown[] };
   selected: { host: string; tool: SubscriptionMeter["tool"] } | null;
   onPick: (p: { host: string; tool: SubscriptionMeter["tool"] }) => void;
@@ -205,6 +242,7 @@ function FleetRow({
               .filter(Boolean)
               .join(" · ") || "standalone"}
           </span>
+          <LoadLine load={m.online ? m.load : undefined} />
         </span>
       </span>
       {TOOLS.map((t) => {

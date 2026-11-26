@@ -17,6 +17,7 @@ import { SESSION_KEY_RE, SESSION_TOOLS, asSessionTool, hermesToolsets, toolLabel
 import { isModelId } from "./nousModels";
 import { findCheck } from "./projectChecks";
 import { buildInfo, isSchedulerInstance, launchUpdate, readUpdateStatus, updateBlockers } from "./selfUpdate";
+import { isPaused } from "./fleetPause";
 
 /**
  * Acting on sessions - from the Projects page, the live view and the
@@ -919,13 +920,17 @@ async function pump(minAgeMs = 0): Promise<void> {
   if (pumping) return;
   pumping = true;
   try {
+    const paused = isPaused();
     for (;;) {
       const next = await mutate((jobs) => {
         // An update is waiting for this machine to go quiet: start nothing new until it has restarted.
         if (jobs.some((j) => j.host === me() && j.mode === "update" && isActive(j))) return undefined;
         const running = jobs.filter((j) => j.host === me() && j.status === "running").length;
         if (running >= MAX_RUNNING) return undefined;
-        const j = [...jobs].reverse().find((x) => x.host === me() && x.status === "queued" && (x.mode === "reply" || x.mode === "new" || x.mode === "check") && Date.now() - x.createdAt >= minAgeMs);
+        // Fleet → Pause holds project-run work (workers are isolated; checks are run checks). What
+        // someone started by hand - a reply, a new session, Run somewhere - still runs.
+        const held = (x: SessionJob) => paused && (x.isolated === true || x.mode === "check");
+        const j = [...jobs].reverse().find((x) => x.host === me() && x.status === "queued" && (x.mode === "reply" || x.mode === "new" || x.mode === "check") && !held(x) && Date.now() - x.createdAt >= minAgeMs);
         if (!j) return undefined;
         j.status = "running";
         j.startedAt = Date.now();

@@ -17,6 +17,8 @@ import { readRegistry, isLocalEndpoint } from "./registry";
 import { productName } from "./netSettings";
 import { readChecks } from "./projectChecks";
 import { placeTask, type PlacementMachine } from "./runPlacement";
+import { memoryByHost } from "./machineLoad";
+import { isPaused } from "./fleetPause";
 import { noteAttempt, readLessons, recordText, saveLessons, workerRecord, type AttemptNote, type Outcome } from "./runLessons";
 import { commitAll, finishBranch, startBranch, workingDiff, type RunGit } from "./runGit";
 
@@ -791,7 +793,7 @@ type RemoteLite = { host: string; label: string; stale: boolean; via: "lan" | "v
  * "Busy" is the larger of what that machine reports running and the jobs this machine has
  * in flight there (a job's session shows up in both, so adding them would count it twice).
  */
-function placementMachines(run: Run, mySubs: SubscriptionMeter[], sessions: SessionLite[], remote: RemoteLite[], jobs: SessionJob[]): PlacementMachine[] {
+function placementMachines(run: Run, mySubs: SubscriptionMeter[], sessions: SessionLite[], remote: RemoteLite[], jobs: SessionJob[], memoryOf: (host: string) => number | undefined): PlacementMachine[] {
   const busyOn = (host: string) =>
     Math.max(
       sessions.filter((s) => s.host === host && (s.status === "running" || s.status === "waiting")).length,
@@ -805,7 +807,7 @@ function placementMachines(run: Run, mySubs: SubscriptionMeter[], sessions: Sess
     return s ? s.folder || s.cwd : undefined;
   };
   return [
-    { host: me(), label: run.driverLabel, home: run.host === me(), online: true, via: "self", accepts: "edit", runWorker: true, subs: mySubs, busy: busyOn(me()), folder: folderOn(me()) },
+    { host: me(), label: run.driverLabel, home: run.host === me(), online: true, via: "self", accepts: "edit", runWorker: true, subs: mySubs, busy: busyOn(me()), folder: folderOn(me()), memory: memoryOf(me()) },
     ...remote.map(
       (m): PlacementMachine => ({
         host: m.host,
@@ -818,6 +820,7 @@ function placementMachines(run: Run, mySubs: SubscriptionMeter[], sessions: Sess
         subs: m.subscriptions,
         busy: busyOn(m.host),
         folder: folderOn(m.host),
+        memory: memoryOf(m.host),
       }),
     ),
   ];
@@ -1218,7 +1221,7 @@ async function step(id: string): Promise<void> {
   const jobs = await listJobs();
   const snap = await sessionsSnapshot();
   const { sessions, remote } = await mergeRemoteSessions(snap.sessions);
-  const machines = placementMachines(run0, snap.subscriptions, sessions, remote, jobs);
+  const machines = placementMachines(run0, snap.subscriptions, sessions, remote, jobs, await memoryByHost());
   const scale = (await readWorkerModelSettings()).budgetScale ?? 1;
   const budget = (tier: Tier) => Math.round(TIME_BUDGET_MS[tier] * scale);
 
@@ -1521,11 +1524,14 @@ export async function runsTick(): Promise<void> {
   if (!(await vaultAvailable())) return;
   // newest 80 by name (names start with the date): old finished runs are not re-read every 20 seconds
   const names = (await fsp.readdir(runsDir()).catch(() => [] as string[])).filter((n) => RUN_ID_RE.test(n)).sort().reverse().slice(0, 80);
+  // Fleet → Pause: runs don't advance (no new plan, task, review or delivery); their state waits
+  const fleetPaused = isPaused();
   for (const id of names) {
     const run = await readRun(id);
     if (!run || run.driver !== me()) continue;
     if (!ACTIVE.includes(run.status) && run.status !== "paused") continue;
-    await applyCommands(id);
+    await applyCommands(id); // Pause / Resume / Stop still apply while the fleet is paused
+    if (fleetPaused) continue;
     const now = await readRun(id);
     if (!now) continue;
     if (now.status === "planning") detach(`${id}:plan`, () => plan(id));

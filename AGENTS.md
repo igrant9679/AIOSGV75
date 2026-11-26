@@ -57,6 +57,9 @@ manual is `/guide` (source: `lib/guideContent.ts`).
   `nousModels.ts` (cheapest Nous model for a Hermes run),
   `selfUpdate.ts` (Fleet -> Versions: build stamp, how far each machine is behind
   GitHub, wait-until-idle, the detached `scripts/self-update.ps1` / `.sh`),
+  `machineLoad.ts` (CPU / memory / commit / GPU / biggest processes each minute,
+  carried by the heartbeat; feeds Health, run placement and Run somewhere),
+  `fleetPause.ts` (one vault flag that holds every machine's autonomous work),
   `sessionTools.ts` (the registry of session tools) + `sessions.ts` /
   `hermesSessions.ts` (readers) + `sessionActions.ts` (reply / new / stop,
   locally and on other machines),
@@ -233,6 +236,20 @@ manual is `/guide` (source: `lib/guideContent.ts`).
     own remote, and a failed build goes back with `git reset --keep`. Bump `SELF_UPDATE`
     when the contract changes. Testing tip: stepping a folder back past the commit that
     added a script removes the script too.
+31. **Memory on Windows means the COMMIT charge, and a missing number is not a full one.**
+    Raider18 crashed at its commit limit with 20 GB of RAM free, so lib/machineLoad.ts
+    measures commit (RAM + page file) from `Win32_PerfFormattedData_PerfOS_Memory`.
+    `Win32_OperatingSystem.FreeVirtualMemorySize` came back EMPTY and read as "100% full"
+    when the counters said 80%: treat a missing value as unknown, and cross-check a new
+    system metric against a second source before acting on it. MEM_WARN / MEM_FULL live
+    in the pure lib/runPlacement.ts so its test covers them; a load older than 5 minutes is
+    unknown, never "avoid".
+32. **The fleet pause holds work nobody is watching, not work someone just asked for.**
+    `isPaused()` (lib/fleetPause.ts, a vault file read fresh each time) gates the master's
+    AI-starting duties, `runsTick` (commands still apply) and, in the pump, ISOLATED jobs
+    and checks (project-run work). Replies, new sessions, Run somewhere, chats and
+    missions started by hand still run, and updates still run (pause -> update -> resume).
+    A new background duty that starts AI work must check `isPaused()` too.
 
 ## Dev cycle (production server auto-starts at login)
 

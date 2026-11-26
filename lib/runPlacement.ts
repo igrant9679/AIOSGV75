@@ -19,8 +19,12 @@ import type { SubscriptionMeter } from "./sessions";
  *    (model, turn cap, time budget — `runWorker`), has the tool set up and not
  *    at its limit, and has the project's folder (or the run works in the home
  *    folder, which every machine has).
- *  - Among those, the least busy wins; the run's own machine gets an edge, and a
- *    machine reached only through OneDrive pays for its minutes of latency.
+ *  - A machine whose memory is nearly full (MEM_FULL, lib/machineLoad.ts) gets nothing new
+ *    from another machine: one more agent there is how Raider18 crashed. Its own run's tasks
+ *    still go to it (they cannot move), but anything that can go elsewhere does.
+ *  - Among those, the least busy wins; the run's own machine gets an edge, a machine
+ *    reached only through OneDrive pays for its minutes of latency, and a machine over
+ *    MEM_WARN pays for every point above it.
  *  - The tier fixes the order of tools. The cheapest tool that has ANY machine
  *    wins; machines only compete within that tool. Spreading never makes a task
  *    dearer.
@@ -43,6 +47,8 @@ export interface PlacementMachine {
   busy: number;
   /** the project's folder on that machine ("~" = home folder); undefined = it does not have one */
   folder?: string;
+  /** memory pressure, % (Windows commit charge, else RAM); undefined = not known */
+  memory?: number;
 }
 
 export interface PlacementTask {
@@ -69,6 +75,10 @@ export interface Placement {
 /** A machine that already has this many of our jobs is full: more would only queue there. */
 export const MACHINE_SLOTS = 2;
 
+/** Memory pressure (%) at which a machine is avoided, and at which it gets nothing new from elsewhere. */
+export const MEM_WARN = 85;
+export const MEM_FULL = 93;
+
 export function toolUsable(m: PlacementMachine, tool: SessionTool): boolean {
   const meter = m.subs.find((s) => s.tool === tool);
   // Claude is the one tool every machine in the group is assumed to have
@@ -87,13 +97,15 @@ export function blockedReason(m: PlacementMachine, task: PlacementTask, tool: Se
   if (!m.runWorker) return "runs an older version (update it to share run work)";
   if (m.folder === undefined) return "does not have the project's folder";
   if (m.busy >= MACHINE_SLOTS) return "busy";
+  if ((m.memory ?? 0) >= MEM_FULL) return `memory nearly full (${m.memory}%)`;
   return null;
 }
 
 export function score(m: PlacementMachine, tool: SessionTool): number {
   const meter = m.subs.find((s) => s.tool === tool);
   const used = typeof meter?.usedPercent === "number" ? meter.usedPercent : 50;
-  return (used / 100) * 1.5 + m.busy * 0.7 + (m.home ? -0.4 : 0) + (m.via === "vault" ? 1.5 : 0);
+  const tight = Math.max(0, (m.memory ?? 0) - MEM_WARN) * 0.15; // 0 below MEM_WARN, 1.2 at MEM_FULL
+  return (used / 100) * 1.5 + m.busy * 0.7 + (m.home ? -0.4 : 0) + (m.via === "vault" ? 1.5 : 0) + tight;
 }
 
 export function placeTask(machines: PlacementMachine[], task: PlacementTask): Placement | null {

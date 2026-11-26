@@ -17,6 +17,7 @@ import EventTicker from "./ui/EventTicker";
 import Celebration from "./ui/Celebration";
 import { SessionAlertsWatcher } from "./hub/NetworkPanels";
 import PermissionPrompts from "./hub/PermissionPrompts";
+import { FleetPauseBar } from "./hub/FleetPause";
 
 /** Agent chat routes get a FULL theme takeover — the whole sky in their color. */
 const TAKEOVER_ROUTES = new Set(["/auto", "/claude", "/openclaw", "/hermes"]);
@@ -61,6 +62,7 @@ function DeckFrame({ children }: { children: ReactNode }) {
       <div className="deck-frame relative mx-auto flex min-h-dvh w-full max-w-[1600px] flex-col gap-4 p-4 lg:p-5">
         <Header />
         <ApprovalsBar />
+        <FleetPauseBar />
         <div className="deck-row flex flex-1 flex-col gap-4 md:flex-row">
           <Sidebar />
           <main className="min-w-0 flex-1">

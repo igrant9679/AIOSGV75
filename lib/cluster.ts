@@ -4,6 +4,7 @@ import os from "os";
 import { vaultInfo, vaultAvailable } from "./vault";
 import { lanAddresses, PEER_PORT } from "./netAddrs";
 import { sweepConflictCopies } from "./conflictCopies";
+import { readLoad, type MachineLoad } from "./machineLoad";
 
 /**
  * Cluster coordination across machines that share ONE vault (via OneDrive) but
@@ -49,6 +50,8 @@ interface NodeInfo {
   /** LAN IPv4 addresses + port of the peer listener (lib/peer.ts) */
   lanAddrs?: string[];
   peerPort?: number;
+  /** CPU, memory, commit, GPU and the biggest processes, sampled each minute (lib/machineLoad.ts) */
+  load?: MachineLoad;
 }
 
 const CONFIG_FILE = path.join(process.cwd(), "data", "cluster.json");
@@ -201,6 +204,7 @@ async function writeHeartbeat(cfg: ClusterConfig, isMaster: boolean): Promise<vo
     isMaster,
     lanAddrs: lanAddresses(),
     peerPort: PEER_PORT,
+    load: readLoad() ?? undefined,
   };
   await fs.mkdir(nodesDir(), { recursive: true });
   await fs.writeFile(nodeFile(nodeId()), JSON.stringify(info, null, 2), "utf8");

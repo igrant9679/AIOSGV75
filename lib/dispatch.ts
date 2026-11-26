@@ -5,6 +5,7 @@ import { mergeRemoteSessions } from "./sessionShare";
 import { listJobs } from "./sessionActions";
 import { modeOf, readNetwork } from "./peer";
 import { toolLabel, toolShort } from "./sessionTools";
+import { MEM_FULL, MEM_WARN, memoryByHost } from "./machineLoad";
 
 /**
  * "Run this somewhere": rank the machines that could take a task right now.
@@ -30,7 +31,7 @@ export interface Candidate {
 
 export async function rankMachines(input: { project?: string; tool: SessionTool }): Promise<Candidate[]> {
   const snap = await sessionsSnapshot();
-  const [{ sessions, remote }, cfg, jobs, net] = await Promise.all([mergeRemoteSessions(snap.sessions), readConfig().catch(() => null), listJobs(), readNetwork()]);
+  const [{ sessions, remote }, cfg, jobs, net, memoryOf] = await Promise.all([mergeRemoteSessions(snap.sessions), readConfig().catch(() => null), listJobs(), readNetwork(), memoryByHost()]);
   const toolName = input.tool === "codex" ? "ChatGPT / Codex" : toolShort(input.tool);
   const machines = [
     { host: os.hostname(), label: cfg?.label || os.hostname(), local: true, online: true, via: "self", accepts: "edit", subs: snap.subscriptions as SubscriptionMeter[] },
@@ -73,7 +74,14 @@ export async function rankMachines(input: { project?: string; tool: SessionTool 
     if (!m.local) reasons.push(m.via === "lan" ? "on the LAN" : offlan ? "Off-LAN (through OneDrive)" : "through OneDrive");
     else reasons.push("this machine");
 
-    const score = (used / 100) * 2 + busy * 0.6 + (m.local ? -0.2 : 0) + (!m.local && m.via !== "lan" ? 0.5 : 0);
+    // memory: the way a busy machine actually falls over (lib/machineLoad.ts)
+    const mem = memoryOf(m.host);
+    if (typeof mem === "number") {
+      if (mem >= MEM_FULL && !blocked) blocked = `memory nearly full (${mem}%)`;
+      else reasons.push(`memory ${mem}%`);
+    }
+    const tight = Math.max(0, (mem ?? 0) - MEM_WARN) * 0.15;
+    const score = (used / 100) * 2 + busy * 0.6 + (m.local ? -0.2 : 0) + (!m.local && m.via !== "lan" ? 0.5 : 0) + tight;
     out.push({ host: m.host, label: m.label, local: m.local, ok: !blocked, score, folder, reasons, blocked });
   }
   return out.sort((a, b) => Number(b.ok) - Number(a.ok) || a.score - b.score);

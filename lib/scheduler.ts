@@ -21,6 +21,9 @@ import { mergeRemoteSessions } from "./sessionShare";
 import { maybeWeeklyRollup } from "./rollup";
 import { runsTick } from "./runs";
 import { markSchedulerInstance, recordRunningBuild } from "./selfUpdate";
+import { MEM_FULL, MEM_WARN, memPressure, sampleLoad } from "./machineLoad";
+import { runHealthChecks } from "./health";
+import { isPaused } from "./fleetPause";
 
 async function refreshScaffold(): Promise<void> {
   const reg = await readRegistry().catch(() => null);
@@ -56,6 +59,23 @@ export function startScheduler(): void {
   // Every machine, not only the master - a run belongs to the machine that started it.
   setInterval(() => void runsTick().catch(() => {}), 20_000);
   setTimeout(() => void maybeRunHealth().catch(() => {}), 20_000);
+  // CPU, memory, commit, GPU, biggest processes → data/load.json, carried by the heartbeat. When
+  // memory crosses a line, Health runs at once (it warns before Windows runs out of commit).
+  // The same for the fleet pause, set on any machine: Health shows it within a minute.
+  let memLevel = "ok";
+  let pausedSeen = isPaused();
+  const loadTick = async () => {
+    const p = memPressure(await sampleLoad().catch(() => null));
+    const level = p === undefined ? memLevel : p >= MEM_FULL ? "fail" : p >= MEM_WARN ? "warn" : "ok";
+    const paused = isPaused();
+    if (level !== memLevel || paused !== pausedSeen) {
+      memLevel = level;
+      pausedSeen = paused;
+      void runHealthChecks().catch(() => {});
+    }
+  };
+  setTimeout(() => void loadTick(), 8_000);
+  setInterval(() => void loadTick(), 60_000);
   // LAN link to the other machines (peer endpoints only, on :3101)
   startPeerServer();
   // Session alerts: events the hook spooled while the server was down, keep the
@@ -71,14 +91,17 @@ export function startScheduler(): void {
   setInterval(async () => {
     const isMaster = await clusterTick().catch(() => true);
     if (!isMaster) return;
-    checkDueSchedules().catch(() => {});
-    checkWatchers().catch(() => {});
     nudgeStaleApprovals().catch(() => {});
-    maybeRescan().catch(() => {}); // throttled to every 4h internally
-    syncExecuting().catch(() => {}); // advance pipeline items whose builds finished
-    syncApprovedMissions().catch(() => {}); // launch approvals resolved on ANY machine
-    bridgeTick().catch(() => {}); // vault bridge for Claude Duet / OpenAI Dots (inbox, outbox, Status.md)
-    maybeRefreshProfile().catch(() => {}); // throttled to weekly internally
+    // Fleet → Pause (lib/fleetPause.ts): nothing below starts AI work while the fleet is paused
+    if (!isPaused()) {
+      checkDueSchedules().catch(() => {});
+      checkWatchers().catch(() => {});
+      maybeRescan().catch(() => {}); // throttled to every 4h internally
+      syncExecuting().catch(() => {}); // advance pipeline items whose builds finished
+      syncApprovedMissions().catch(() => {}); // launch approvals resolved on ANY machine
+      bridgeTick().catch(() => {}); // vault bridge for Claude Duet / OpenAI Dots (inbox, outbox, Status.md)
+      maybeRefreshProfile().catch(() => {}); // throttled to weekly internally
+    }
     void refreshScaffold(); // no-op unless the day rolled over
     void sessionsSnapshot()
       .then((snap) => mergeRemoteSessions(snap.sessions))
@@ -91,8 +114,10 @@ export function startScheduler(): void {
   setTimeout(async () => {
     const isMaster = await clusterTick().catch(() => true);
     if (!isMaster) return;
-    checkDueSchedules().catch(() => {});
-    checkWatchers().catch(() => {});
+    if (!isPaused()) {
+      checkDueSchedules().catch(() => {});
+      checkWatchers().catch(() => {});
+    }
     void refreshScaffold();
   }, 5_000);
 }

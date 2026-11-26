@@ -14,6 +14,8 @@ import { readRemoteSessions, readShareState } from "./sessionShare";
 import { API_KEY_VARS, subscriptionOnly } from "./runners";
 import { hermesHome } from "./hermesSessions";
 import { isLocalEndpoint, readRegistry } from "./registry";
+import { MEM_FULL, MEM_WARN, memPressure, readLoad, topLine } from "./machineLoad";
+import { readPause } from "./fleetPause";
 
 /**
  * Health checks — the things that, when broken, make Mission Control quietly
@@ -450,6 +452,38 @@ async function checkDisk(): Promise<HealthCheck> {
   }
 }
 
+/**
+ * Memory, the way Windows runs out of it: the COMMIT charge (RAM + page file). Raider18 crashed
+ * at its commit limit with RAM to spare (2026-11-25). Names what holds the memory, because the
+ * fix is nearly always "close or turn off that".
+ */
+function checkMemory(): HealthCheck {
+  const base = { id: "memory", label: "Memory", impact: "When memory runs out, Windows refuses it: Mission Control, Ollama and agent runs crash (0xC0000409)." };
+  const l = readLoad();
+  if (!l) return { ...base, level: "skip", detail: "Not sampled yet (every minute)." };
+  const p = memPressure(l) ?? 0;
+  const what = typeof l.commitUsed === "number" ? `commit ${l.commitUsed}% of ${l.commitLimitGb} GB (RAM ${l.memUsed}%)` : `RAM ${l.memUsed}% of ${l.memTotalGb} GB`;
+  const top = topLine(l);
+  const detail = `${what}${top ? ` · biggest: ${top}` : ""}`;
+  const wgp = l.top.find((x) => /^wgp\.py$/i.test(x.name));
+  const hint = wgp
+    ? ` ${wgp.name}${wgp.count > 1 ? ` ×${wgp.count}` : ""} (${wgp.gb.toFixed(1)} GB) is WanGP's MCP server, started by every Claude session that loads your MCP servers: turn it off in Claude's MCP settings while you're not making video.`
+    : "";
+  if (p >= MEM_FULL) return { ...base, level: "fail", detail, fix: `Close something big now.${hint} Runs send no new work here until it drops.` };
+  if (p >= MEM_WARN) return { ...base, level: "warn", detail, fix: `Close what you don't need.${hint}` };
+  return { ...base, level: "ok", detail };
+}
+
+/** Fleet → Pause: worth seeing on every machine while it lasts (a forgotten pause stops the schedules). */
+function checkFleetPause(): HealthCheck {
+  const base = { id: "fleet-pause", label: "Fleet pause", impact: "Schedules, watchers, approved missions and project runs are held on every machine until it ends." };
+  const p = readPause();
+  if (!p.paused) return { ...base, level: "ok", detail: "Not paused." };
+  const since = p.at ? new Date(p.at).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" }) : "?";
+  const ends = p.until ? `ends by itself ${new Date(p.until).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" })}` : "until someone resumes it";
+  return { ...base, level: "warn", detail: `Paused by ${p.by ?? "?"} since ${since}, ${ends}.${p.reason ? ` Reason: ${p.reason}` : ""}`, fix: "Resume from the banner at the top of any page, or Command → Fleet pause." };
+}
+
 function checkAlertsTransport(enabled: boolean): HealthCheck {
   const net = effectiveNetSettings();
   const viaBot = Boolean(net.botToken);
@@ -593,6 +627,8 @@ export function runHealthChecks(): Promise<HealthReport> {
       checkHook(),
     ]);
     const checks = results.flat().filter((c): c is HealthCheck => Boolean(c));
+    checks.push(checkMemory());
+    checks.push(checkFleetPause());
     checks.push(checkAlertsTransport(settings.telegram));
     const worst = checks.reduce<HealthLevel>((w, c) => (RANK[c.level] > RANK[w] ? c.level : w), "ok");
     const report: HealthReport = { host: os.hostname(), checkedAt: Date.now(), ms: Date.now() - started, worst, checks };

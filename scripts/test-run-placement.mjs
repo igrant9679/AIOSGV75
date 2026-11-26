@@ -54,4 +54,18 @@ assert.equal(blockedReason(M({ ...legion, busy: 2 }), { tools: ["claude"], pinne
 // 11. home limited for claude, pinned → null (caller falls back)
 p = placeTask([M({ ...home, subs: [sub("claude", "limited")] }), legion], { tools: ["claude"], pinned: true });
 assert.equal(p, null);
+// 12. memory: a remote machine at its limit gets nothing; the home machine's own tasks still go home
+assert.match(blockedReason(M({ ...legion, memory: 95 }), { tools: ["claude"], pinned: false }, "claude"), /memory nearly full/);
+p = placeTask([M({ ...home, memory: 96 }), M({ ...legion, memory: 95 })], { tools: ["claude"], pinned: false });
+assert.equal(p.host, "raider", "nowhere else to go: home");
+p = placeTask([M({ ...home, memory: 96 }), M({ ...legion, memory: 95 })], { tools: ["claude"], pinned: true });
+assert.equal(p.host, "raider");
+// 13. an idle home under memory pressure hands movable work to a roomier machine; a little pressure doesn't
+p = placeTask([M({ ...home, memory: 94 }), legion], { tools: ["claude"], pinned: false });
+assert.equal(p.host, "legion");
+p = placeTask([M({ ...home, memory: 80 }), legion], { tools: ["claude"], pinned: false });
+assert.equal(p.host, "raider", "below MEM_WARN memory costs nothing");
+// 14. between two remote machines the emptier one wins
+p = placeTask([M({ ...home, busy: 2 }), M({ ...legion, memory: 91 }), M({ host: "sabine", label: "Sabine", memory: 40 })], { tools: ["claude"], pinned: false });
+assert.equal(p.host, "sabine");
 console.log("all placement tests passed");
