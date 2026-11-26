@@ -165,6 +165,50 @@ helper scripts now live in vault **`Agentic OS/Cluster/`** — all idempotent, a
   not `costUsd`, so no fabricated dollars appear — but the per-agent tag reads BILLED. Fix only
   if the Analytics split starts mattering.
 
+## ✅ DONE 2026-11-25/26 (overnight, Raider18) — runs phases 3-5, and four silent problems found by testing
+
+Commits `206f5f6`, `e9dc300`, `0d72d92` (after `6d65bc2` Help). Details: ROADMAP-ORCHESTRATOR.md
+(top), AGENTS.md rules 25-29, guide section "Orchestrator & Needs Attention".
+
+- **Spread over my computers** (`lib/runPlacement.ts`, `scripts/test-run-placement.mjs`):
+  answer-only tasks may run on another machine when the run's own is busy. Only machines whose
+  shared summary carries `runWorker` (this version) qualify, so **nothing spreads until the other
+  machines run `update.cmd`**. Tested with a stand-in machine file in the vault (since removed):
+  placement through the vault, then the 12-minute "not picked up" take-back. Not yet tested
+  with a second real machine.
+- **Codex reworks in its own session** (id read from its stderr header). Verified.
+- **Lessons** (`lib/runLessons.ts`): attempt notes per task → Lessons.md per run and
+  `Agentic OS/Runs/Lessons/<project>.md`; the next planner gets them plus the Worker record. Seen
+  working: after two blocked Hermes attempts, the next plan raised the tier on its own.
+- **Branch per run** (`lib/runGit.ts`): clean repo → `mc/run-…`, a commit per accepted edit task,
+  the reviewer sees the real diff, the folder returns to its branch at delivery. Verified twice.
+- **Past the 20-minute limit**: a Claude worker stopped for time continues in the same session
+  (`liveKey`). Verified with `budgetScale: 0.05` in data/worker-models.json (removed after).
+- **3,000-file cap** now keeps the newest notes; Library/Graph say "newest N of M".
+- **Auto failover drill** (`/api/auto/drill`, Test failover on the Auto page). Verified
+  Hermes → local → Codex.
+
+Found by testing, fixed:
+1. Reviewers rejected work for the "RESULT:" marker line; rework replies were appended to answer
+   tasks (two copies). Fixed (rule 26).
+2. **Hermes at answer level cannot read files** (its file toolset also writes), and one worker
+   "recalled" an unmerged branch via session_search. Tasks that must read the folder
+   (`readsFolder`) skip Hermes and the local model; run Hermes workers get no memory or
+   session_search.
+3. **Every headless `claude -p` starts all of the owner's Claude MCP servers**, including two
+   WanGP servers (`wgp.py`, ~3.9 GB of commit each). With a few runs at once Raider18 hit its
+   commit limit; Mission Control and Ollama crashed (0xC0000409, 00:20 and 23:54). Run work, Help
+   and the drill now pass `--strict-mcp-config` (rule 28). Chats, missions and schedules still
+   load them. **Worth telling the owner: WanGP's MCP server costs ~7.7 GB per Claude session.**
+4. A crashed server's CLI children kept running; the next server now stops them (rule 29).
+
+Housekeeping done: `C:\Users\idris\Documents\mc-run-sandbox` sent to the Recycle Bin, its check
+list removed, its lessons file recycled. Test runs stay in `Agentic OS/Runs/` as history.
+
+**Still open:** update.cmd on the other machines (then a real two-machine spread test); Gemini
+sign-in on Raider18, then Gemini as a worker; Brave key (optional); per-run budgets; proposals
+for Rules.md from lessons; feeding the worker record into Auto's chat router.
+
 ## ✅ DONE 2026-11-24 — rules note, weekly roll-up + archive, search blind spot, subscription-only
 
 Done on Raider18 (now a **workstation**; the group is six machines, IdrisLegion7 master,
