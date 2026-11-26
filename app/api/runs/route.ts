@@ -2,24 +2,26 @@ import os from "os";
 import { commandRun, createRun, listRuns, readRun, type RunCommand } from "@/lib/runs";
 import { resolveApproval } from "@/lib/approvals";
 import { vaultAvailable } from "@/lib/vault";
+import { workerRecord } from "@/lib/runLessons";
 
 export const dynamic = "force-dynamic";
 
-/** GET → every project run in the vault, newest first, plus which machine this is. */
+/** GET → every project run in the vault, newest first, which machine this is, and each worker's record over them. */
 export async function GET() {
   if (!(await vaultAvailable())) return Response.json({ error: "vault not reachable" }, { status: 503 });
-  return Response.json({ host: os.hostname(), runs: await listRuns() });
+  const runs = await listRuns();
+  return Response.json({ host: os.hostname(), runs, record: workerRecord(runs) });
 }
 
 /**
- * POST { action: "create", brief, title?, host?, folder?, project?, planner?, allowEdit? }
+ * POST { action: "create", brief, title?, host?, folder?, project?, planner?, allowEdit?, spread?, branch? }
  *      { action: "approve" | "reject", id }      answers the plan's approval (any machine)
  *      { action: "pause" | "resume" | "stop", id }  asks the run's driver to do it
  *
  * Nothing here advances a run: that is the driver machine's tick (lib/runs.ts).
  */
 export async function POST(request: Request) {
-  let b: { action?: string; id?: string; brief?: string; title?: string; host?: string; folder?: string; project?: string; planner?: string; allowEdit?: boolean };
+  let b: { action?: string; id?: string; brief?: string; title?: string; host?: string; folder?: string; project?: string; planner?: string; allowEdit?: boolean; spread?: boolean; branch?: boolean };
   try {
     b = await request.json();
   } catch {
@@ -37,6 +39,8 @@ export async function POST(request: Request) {
           project: typeof b.project === "string" ? b.project : undefined,
           planner: typeof b.planner === "string" ? b.planner : undefined,
           allowEdit: b.allowEdit === true,
+          spread: b.spread === true,
+          branch: b.branch !== false,
         });
         return Response.json({ ok: true, run });
       }

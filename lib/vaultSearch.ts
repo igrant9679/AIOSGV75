@@ -88,10 +88,21 @@ let index: {
 } | null = null;
 let building: Promise<void> | null = null;
 
-export async function collectVaultFiles(root: string): Promise<string[]> {
-  const out: string[] = [];
+/**
+ * Every note in the vault, NEWEST FIRST, at most `limit` of them, and how many
+ * there were in all.
+ *
+ * This used to stop at 3,000 files in the order the folders happened to be
+ * walked, so past the cap whole folders would have dropped out of the Library,
+ * the Graph and the reports while everything still "worked" — the same blind
+ * spot that once hid most folders from search (AGENTS.md rule 14). Now the walk
+ * sees every file (up to MAX_INDEX_FILES) and the cap keeps the most recently
+ * changed ones, so what drops out is the oldest, and callers can say so.
+ */
+export async function collectVaultFilesInfo(root: string, limit = MAX_FILES): Promise<{ files: string[]; total: number }> {
+  const all: string[] = [];
   const stack = [root];
-  while (stack.length > 0 && out.length < MAX_FILES) {
+  while (stack.length > 0 && all.length < MAX_INDEX_FILES) {
     const dir = stack.pop()!;
     let entries;
     try {
@@ -102,12 +113,24 @@ export async function collectVaultFiles(root: string): Promise<string[]> {
     for (const e of entries) {
       if (e.isDirectory()) {
         if (!SKIP_DIRS.has(e.name)) stack.push(path.join(dir, e.name));
-      } else if (e.name.endsWith(".md") && out.length < MAX_FILES) {
-        out.push(path.join(dir, e.name));
+      } else if (e.name.endsWith(".md") && all.length < MAX_INDEX_FILES) {
+        all.push(path.join(dir, e.name));
       }
     }
   }
-  return out;
+  const dated: { file: string; mtime: number }[] = [];
+  for (let i = 0; i < all.length; i += 64) {
+    const batch = all.slice(i, i + 64);
+    const stats = await Promise.all(batch.map((f) => fs.stat(f).then((s) => s.mtimeMs).catch(() => 0)));
+    batch.forEach((file, j) => dated.push({ file, mtime: stats[j] }));
+  }
+  dated.sort((a, b) => b.mtime - a.mtime);
+  return { files: dated.slice(0, Math.max(0, limit)).map((d) => d.file), total: all.length };
+}
+
+/** The newest `limit` notes (see collectVaultFilesInfo). */
+export async function collectVaultFiles(root: string, limit = MAX_FILES): Promise<string[]> {
+  return (await collectVaultFilesInfo(root, limit)).files;
 }
 
 function chunk(content: string): string[] {

@@ -13,7 +13,7 @@ import { readThread, type Thread } from "./sessionThread";
 import { PeerUnavailable, peerFetch } from "./peer";
 import { exportSession, importSession, type HandoffPackage } from "./handoff";
 import { setHidden } from "./sessionNaming";
-import { SESSION_TOOLS, asSessionTool, hermesToolsets, toolLabel } from "./sessionTools";
+import { SESSION_KEY_RE, SESSION_TOOLS, asSessionTool, hermesToolsets, toolLabel, toolOfKey } from "./sessionTools";
 import { isModelId } from "./nousModels";
 import { findCheck } from "./projectChecks";
 
@@ -154,6 +154,18 @@ async function patchJob(id: string, patch: Partial<SessionJob>): Promise<Session
   });
   if (job?.requestedBy && job.via === "vault") await writeVaultResult(job).catch(() => {});
   return job;
+}
+
+/**
+ * A job this machine sent to another one, given up on here (a project run took the task back
+ * because that machine never started it). Marked as ended so it stops counting as work in flight
+ * there; the stop request the run also sends tells the other machine, if it ever gets that far.
+ */
+export async function abandonRemoteJob(id: string, why: string): Promise<void> {
+  await mutate((jobs) => {
+    const j = jobs.find((x) => x.id === id);
+    if (j && j.host !== me() && !j.requestedBy && isActive(j)) Object.assign(j, { status: "error", error: why, finishedAt: Date.now() });
+  });
 }
 
 export async function dismissJob(id: string): Promise<void> {
@@ -297,7 +309,21 @@ export async function startJob(input: StartInput): Promise<SessionJob> {
 
   let job: SessionJob;
   let content: HandoffPackage | undefined;
-  const s = input.key ? sessions.find((x) => x.key === input.key) : undefined;
+  let s = input.key ? sessions.find((x) => x.key === input.key) : undefined;
+  // A project run replies to the session its worker just finished in. On another machine that
+  // session reaches this list only with that machine's next summary (up to five minutes through
+  // the vault), and a brand-new local Codex session can lag the index too. The run knows the
+  // machine and the folder, so build the reply from those - in a folder that machine's sessions
+  // already use, as for a new session. The target re-checks the key against its own sessions.
+  if (!s && input.mode === "reply" && input.key && SESSION_KEY_RE.test(input.key) && input.host && input.folder) {
+    const host = input.host;
+    const folder = input.folder;
+    if (folder === "~" || sessions.some((x) => x.host === host && (x.folder === folder || x.cwd === folder))) {
+      const tool = toolOfKey(input.key) ?? "claude";
+      const id = input.key.slice(tool.length + 1);
+      s = { key: input.key, id, tool, host, cwd: folder, folder, title: "project run worker", startedAt: Date.now(), updatedAt: Date.now(), status: "ended" } as SessionSummary;
+    }
+  }
 
   switch (input.mode) {
     case "reply":
@@ -623,12 +649,14 @@ function runCli(
   /** false = start the program directly. Needed when an ARGUMENT can span lines (a prompt): cmd.exe ends the command at the first newline. */
   shell = true,
   timeoutMs = RUN_TIMEOUT_MS,
-): Promise<{ out: string; err: string; code: number | null; timedOut: boolean }> {
+): Promise<{ out: string; err: string; errHead: string; code: number | null; timedOut: boolean }> {
   return new Promise((resolve) => {
     const child = spawn(cmd, shell ? args.map(q) : args, { cwd, shell, env: { ...cleanEnv(), ...extraEnv }, detached: process.platform !== "win32", windowsHide: true });
     onSpawn(child.pid);
     let out = "";
     let err = "";
+    // the start of stderr, kept apart from the rolling tail: Codex prints its session id in a header there
+    let errHead = "";
     let timedOut = false;
     const timer = setTimeout(() => {
       timedOut = true;
@@ -639,14 +667,18 @@ function runCli(
       out += s;
       onOut?.(s);
     });
-    child.stderr.on("data", (c: Buffer) => (err = (err + c.toString("utf8")).slice(-3000)));
+    child.stderr.on("data", (c: Buffer) => {
+      const t = c.toString("utf8");
+      if (errHead.length < 4000) errHead += t.slice(0, 4000 - errHead.length);
+      err = (err + t).slice(-3000);
+    });
     child.on("error", (e) => {
       clearTimeout(timer);
-      resolve({ out, err: e.message, code: -1, timedOut });
+      resolve({ out, err: e.message, errHead, code: -1, timedOut });
     });
     child.on("close", (code) => {
       clearTimeout(timer);
-      resolve({ out, err, code, timedOut });
+      resolve({ out, err, errHead, code, timedOut });
     });
     child.stdin.write(stdin);
     child.stdin.end();
@@ -826,7 +858,10 @@ async function execute(job: SessionJob): Promise<Partial<SessionJob>> {
   if (cur && !isActive(cur)) return {};
   if (r.timedOut) return done({ status: "error", error: "Stopped after 20 minutes.", reply });
   if (r.code !== 0 && !reply.trim()) return done({ status: "error", error: (r.err.trim() || `codex exited with code ${r.code}`).slice(-800) });
-  return done({ status: "done", reply, resultKey: job.mode === "reply" ? job.key : undefined });
+  // "session id: <uuid>" in the header on stderr - the same id the session list keys it by (codex:<id>),
+  // so a project run's rework can go back to the session that did the work instead of a fresh one
+  const sid = r.errHead.match(/session id:\s*([0-9a-f][0-9a-f-]{20,})/i)?.[1];
+  return done({ status: "done", reply, resultKey: sid ? `codex:${sid}` : job.mode === "reply" ? job.key : undefined });
 }
 
 let pumping = false;

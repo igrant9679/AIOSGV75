@@ -321,6 +321,13 @@ export async function runAgentText(
     cwd?: string;
     /** Claude: may read, may not run commands or change files — and therefore can never stall on a permission prompt. */
     readOnly?: boolean;
+    /**
+     * A failover drill (/api/auto/drill): these agents "fail" at once without running, so Auto's
+     * ladder can be watched climbing for real. Carried down the ladder with the other options, so
+     * it touches this one call and nothing else; a drilled failure is not recorded as usage, so it
+     * cannot bench a healthy agent.
+     */
+    drill?: string[];
   } = {},
 ): Promise<RunResult> {
   // "auto" is virtual: route to a real agent. If the pick errors, climb the cost ladder one
@@ -354,6 +361,8 @@ export async function runAgentText(
     }
     return { ...r, routedTo, routeReason: reason };
   }
+
+  if (opts.drill?.includes(agentId)) return { text: "", ms: 0, error: `failover drill: ${agentId} was told to fail` };
 
   const inject = opts.injectMemory !== false;
   const ctx = inject ? await gatherContext(prompt) : EMPTY_CONTEXT;

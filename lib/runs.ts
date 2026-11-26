@@ -2,7 +2,7 @@ import fsp from "fs/promises";
 import os from "os";
 import path from "path";
 import { vaultAvailable, vaultInfo, todayStamp } from "./vault";
-import { listJobs, newJobId, startJob, type JobAccess, type SessionJob } from "./sessionActions";
+import { abandonRemoteJob, listJobs, newJobId, startJob, type JobAccess, type SessionJob } from "./sessionActions";
 import { sessionsSnapshot, type SubscriptionMeter } from "./sessions";
 import { mergeRemoteSessions } from "./sessionShare";
 import { readConfig } from "./cluster";
@@ -16,6 +16,9 @@ import { toolLabel, workerLabel, type SessionTool, type WorkerTool } from "./ses
 import { readRegistry, isLocalEndpoint } from "./registry";
 import { productName } from "./netSettings";
 import { readChecks } from "./projectChecks";
+import { placeTask, type PlacementMachine } from "./runPlacement";
+import { noteAttempt, readLessons, recordText, saveLessons, workerRecord, type AttemptNote, type Outcome } from "./runLessons";
+import { commitAll, finishBranch, startBranch, workingDiff, type RunGit } from "./runGit";
 
 /**
  * Project runs — hand over a brief; it is planned into tasks, each task is done
@@ -58,8 +61,25 @@ import { readChecks } from "./projectChecks";
  * shared memory — and its work is reviewed from above like anyone's. If it is
  * not accepted the task goes to the normal ladder with all its attempts intact.
  *
- * Not yet (later phases): running tasks on several machines at once, lessons
- * carried between runs, a branch per run.
+ * PHASE 3 — SPREAD OVER THE MACHINES. A run started with "spread" may send an
+ * answer-only task to another machine in the group when that one is less busy
+ * (lib/runPlacement.ts has the rules). Tasks that edit files or must pass checks
+ * stay on the run's own machine: the files are there. The run is still advanced
+ * by one machine; the others only do jobs it asks for, through the same request
+ * channel as any cross-machine session. A machine that does not pick a task up
+ * in time is skipped for that task, and the task goes elsewhere without losing
+ * an attempt.
+ *
+ * PHASE 4 — LESSONS. Every attempt leaves a note on its task (`history`). At
+ * delivery the ones that went wrong become the run's Lessons.md and are added
+ * to the project's lessons file; the next plan for that project is given them,
+ * with each worker's recent record (lib/runLessons.ts).
+ *
+ * PHASE 5 — A BRANCH PER RUN. A run that may edit files, in a git repository
+ * with nothing uncommitted, works on its own branch; each accepted task is a
+ * commit, its reviewer sees the real diff, and at delivery the folder goes back
+ * to the branch it was on (lib/runGit.ts). Tasks that edit files take turns in
+ * the folder, so each one's changes - and its diff - are its own.
  */
 
 export type RunStatus = "planning" | "awaiting_approval" | "running" | "paused" | "delivering" | "done" | "failed" | "stopped";
@@ -105,6 +125,17 @@ export interface RunTask {
   local?: { at: number };
   /** the local model has had its one go at this task */
   triedLocal?: boolean;
+  /** where the current worker runs. Unset on runs from before tasks could move: the run's own machine */
+  host?: string;
+  hostLabel?: string;
+  /** the folder it works in there ("~" = home folder) */
+  folder?: string;
+  /** machines that did not pick this task up in time; it is not sent to them again */
+  avoid?: string[];
+  /** one note per attempt: who, at what tier, where, how it ended (lessons and the record are made from these) */
+  history?: AttemptNote[];
+  /** edit tasks on a run with a branch: what changed on disk, as git saw it when the task went to review */
+  diff?: string;
   /** the job in flight; written before the job is started */
   job?: { id: string; mode: "new" | "reply"; at: number };
   jobIds: string[];
@@ -145,6 +176,14 @@ export interface Run {
   planner: "auto" | "claude" | "hermes" | "codex";
   /** tasks may edit files in the folder; off = every task is answer-only */
   allowEdit: boolean;
+  /** answer-only tasks may run on other machines in the group (phase 3). Unset on older runs = all on `host` */
+  spread?: boolean;
+  /** work on a git branch of its own when the folder allows it (phase 5) */
+  branch?: boolean;
+  /** the branch, once made */
+  git?: RunGit;
+  /** why there is no branch, or where the work ended up */
+  gitNote?: string;
   /** check names this folder offered when the run was created (the commands stay on the machine) */
   checks?: string[];
   status: RunStatus;
@@ -172,6 +211,12 @@ const MAX_RESULT = 30_000;
  * a result has to see all of it — or be told plainly that the cut is ours.
  */
 const DEP_RESULT = 10_000;
+/**
+ * How long a job sent to another machine may wait there without starting before the task is
+ * taken back and placed elsewhere (no attempt is used: the worker never saw it). Through OneDrive
+ * each hop takes one to four minutes, so the vault gets longer.
+ */
+const PICKUP_PATIENCE_MS = { lan: 4 * 60_000, vault: 12 * 60_000 };
 /** Tool-calling rounds a Hermes worker may take, by tier, and how long any worker may run. */
 const HERMES_TURNS: Record<Tier, number> = { routine: 20, standard: 35, hard: 50 };
 const TIME_BUDGET_MS: Record<Tier, number> = { routine: 8 * 60_000, standard: 15 * 60_000, hard: 19 * 60_000 };
@@ -207,6 +252,9 @@ const STATUS_WORD: Record<RunStatus, string> = {
   stopped: "Stopped",
 };
 
+/** A task whose worker runs on another machine than the run's own. */
+const elsewhere = (run: Run, t: RunTask) => !!t.host && t.host !== run.host;
+
 /** The human-readable twin of run.json, for Obsidian. */
 function runMarkdown(run: Run): string {
   const mark = (t: RunTask) => (t.status === "done" ? "x" : " ");
@@ -220,8 +268,9 @@ function runMarkdown(run: Run): string {
     `> A project run by ${productName()}. This note is rewritten as the run moves; the state itself is run.json beside it.`,
     ``,
     `- **Status:** ${STATUS_WORD[run.status]}${run.error ? ` — ${run.error}` : ""}`,
-    `- **Runs on:** ${run.hostLabel} · ${run.folder === "~" ? "home folder" : run.folder}${run.allowEdit ? " · tasks may edit files" : " · answer-only"}`,
+    `- **Runs on:** ${run.hostLabel} · ${run.folder === "~" ? "home folder" : run.folder}${run.allowEdit ? " · tasks may edit files" : " · answer-only"}${run.spread ? " · answer-only tasks may go to other machines" : ""}`,
     `- **Advanced by:** ${run.driverLabel} · planner: ${run.planner}`,
+    ...(run.git ? [`- **Branch:** ${run.git.branch} (from ${run.git.base})${run.git.returned ? " · the folder is back on " + run.git.base : ""}`] : run.gitNote ? [`- **Branch:** none - ${run.gitNote}`] : []),
     `- **Started:** ${new Date(run.createdAt).toLocaleString()}${run.finishedAt ? ` · finished ${new Date(run.finishedAt).toLocaleString()}` : ""}`,
     ``,
     `## Brief`,
@@ -233,7 +282,7 @@ function runMarkdown(run: Run): string {
     ...(run.tasks.length === 0 ? ["_Not planned yet._"] : []),
     ...run.tasks.map(
       (t) =>
-        `- [${mark(t)}] **${t.id} · ${t.title}** — ${t.tier}${t.workTier !== t.tier ? ` → ${t.workTier}` : ""}${t.needsWeb ? " · web" : ""} · ${t.access}${t.dependsOn.length ? ` · after ${t.dependsOn.join(", ")}` : ""}${t.checks?.length ? ` · must pass ${t.checks.join(", ")}` : ""}${t.tool ? ` · ${workerLabel(t.tool)}${t.model ? ` (${t.model})` : ""}` : ""} · ${state(t)}`,
+        `- [${mark(t)}] **${t.id} · ${t.title}** — ${t.tier}${t.workTier !== t.tier ? ` → ${t.workTier}` : ""}${t.needsWeb ? " · web" : ""} · ${t.access}${t.dependsOn.length ? ` · after ${t.dependsOn.join(", ")}` : ""}${t.checks?.length ? ` · must pass ${t.checks.join(", ")}` : ""}${t.tool ? ` · ${workerLabel(t.tool)}${t.model ? ` (${t.model})` : ""}` : ""}${elsewhere(run, t) ? ` on ${t.hostLabel}` : ""} · ${state(t)}`,
     ),
     ...(run.planNote ? [``, `_${run.planNote}_`] : []),
     ``,
@@ -283,7 +332,7 @@ async function writeTaskNote(run: Run, t: RunTask): Promise<void> {
   const md = [
     `# ${t.id} · ${t.title}`,
     ``,
-    `Part of [[Agentic OS/Runs/${run.id}/Run|${run.title}]] · ${t.status}${t.reviewNote ? ` (${t.reviewNote})` : ""} · ${t.attempts} attempt${t.attempts === 1 ? "" : "s"}${t.tool ? ` · ${workerLabel(t.tool)}${t.model ? ` on ${t.model}` : ""}` : ""}`,
+    `Part of [[Agentic OS/Runs/${run.id}/Run|${run.title}]] · ${t.status}${t.reviewNote ? ` (${t.reviewNote})` : ""} · ${t.attempts} attempt${t.attempts === 1 ? "" : "s"}${t.tool ? ` · ${workerLabel(t.tool)}${t.model ? ` on ${t.model}` : ""}` : ""}${t.hostLabel ? ` · ran on ${t.hostLabel}` : ""}`,
     ``,
     `## Task`,
     ``,
@@ -297,6 +346,7 @@ async function writeTaskNote(run: Run, t: RunTask): Promise<void> {
     ...((t.checkResults ?? []).length
       ? [``, `## Checks run by ${productName()}`, ``, ...(t.checkResults ?? []).flatMap((r) => [`**${r.name}** — ${r.ran ? (r.ok ? "passed" : `FAILED (exit code ${r.exitCode ?? "?"})`) : "could not be run"}`, ``, "```", r.summary.trim() || "(no output)", "```", ``])]
       : []),
+    ...(t.diff ? [``, `## What changed on disk (git)`, ``, "```diff", t.diff, "```"] : []),
     ...(t.feedback ? [``, `## Last review`, ``, t.feedback] : []),
     ``,
   ].join("\n");
@@ -346,6 +396,8 @@ export interface CreateInput {
   project?: string;
   planner?: string;
   allowEdit?: boolean;
+  spread?: boolean;
+  branch?: boolean;
 }
 
 export async function createRun(input: CreateInput): Promise<Run> {
@@ -393,6 +445,9 @@ export async function createRun(input: CreateInput): Promise<Run> {
     project: input.project?.slice(0, 80),
     planner,
     allowEdit,
+    spread: input.spread === true,
+    // a branch is made on this machine, in a real folder, for a run whose tasks may edit files
+    branch: allowEdit && host === me() && folder !== "~" && input.branch !== false,
     checks,
     status: "planning",
     createdAt: Date.now(),
@@ -401,7 +456,7 @@ export async function createRun(input: CreateInput): Promise<Run> {
     caps: { ...DEFAULT_CAPS },
   };
   await writeRun(run); // the folder is new, so there is no other writer yet
-  await log(id, `Run created on ${myLabel}; tasks will run on ${hostLabel} in ${folder === "~" ? "its home folder" : folder}.`);
+  await log(id, `Run created on ${myLabel}; tasks will run on ${hostLabel} in ${folder === "~" ? "its home folder" : folder}${run.spread ? ", and answer-only tasks may go to other machines when that one is busy" : ""}.`);
   return run;
 }
 
@@ -430,7 +485,7 @@ function extractJson<T>(text: string): T | null {
   }
 }
 
-function planPrompt(run: Run): string {
+function planPrompt(run: Run, past: { lessons: string; record: string } = { lessons: "", record: "" }): string {
   return [
     `You are planning a project for a team of AI workers run by ${productName()}. Break the brief into tasks.`,
     ``,
@@ -455,6 +510,15 @@ function planPrompt(run: Run): string {
           `- "checks": names from this list that the task's work must pass: ${(run.checks ?? []).join(", ")}. ${productName()} runs them itself in the folder after the worker finishes, so a task that changes code should name the ones that prove it works. Only for "edit" tasks; leave it [] otherwise. Do not invent names.`,
         ]
       : []),
+    ``,
+    ...(past.lessons
+      ? [
+          ``,
+          `WHAT EARLIER RUNS ON THIS PROJECT RAN INTO (use it to choose tiers and write clearer briefs and "accept" lines; do not repeat it back):`,
+          past.lessons,
+        ]
+      : []),
+    ...(past.record ? [``, `HOW WORKERS HAVE DONE RECENTLY (attempts that passed review, by tier; raise a tier where the record is poor):`, past.record] : []),
     ``,
     `Return ONLY a JSON array, nothing before or after it:`,
     `[{"id":"t1","title":"short name","brief":"the full instruction","tier":"routine","needsWeb":false,"access":"answer","dependsOn":[],"accept":"…"${(run.checks ?? []).length ? `,"checks":[]` : ""}}]`,
@@ -485,8 +549,26 @@ function workPrompt(run: Run, t: RunTask, opts: { local?: boolean } = {}): strin
     // A local model read "followed by what you produced" as "repeat it all" and was rejected for a duplicated answer
     opts.local
       ? `- Give your full answer once. Then end with ONE line starting "RESULT:" that says in one sentence what you produced. Do not repeat the answer after it.`
-      : `- End with a line "RESULT:" followed by what you produced${t.access === "edit" ? " and the paths of any files you changed" : ""}.`,
+      : `- After your work, end with a separate line starting "RESULT:" that says what you produced${t.access === "edit" ? " and the paths of any files you changed" : ""}. Keep it on its own line, never inside the deliverable.`,
   ].join("\n");
+}
+
+/**
+ * What a task's result is after a rework reply.
+ *
+ * A task that EDITS FILES: the work is on disk and the reply usually describes only the fix, so
+ * keep what the worker said before it - or the next reviewer sees "I added the VERSION file" and
+ * no sign of the actual task.
+ *
+ * An ANSWER task: the text is the deliverable and the rework prompt asks for the complete
+ * corrected result, so it replaces the old one. Appending it gave the reviewer two copies of a
+ * poem, which it rejected as eight lines instead of four. Only a reply far shorter than the old
+ * result - a description of a fix rather than the result - is appended instead.
+ */
+function afterRework(t: RunTask, before: string, reply: string): string {
+  const appended = `${before}\n\n--- After the review, the worker added ---\n\n${reply}`;
+  if (t.access === "edit") return appended;
+  return before.length > 400 && reply.length < before.length * 0.4 ? appended : reply;
 }
 
 function reworkPrompt(t: RunTask): string {
@@ -497,11 +579,13 @@ function reworkPrompt(t: RunTask): string {
     ``,
     `What "done" means: ${t.accept}`,
     ``,
-    `Fix it and give the complete corrected result (not a list of changes). If you cannot, start with "BLOCKED:" and say why. End with a line "RESULT:".`,
+    t.access === "edit"
+      ? `Fix it in the files, then say what you changed. If you cannot, start with "BLOCKED:" and say why. End with a separate line starting "RESULT:".`
+      : `Fix it and give the complete corrected result, the whole thing once (not a list of changes): it replaces your earlier answer. If you cannot, start with "BLOCKED:" and say why. End with a separate line starting "RESULT:".`,
   ].join("\n");
 }
 
-function reviewPrompt(run: Run, t: RunTask): string {
+function reviewPrompt(run: Run, t: RunTask, diff = ""): string {
   return [
     `You are the reviewer in a team of AI workers. Be strict and specific.`,
     ``,
@@ -519,11 +603,14 @@ function reviewPrompt(run: Run, t: RunTask): string {
         ]
       : []),
     ``,
+    ...(diff ? [``, `WHAT CHANGED ON DISK during this task, measured by ${productName()} with git (evidence, not the worker's description):`, "```diff", diff, "```"] : []),
+    ``,
     `The worker's output${(t.result ?? "").length >= MAX_RESULT ? ` (the system kept only the first ${MAX_RESULT.toLocaleString()} characters; a cut at the very end is ours, not the worker's)` : ""}:`,
     `---`,
     t.result ?? "",
     `---`,
     ``,
+    `The worker was told to end with a line starting "RESULT:" that sums up what it produced. That line is the system's marker, not part of the deliverable: never reject the work because of it, and if part of the deliverable sits on that line, read it as the deliverable.`,
     `Judge the output against what "done" means and what the worker was told - nothing else. Do not reject it for failing a standard nobody set, and do not ask for polish beyond what the task needs: a rejection costs a whole new attempt.`,
     ...(t.access === "edit" && run.host === me() && run.folder !== "~"
       ? [`You are in the project's folder. READ the files this task was meant to change and judge what is actually on disk, not the worker's description of it. You cannot run commands or change files, and do not need to: any check listed above was already run for you.`]
@@ -569,6 +656,9 @@ interface Worker {
   /** tool "local": which registry entry */
   agent?: string;
   why: string;
+  host: string;
+  hostLabel: string;
+  folder: string;
 }
 
 interface LocalModel {
@@ -597,7 +687,8 @@ function fitsLocal(run: Run, t: RunTask): boolean {
  * every routine task would otherwise lose a pass finding that out.
  */
 async function localWorker(run: Run): Promise<LocalModel | null> {
-  if (run.host !== me()) return null;
+  // the local model is THIS machine's; a task it does needs no folder, so a spreading run may use it wherever it works
+  if (run.host !== me() && !run.spread) return null;
   if ((await readWorkerModelSettings()).local === false) return null;
   const llm = (await readRegistry()).llms.find((l) => isLocalEndpoint(l.baseUrl) && !l.apiKey && l.model);
   if (!llm) return null;
@@ -622,41 +713,80 @@ function inLocalTurn<T>(work: () => Promise<T>): Promise<T> {
 }
 
 /**
- * The cheapest worker that fits the task, on the machine the run uses.
+ * The cheapest worker that fits the task, and where it runs.
  *   routine  → the local model for a small text-only task, if this machine has one;
  *              then Hermes on a free Nous model, then Codex, then Claude
  *   standard → Codex, then Claude
  *   hard     → Claude, then Codex
- * A tool whose subscription has hit its limit is skipped; a tool that machine
- * doesn't have is skipped. Claude is the one tool every machine is assumed to have.
+ * A tool whose subscription has hit its limit is skipped; a tool no eligible
+ * machine has is skipped. On a spreading run the machine is chosen too
+ * (lib/runPlacement.ts); otherwise it is the run's own. Claude on the run's
+ * machine is the last resort, as before machines could be chosen.
  */
-async function chooseWorker(run: Run, t: RunTask, subs: SubscriptionMeter[], local: LocalModel | null): Promise<Worker> {
+async function chooseWorker(run: Run, t: RunTask, machines: PlacementMachine[], local: LocalModel | null): Promise<Worker> {
   if (local && fitsLocal(run, t)) {
-    return { tool: "local", agent: local.id, model: local.model, why: `routine text-only task → the local model on this machine (${local.model}: free, uses no subscription, nothing leaves the PC)` };
+    return { tool: "local", agent: local.id, model: local.model, host: me(), hostLabel: run.driverLabel, folder: "~", why: `routine text-only task → the local model on ${run.driverLabel} (${local.model}: free, uses no subscription, nothing leaves the PC)` };
   }
-  const meter = (tool: SessionTool) => subs.find((s) => s.tool === tool);
-  const usable = (tool: SessionTool) => {
-    const m = meter(tool);
-    if (tool === "claude") return m?.status !== "limited";
-    return !!m && m.status !== "not_set_up" && m.status !== "limited";
-  };
   const order: SessionTool[] = t.workTier === "routine" ? ["hermes", "codex", "claude"] : t.workTier === "standard" ? ["codex", "claude"] : ["claude", "codex"];
-  const tool = order.find(usable) ?? "claude";
-  const skipped = order.slice(0, order.indexOf(tool)).map(toolLabel);
-  const note = skipped.length ? ` (${skipped.join(", ")} not available there)` : "";
+  const pinned = !run.spread || t.access === "edit" || (t.checks ?? []).length > 0;
+  const place = placeTask(machines, { tools: order, pinned, avoid: t.avoid }) ?? { tool: "claude" as SessionTool, host: run.host, label: run.hostLabel, folder: run.folder, home: true, why: "on the run's machine", skipped: order.filter((x) => x !== "claude") };
+  const tool = place.tool;
+  const where = { host: place.host, hostLabel: place.label, folder: place.folder };
+  const note = place.skipped.length ? ` (${place.skipped.map(toolLabel).join(", ")} not available${run.spread ? "" : " there"})` : "";
+  const at = run.spread ? `, ${place.why}` : "";
 
   if (tool === "hermes") {
     const pick = await pickHermesModel({ needsWeb: t.needsWeb });
     // each retry at this tier moves one model down the list: free tiers are rate-limited
     const model = t.attemptsAtTier > 0 ? (pick.fallbacks[t.attemptsAtTier - 1] ?? pick.model) : pick.model;
-    return { tool, model, web: t.needsWeb, why: `${t.workTier} task → Hermes, ${model === pick.model ? pick.why : "next-cheapest model after a failed attempt"}${t.needsWeb ? "" : ", no web access needed"}` };
+    return { tool, model, web: t.needsWeb, ...where, why: `${t.workTier} task → Hermes, ${model === pick.model ? pick.why : "next-cheapest model after a failed attempt"}${t.needsWeb ? "" : ", no web access needed"}${at}` };
   }
   if (tool === "claude") {
     // within the Claude plan too, the small model for small work: it spends far less of the quota
     const model = t.workTier === "routine" ? "haiku" : t.workTier === "standard" ? "sonnet" : undefined;
-    return { tool, model, why: `${t.workTier} task → Claude${model ? ` (${model})` : ""}${note}` };
+    return { tool, model, ...where, why: `${t.workTier} task → Claude${model ? ` (${model})` : ""}${note}${at}` };
   }
-  return { tool, why: `${t.workTier} task → ${toolLabel(tool)} on its subscription${note}` };
+  return { tool, ...where, why: `${t.workTier} task → ${toolLabel(tool)} on its subscription${note}${at}` };
+}
+
+type SessionLite = { host: string; status: string; project?: string; folder?: string; cwd: string; updatedAt: number };
+type RemoteLite = { host: string; label: string; stale: boolean; via: "lan" | "vault"; acceptsReplies: "off" | "answer" | "edit"; runWorker?: number; subscriptions: SubscriptionMeter[] };
+
+/**
+ * The facts placement needs about every machine, from data the step has already read.
+ * "Busy" is the larger of what that machine reports running and the jobs this machine has
+ * in flight there (a job's session shows up in both, so adding them would count it twice).
+ */
+function placementMachines(run: Run, mySubs: SubscriptionMeter[], sessions: SessionLite[], remote: RemoteLite[], jobs: SessionJob[]): PlacementMachine[] {
+  const busyOn = (host: string) =>
+    Math.max(
+      sessions.filter((s) => s.host === host && (s.status === "running" || s.status === "waiting")).length,
+      jobs.filter((j) => j.host === host && (j.status === "queued" || j.status === "sent" || j.status === "running") && (j.mode === "new" || j.mode === "reply")).length,
+    );
+  const folderOn = (host: string): string | undefined => {
+    if (host === run.host) return run.folder;
+    if (run.folder === "~") return "~";
+    if (!run.project) return undefined;
+    const s = sessions.filter((x) => x.host === host && x.project === run.project && (x.folder || x.cwd)).sort((a, b) => b.updatedAt - a.updatedAt)[0];
+    return s ? s.folder || s.cwd : undefined;
+  };
+  return [
+    { host: me(), label: run.driverLabel, home: run.host === me(), online: true, via: "self", accepts: "edit", runWorker: true, subs: mySubs, busy: busyOn(me()), folder: folderOn(me()) },
+    ...remote.map(
+      (m): PlacementMachine => ({
+        host: m.host,
+        label: m.label,
+        home: m.host === run.host,
+        online: !m.stale,
+        via: m.via,
+        accepts: m.acceptsReplies,
+        runWorker: (m.runWorker ?? 0) >= 1,
+        subs: m.subscriptions,
+        busy: busyOn(m.host),
+        folder: folderOn(m.host),
+      }),
+    ),
+  ];
 }
 
 /** Review from above: a routine task is checked by a subscription tool, everything else by Claude. */
@@ -714,12 +844,13 @@ async function plan(id: string): Promise<void> {
   // In the project's folder and read-only: the planner can look at what is there before it plans,
   // and cannot change anything or stall on a permission prompt. (Local runs with a real folder only.)
   const look = { cwd: run.host === me() && run.folder !== "~" ? run.folder : undefined, readOnly: true };
-  let r = await runAgentText(agent, planPrompt(run), { injectMemory: true, ...look });
+  const past = { lessons: await readLessons(run).catch(() => ""), record: recordText(workerRecord(await listRuns(40).catch(() => []))) };
+  let r = await runAgentText(agent, planPrompt(run, past), { injectMemory: true, ...look });
   let note: string | undefined;
   if (r.error && agent !== "claude") {
     note = `The ${run.planner} planner failed (${r.error.slice(0, 120)}); Claude planned instead.`;
     agent = "claude";
-    r = await runAgentText(agent, planPrompt(run), { injectMemory: true, ...look });
+    r = await runAgentText(agent, planPrompt(run, past), { injectMemory: true, ...look });
   }
   if (r.error) {
     await withRun(id, (x) => {
@@ -790,7 +921,7 @@ async function plan(id: string): Promise<void> {
     x.approvalId = approval?.id;
     x.status = "awaiting_approval";
   });
-  await log(id, `Planned by ${agent}: ${summary}`);
+  await log(id, `Planned by ${agent}${past.lessons ? ", with lessons from earlier runs on this project" : ""}: ${summary}`);
 }
 
 async function checkApproval(id: string): Promise<void> {
@@ -800,13 +931,18 @@ async function checkApproval(id: string): Promise<void> {
   if (!a || a.status === "pending") return;
   if (a.status === "approved") {
     const board = await boardAdd(run.title);
+    // the branch comes first: the first edit task must already be working on it
+    const br = run.branch && run.host === me() && run.tasks.some((t) => t.access === "edit") ? await startBranch(run.folder, run.id) : null;
     await withRun(id, (x) => {
       if (x.status !== "awaiting_approval") return;
       x.status = "running";
       x.startedAt = Date.now();
       x.boardTaskId = board;
+      if (br && "git" in br) x.git = br.git;
+      else if (br) x.gitNote = `no branch: ${br.skip}`;
     });
     await log(id, `Plan approved by ${a.resolvedBy ?? "you"}.`);
+    if (br) await log(id, "git" in br ? `Working on a new branch, ${br.git.branch} (from ${br.git.base}). Each accepted task will be a commit there.` : `No branch for this run: ${br.skip}. Tasks work in the folder as it is.`);
   } else {
     await withRun(id, (x) => {
       if (x.status !== "awaiting_approval") return;
@@ -819,7 +955,8 @@ async function checkApproval(id: string): Promise<void> {
 }
 
 /** After a failed attempt: same worker again, one tier up, or give up. */
-function afterFailure(run: Run, t: RunTask, reason: string): string {
+function afterFailure(run: Run, t: RunTask, reason: string, outcome: Outcome = "error"): string {
+  noteAttempt(t, outcome, reason);
   if (t.tool === "local") {
     // The local model's go is free and takes seconds, so it does not use up one of the task's
     // attempts: the task goes to the normal ladder, which still has its full number of tries.
@@ -829,6 +966,7 @@ function afterFailure(run: Run, t: RunTask, reason: string): string {
     t.tool = undefined;
     t.agent = undefined;
     t.model = undefined;
+    t.host = t.hostLabel = t.folder = undefined;
     t.status = "pending";
     return `${t.id}: the local model's attempt was not accepted → handing it to a subscription worker: ${reason}`;
   }
@@ -883,7 +1021,7 @@ async function localWork(id: string, taskId: string): Promise<void> {
     else if (!r.text) line = afterFailure(run, t, "the local model returned nothing");
     else if (/^\s*BLOCKED:/i.test(r.text)) {
       t.result = clip(r.text, MAX_RESULT);
-      line = afterFailure(run, t, `the local model was blocked: ${r.text.replace(/\s+/g, " ").slice(8, 160)}`);
+      line = afterFailure(run, t, `the local model was blocked: ${r.text.replace(/\s+/g, " ").slice(8, 160)}`, "blocked");
     } else {
       t.result = clip(r.text, MAX_RESULT);
       t.reviewTries = 0;
@@ -900,7 +1038,14 @@ async function review(id: string, taskId: string): Promise<void> {
   const t = run?.tasks.find((x) => x.id === taskId);
   if (!run || !t || t.status !== "review") return;
   const who = reviewerFor(t);
-  const r = await runAgentText(who.agent, reviewPrompt(run, t), { injectMemory: false, cwd: run.host === me() && run.folder !== "~" ? run.folder : undefined, readOnly: true });
+  const diff = run.git && t.access === "edit" && run.host === me() ? await workingDiff(run.folder).catch(() => "") : "";
+  if (diff) {
+    await withRun(id, (x) => {
+      const task = x.tasks.find((y) => y.id === taskId);
+      if (task) task.diff = diff.slice(0, 4000);
+    });
+  }
+  const r = await runAgentText(who.agent, reviewPrompt(run, t, diff), { injectMemory: false, cwd: run.host === me() && run.folder !== "~" ? run.folder : undefined, readOnly: true });
   const verdict = r.error ? null : extractJson<{ pass?: boolean; feedback?: string }>(r.text);
   let line = "";
   const after = await withRun(id, (x) => {
@@ -912,12 +1057,14 @@ async function review(id: string, taskId: string): Promise<void> {
       if (task.reviewTries < 2) return null;
       task.status = "done";
       task.reviewNote = `not reviewed (${who.name} could not review it${r.error ? `: ${r.error.slice(0, 80)}` : ""})`;
+      noteAttempt(task, "unreviewed", task.reviewNote);
       task.finishedAt = Date.now();
       line = `${task.id} accepted WITHOUT a review: the reviewer failed twice.`;
       return task;
     }
     task.reviewedBy = who.name;
     if (verdict.pass) {
+      noteAttempt(task, "passed", `by ${who.name}`);
       task.status = "done";
       task.feedback = undefined;
       task.finishedAt = Date.now();
@@ -925,15 +1072,33 @@ async function review(id: string, taskId: string): Promise<void> {
       return task;
     }
     task.feedback = String(verdict.feedback ?? "Not good enough yet: improve it and try again.").slice(0, 1200);
-    line = afterFailure(x, task, `review by ${who.name}: ${task.feedback.slice(0, 140)}`);
+    line = afterFailure(x, task, `review by ${who.name}: ${task.feedback.slice(0, 140)}`, "rejected");
     // afterFailure() may have changed the status; TypeScript still sees the value it narrowed to above
     return (task.status as TaskStatus) === "failed" ? task : null;
   });
   if (line) await log(id, line);
   if (after) {
+    await settleGit(id, taskId);
     const fresh = await readRun(id);
     if (fresh) await writeTaskNote(fresh, after);
   }
+}
+
+/**
+ * An edit task on a run with a branch has settled: commit what it left in the folder - as the
+ * task's commit when it was accepted, labelled "not accepted" when it failed for good, so the
+ * next task starts from a clean folder and its diff is its own.
+ */
+async function settleGit(id: string, taskId: string): Promise<void> {
+  const run = await readRun(id);
+  const t = run?.tasks.find((x) => x.id === taskId);
+  if (!run?.git || run.git.returned || !t || t.access !== "edit" || run.host !== me() || (t.status !== "done" && t.status !== "failed")) return;
+  const accepted = t.status === "done";
+  const c = await commitAll(run.folder, run.git, `${accepted ? "" : "[not accepted] "}${t.id}: ${t.title}\n\nProject run "${run.title}"${t.tool ? ` · ${workerLabel(t.tool)}` : ""}${t.reviewNote ? ` · ${t.reviewNote}` : t.reviewedBy ? ` · reviewed by ${t.reviewedBy}` : ""}`);
+  if (c.sha) {
+    await withRun(id, (x) => void x.git?.commits.push({ task: t.id, sha: c.sha!, accepted }));
+    await log(id, `${t.id}: committed as ${c.sha} on ${run.git.branch}${accepted ? "" : " (not accepted, kept for a look)"}.`);
+  } else if (c.error) await log(id, `${t.id}: ${c.error}`);
 }
 
 async function deliver(id: string): Promise<void> {
@@ -950,6 +1115,15 @@ async function deliver(id: string): Promise<void> {
   }
   const ok = done.length > 0;
   const unreviewed = run.tasks.filter((t) => t.reviewNote);
+  const branch = run.git && !run.git.returned && run.host === me() ? await finishBranch(run.folder, run.git).catch((e: Error) => ({ note: `Could not finish the branch: ${e.message}`, returned: false })) : null;
+  if (branch) {
+    await withRun(id, (x) => {
+      if (x.git) x.git.returned = branch.returned;
+      x.gitNote = branch.note;
+    });
+    await log(id, branch.note);
+  }
+  const where = branch?.note ?? (run.git ? run.gitNote : undefined);
   const proven = run.tasks.filter((t) => t.status === "done" && (t.checkResults ?? []).some((r) => r.ran && r.ok) && (t.checkResults ?? []).every((r) => r.ran && r.ok));
   const evidence =
     proven.length > 0
@@ -964,11 +1138,12 @@ async function deliver(id: string): Promise<void> {
     ``,
     body.trim() || "_Nothing was produced: every task failed._",
     ``,
+    ...(where ? [`## Where the work is`, ``, where, ``] : []),
     `## Tasks`,
     ``,
     ...run.tasks.map((t) => {
       const tries = t.attempts + (t.status === "done" ? 1 : 0);
-      const worker = t.tool ? ` · done by ${workerLabel(t.tool)}${t.model ? ` (${t.model})` : ""}${t.workTier !== t.tier ? `, moved up from ${t.tier} to ${t.workTier}` : ""}` : "";
+      const worker = t.tool ? ` · done by ${workerLabel(t.tool)}${t.model ? ` (${t.model})` : ""}${elsewhere(run, t) ? ` on ${t.hostLabel}` : ""}${t.workTier !== t.tier ? `, moved up from ${t.tier} to ${t.workTier}` : ""}` : "";
       const results = t.checkResults ?? [];
       const checksLine = results.length ? ` · checks: ${results.map((r) => `${r.name} ${r.ran ? (r.ok ? "passed" : "FAILED") : "not run"}`).join(", ")}` : "";
       const review = `${checksLine}${t.reviewNote ? ` · ${t.reviewNote}` : t.reviewedBy ? ` · reviewed by ${t.reviewedBy}` : ""}`;
@@ -977,6 +1152,7 @@ async function deliver(id: string): Promise<void> {
     ``,
   ].join("\n");
   await fsp.writeFile(path.join(dirOf(id), "Delivery.md"), md, "utf8").catch(() => {});
+  await saveLessons(run, dirOf(id));
   await withRun(id, (x) => {
     if (x.status !== "delivering") return;
     x.status = ok ? "done" : "failed";
@@ -988,7 +1164,7 @@ async function deliver(id: string): Promise<void> {
   await log(id, ok ? `Delivered: ${done.length} of ${run.tasks.length} tasks done.` : "Run failed: no task produced a result.");
   void sendTelegram(
     ok
-      ? `🧭 Run finished: "${run.title.slice(0, 100)}"\n${done.length} of ${run.tasks.length} tasks done${failed.length ? ` (${failed.length} failed)` : ""}${unreviewed.length ? ` · ${unreviewed.length} not reviewed` : ""}. Delivery is in the vault.\n\n${body.slice(0, 500)}`
+      ? `🧭 Run finished: "${run.title.slice(0, 100)}"\n${done.length} of ${run.tasks.length} tasks done${failed.length ? ` (${failed.length} failed)` : ""}${unreviewed.length ? ` · ${unreviewed.length} not reviewed` : ""}. Delivery is in the vault.${where ? `\n\n${where}` : ""}\n\n${body.slice(0, 500)}`
       : `🧭❌ Run failed: "${run.title.slice(0, 100)}" — no task produced a result.`,
   ).catch(() => {});
 }
@@ -999,8 +1175,8 @@ async function step(id: string): Promise<void> {
   if (!run0 || run0.status !== "running") return;
   const jobs = await listJobs();
   const snap = await sessionsSnapshot();
-  const { remote } = await mergeRemoteSessions(snap.sessions);
-  const subs: SubscriptionMeter[] = run0.host === me() ? snap.subscriptions : ((remote.find((r) => r.host === run0.host)?.subscriptions as SubscriptionMeter[] | undefined) ?? []);
+  const { sessions, remote } = await mergeRemoteSessions(snap.sessions);
+  const machines = placementMachines(run0, snap.subscriptions, sessions, remote, jobs);
 
   // decide which workers ready tasks get BEFORE taking the lock (it may fetch the Nous price list)
   const ready = run0.tasks.filter((t) => t.status === "pending" && t.dependsOn.every((d) => run0.tasks.find((x) => x.id === d)?.status === "done"));
@@ -1009,11 +1185,16 @@ async function step(id: string): Promise<void> {
   for (const t of ready) {
     if (t.sessionKey && t.feedback) continue;
     if (local === undefined && fitsLocal(run0, t)) local = await localWorker(run0);
-    picks.set(t.id, await chooseWorker(run0, t, subs, local ?? null));
+    const w = await chooseWorker(run0, t, machines, local ?? null);
+    picks.set(t.id, w);
+    // the next ready task in this pass sees that machine one busier, so two tasks don't pile onto one idle machine
+    const m = w.tool === "local" ? undefined : machines.find((x) => x.host === w.host);
+    if (m) m.busy++;
   }
 
   const lines: string[] = [];
   const overdue: string[] = [];
+  const abandoned: string[] = [];
   const checksToStart: { taskId: string; jobId: string; name: string }[] = [];
   const toStart: { task: RunTask; mode: "new" | "reply"; prompt: string }[] = [];
   const settled: RunTask[] = [];
@@ -1030,27 +1211,39 @@ async function step(id: string): Promise<void> {
           if (Date.now() - t.job.at > 90_000) toStart.push({ task: t, mode: t.job.mode, prompt: t.job.mode === "reply" ? reworkPrompt(t) : workPrompt(run, t) });
           continue;
         }
+        // A job sent to another machine that has not started there in time: that machine is off,
+        // asleep, full or not syncing. Take the task back and place it elsewhere; the worker never
+        // saw it, so no attempt is used. (Not for the run's own machine: there is nowhere else to go.)
+        const patience = PICKUP_PATIENCE_MS[job.via === "lan" ? "lan" : "vault"];
+        if (job.status === "sent" && job.host !== me() && job.host !== run.host && Date.now() - job.createdAt > patience) {
+          overdue.push(job.id); // the stop travels the same way, after the request, in case it arrives late
+          abandoned.push(job.id);
+          noteAttempt(t, "not picked up", `${job.hostLabel}, ${Math.round(patience / 60_000)} minutes`);
+          t.avoid = [...new Set([...(t.avoid ?? []), job.host])];
+          if (t.job.mode === "reply") t.sessionKey = undefined; // that session lives over there
+          t.job = undefined;
+          t.host = t.hostLabel = t.folder = undefined;
+          t.status = "pending";
+          lines.push(`${t.id}: ${job.hostLabel} did not start it within ${Math.round(patience / 60_000)} minutes → placing it on another machine (no attempt used).`);
+          continue;
+        }
         // A worker that is still going past its tier's time budget is stopped and counted as a
         // failed attempt, so the task moves to another model or up a tier instead of sitting there.
         if (job.status === "running" && job.startedAt && Date.now() - job.startedAt > TIME_BUDGET_MS[t.workTier]) {
           overdue.push(job.id);
-          lines.push(afterFailure(run, t, `${workerLabel(t.tool ?? "claude")} was still working after ${Math.round(TIME_BUDGET_MS[t.workTier] / 60_000)} minutes and was stopped`));
+          lines.push(afterFailure(run, t, `${workerLabel(t.tool ?? "claude")} was still working after ${Math.round(TIME_BUDGET_MS[t.workTier] / 60_000)} minutes and was stopped`, "timed out"));
           if ((t.status as TaskStatus) === "failed") settled.push(t);
           continue;
         }
         if (job.status === "done") {
           let text = (job.reply ?? "").trim();
-          // A reply to a review usually describes only the fix. Keep what the worker said before it,
-          // or the next reviewer sees "I added the VERSION file" and no sign of the actual task.
-          if (text && t.job?.mode === "reply" && t.result?.trim() && !/^\s*BLOCKED:/i.test(text)) {
-            text = `${t.result.trim()}\n\n--- After the review, the worker added ---\n\n${text}`;
-          }
+          if (text && t.job?.mode === "reply" && t.result?.trim() && !/^\s*BLOCKED:/i.test(text)) text = afterRework(t, t.result.trim(), text);
           if (job.resultKey) t.sessionKey = job.resultKey;
           t.job = undefined;
           if (!text) lines.push(afterFailure(run, t, "the worker returned nothing"));
           else if (/^\s*BLOCKED:/i.test(text)) {
             t.result = clip(text, MAX_RESULT);
-            lines.push(afterFailure(run, t, `the worker was blocked: ${text.replace(/\s+/g, " ").slice(8, 160)}`));
+            lines.push(afterFailure(run, t, `the worker was blocked: ${text.replace(/\s+/g, " ").slice(8, 160)}`, "blocked"));
           } else {
             t.result = clip(text, MAX_RESULT);
             t.reviewTries = 0;
@@ -1083,7 +1276,7 @@ async function step(id: string): Promise<void> {
         if (!ok) {
           // the worker is sent the command's own words, not a paraphrase
           t.feedback = `${productName()} ran the check "${name}" itself after your work, and it FAILED: ${job.error ?? "it did not pass"}\n\nThe end of its output:\n${(job.reply ?? "(no output)").slice(-2500)}`;
-          lines.push(afterFailure(run, t, `the check "${name}" failed (${(job.error ?? "did not pass").slice(0, 100)})`));
+          lines.push(afterFailure(run, t, `the check "${name}" failed (${(job.error ?? "did not pass").slice(0, 100)})`, "check failed"));
           if ((t.status as TaskStatus) === "failed") settled.push(t);
           continue;
         }
@@ -1114,8 +1307,13 @@ async function step(id: string): Promise<void> {
     }
 
     // 3. start what is ready
+    // Tasks that edit files take turns: one holds the folder from its first start until it is done
+    // or has failed, rework included. Two workers editing one folder at once could undo each other,
+    // and neither's diff or commit would be its own.
+    const holdsFolder = (o: RunTask) => o.access === "edit" && o.status !== "done" && o.status !== "failed" && (o.status !== "pending" || o.startedAt !== undefined);
     for (const t of run.tasks) {
       if (t.status !== "pending" || !t.dependsOn.every((d) => byId(d)?.status === "done")) continue;
+      if (t.access === "edit" && run.tasks.some((o) => o !== t && holdsFolder(o))) continue;
       const reply = !!(t.sessionKey && t.feedback);
       if (!reply) {
         const w = picks.get(t.id);
@@ -1124,6 +1322,9 @@ async function step(id: string): Promise<void> {
         t.model = w.model;
         t.why = w.why;
         t.agent = w.agent;
+        t.host = w.host;
+        t.hostLabel = w.hostLabel;
+        t.folder = w.folder;
         if (w.tool === "local") {
           // no job: the call is made after this is written, and made again if the server restarts meanwhile
           t.triedLocal = true;
@@ -1141,7 +1342,7 @@ async function step(id: string): Promise<void> {
       t.status = "running";
       t.startedAt ??= Date.now();
       toStart.push({ task: { ...t }, mode: t.job.mode, prompt: reply ? reworkPrompt(t) : workPrompt(run, t) });
-      lines.push(reply ? `${t.id} sent back to the same ${workerLabel(t.tool ?? "claude")} session with the review.` : `${t.id} started: ${t.why}.`);
+      lines.push(reply ? `${t.id} sent back to the same ${workerLabel(t.tool ?? "claude")} session${elsewhere(run, t) ? ` on ${t.hostLabel}` : ""} with the review.` : `${t.id} started: ${t.why}.`);
     }
 
     // 4. nothing left to do → deliver
@@ -1150,8 +1351,10 @@ async function step(id: string): Promise<void> {
   });
   for (const l of lines) await log(id, l);
   for (const jobId of overdue) await startJob({ mode: "stop", jobId }).catch(() => {});
+  for (const jobId of abandoned) await abandonRemoteJob(jobId, "Not started there in time; the project run placed the task elsewhere.").catch(() => {});
   if (!state) return;
   for (const t of settled) await writeTaskNote(state, t);
+  for (const t of settled) if (t.access === "edit" && state.git) await settleGit(id, t.id);
   for (const t of state.tasks) if (t.status === "review") detach(`${id}:review:${t.id}`, () => review(id, t.id));
   for (const t of state.tasks) if (t.status === "running" && t.local) detach(`${id}:local:${t.id}`, () => localWork(id, t.id));
 
@@ -1178,8 +1381,8 @@ async function step(id: string): Promise<void> {
     try {
       const job = await startJob(
         s.mode === "reply"
-          ? { mode: "reply", id: t.job.id, key: t.sessionKey, prompt: s.prompt, access: t.access, model: t.tool === "hermes" ? t.model : undefined, web: t.tool === "hermes" ? t.needsWeb : undefined, maxTurns: t.tool === "hermes" ? HERMES_TURNS[t.workTier] : undefined }
-          : { mode: "new", id: t.job.id, host: state.host, folder: state.folder, tool: t.tool, project: state.project, prompt: s.prompt, access: t.access, model: t.model, web: t.tool === "hermes" ? t.needsWeb : undefined, maxTurns: t.tool === "hermes" ? HERMES_TURNS[t.workTier] : undefined, dispatch: `run ${state.title.slice(0, 60)} · ${t.id}` },
+          ? { mode: "reply", id: t.job.id, key: t.sessionKey, host: t.host ?? state.host, folder: t.folder ?? state.folder, prompt: s.prompt, access: t.access, model: t.tool === "hermes" ? t.model : undefined, web: t.tool === "hermes" ? t.needsWeb : undefined, maxTurns: t.tool === "hermes" ? HERMES_TURNS[t.workTier] : undefined }
+          : { mode: "new", id: t.job.id, host: t.host ?? state.host, folder: t.folder ?? state.folder, tool: t.tool, project: state.project, prompt: s.prompt, access: t.access, model: t.model, web: t.tool === "hermes" ? t.needsWeb : undefined, maxTurns: t.tool === "hermes" ? HERMES_TURNS[t.workTier] : undefined, dispatch: `run ${state.title.slice(0, 60)} · ${t.id}` },
       );
       // a refusal comes back as an error job, picked up on the next pass like any other failure
       void job;
@@ -1233,12 +1436,12 @@ async function applyCommands(id: string): Promise<void> {
         run.status = "stopped";
         run.error = `Stopped by ${by}.`;
         run.finishedAt = Date.now();
-        return { running, board: run.boardTaskId };
+        return { running, board: run.boardTaskId, git: run.git && !run.git.returned ? run.git : undefined };
       });
       if (stopped) {
         for (const jobId of stopped.running) await startJob({ mode: "stop", jobId }).catch(() => {});
         await boardFinish(stopped.board, false);
-        await log(id, `Stopped by ${by}.`);
+        await log(id, `Stopped by ${by}.${stopped.git ? ` The folder is still on the run's branch ${stopped.git.branch}; its accepted tasks are committed there. To go back: git switch ${stopped.git.base}.` : ""}`);
       }
     }
   }

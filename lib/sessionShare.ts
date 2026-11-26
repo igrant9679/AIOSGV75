@@ -44,7 +44,16 @@ export interface SharedSessionsFile {
   /** LAN summaries only: what its open sessions are doing, and recent session events */
   live?: LiveSession[];
   events?: SessionEvent[];
+  /**
+   * Which project-run work it can take (RUN_WORKER). Missing = an older version, which may ignore
+   * a run's model choice and turn cap (a Hermes task there could run on a paid model, unleashed),
+   * so runs never place tasks on it.
+   */
+  runWorker?: number;
 }
+
+/** Version of the run-worker contract this build honours: model, web and turn cap on a job, and the pickup rules in lib/runs.ts. */
+export const RUN_WORKER = 1;
 
 export interface RemoteMachine {
   via: "lan" | "vault";
@@ -55,6 +64,7 @@ export interface RemoteMachine {
   sessions: number;
   subscriptions: SubscriptionMeter[];
   acceptsReplies: RemoteReplies;
+  runWorker?: number;
 }
 
 const PUBLISH_EVERY_MS = 5 * 60_000;
@@ -175,7 +185,7 @@ export function shareNow(): Promise<ShareResult> {
     const local = snap.sessions.filter((s) => !s.indexing);
 
     const file = fileFor(os.hostname());
-    const body = { sessions: local.slice(0, MAX_SESSIONS).map(slim), subscriptions: snap.subscriptions, acceptsReplies: settings.remoteReplies };
+    const body = { sessions: local.slice(0, MAX_SESSIONS).map(slim), subscriptions: snap.subscriptions, acceptsReplies: settings.remoteReplies, runWorker: RUN_WORKER };
     const hash = crypto.createHash("sha1").update(JSON.stringify(body)).digest("hex");
     const prev = await fsp.readFile(file, "utf8").then((t) => JSON.parse(t) as SharedSessionsFile & { hash?: string }).catch(() => null);
     let summaries: ShareResult["summaries"] = "unchanged";
@@ -231,6 +241,7 @@ export async function localSummary(): Promise<SharedSessionsFile> {
     sessions: snap.sessions.filter((s) => !s.indexing).slice(0, MAX_SESSIONS).map(slim),
     subscriptions: snap.subscriptions,
     acceptsReplies: settings.remoteReplies,
+    runWorker: RUN_WORKER,
     via: "lan",
     live: await liveSnapshot().catch(() => []),
     events: await ownEvents(80).catch(() => []),
@@ -319,6 +330,7 @@ export async function mergeRemoteSessions(local: SessionSummary[]): Promise<Merg
       sessions: f.sessions.length,
       subscriptions: f.subscriptions ?? [],
       acceptsReplies: f.acceptsReplies ?? "off",
+      runWorker: typeof f.runWorker === "number" ? f.runWorker : undefined,
     });
     for (const raw of f.sessions) {
       const s: SessionSummary = { ...raw, host: f.host };

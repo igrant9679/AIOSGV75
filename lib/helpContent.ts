@@ -205,13 +205,20 @@ export const PAGE_HELP: Record<string, PageHelp> = {
     what: "Hand over a project: it is planned into tasks, done by real AI sessions, checked, retried and delivered.",
     useFor: ["Anything bigger than one chat answer", "Work in a project folder, optionally with file edits", "Getting cheap/free models to do the easy parts and Claude the hard ones"],
     steps: [{ title: "Start a run", items: RUN_STEPS }, { title: "Optional: checks (proof the work runs)", items: ["Tick *Tasks may edit files there* → **Checks for this folder**.", "Add commands this computer may run as proof, e.g. `npm test`. **Try it** runs one now.", "Tasks that change files can then be required to pass them before review."] }],
-    tips: ["Tasks show who did them: Local model, Hermes, Codex or Claude.", "A run keeps going after a restart; the computer that started it drives it."],
+    tips: [
+      "Tasks show who did them (Local model, Hermes, Codex or Claude) and, if it was another computer, where.",
+      "*Spread over my computers* lets answer-only tasks run on your other computers when this one is busy. Those computers need this version and *Replies from my other machines* turned on.",
+      "*Work on a git branch*: in a git project with nothing uncommitted, the run's file changes land on their own branch, one commit per task. You merge it when you want it.",
+      "Open a task to see each attempt and how it ended. **Worker record** shows how often each AI's work passed review; the next plan for the same project is told what went wrong last time.",
+      "A run keeps going after a restart; the computer that started it drives it.",
+    ],
     guide: ["orchestrator-attention"],
   },
   "/auto": {
     what: "Chat with the smart router: it sends each message to the cheapest AI that can handle it, and says who answered.",
     useFor: ["Everyday questions when you don't care which AI answers", "Saving your Claude allowance for hard work"],
     steps: [{ title: "Use it", items: ["Type and press Enter.", "Read the routing line under the answer: which AI and why.", "**Who Auto Can Use** (on this page) lists the pool; AIs billed per use are left out until you tick them."] }],
+    tips: ["**Test failover** (How Routing Works) makes Auto's first choice fail on purpose and shows who answered instead. Nothing is changed."],
     guide: ["auto", "chat-features"],
   },
   "/claude": {

@@ -27,7 +27,7 @@ manual is `/guide` (source: `lib/guideContent.ts`).
 | DeepSeek / any API LLM | OpenAI-compatible | `/api/llm` streaming agentic tool loop (`lib/llmTools.ts`: search_vault, read_note, save_memory, goals, journal, request_mission) |
 | Llama | local LLM | Ollama at `http://localhost:11434/v1`, keyless (`isLocalEndpoint()` in `lib/registry.ts`) |
 | Codex | command agent | `codex exec --skip-git-repo-check {input}` (needs one-time `codex login`) |
-| Auto | virtual router | `lib/router.ts` picks a real agent by task tier, arena win-rate, cost, health; fails over to Claude |
+| Auto | virtual router | `lib/router.ts` picks a real agent by task tier, arena win-rate, cost, health; on an error climbs the cost ladder, Claude last (`/api/auto/drill` proves it) |
 
 ## Map of the code
 
@@ -50,7 +50,11 @@ manual is `/guide` (source: `lib/guideContent.ts`).
   `projectChecks.ts` (the per-machine list of commands a run may use as proof),
   `runs.ts` (project runs: plan → real sessions as workers → checks → review →
   escalate → deliver; state in the vault, advanced by the machine that
-  started the run), `nousModels.ts` (cheapest Nous model for a Hermes run),
+  started the run), `runPlacement.ts` (which machine a task runs on: pure
+  rules, tested without a fleet), `runLessons.ts` (attempt notes → per-project
+  lessons + the worker record, given to the next planner), `runGit.ts` (a
+  branch per run, one commit per accepted edit task, the diff for reviewers),
+  `nousModels.ts` (cheapest Nous model for a Hermes run),
   `sessionTools.ts` (the registry of session tools) + `sessions.ts` /
   `hermesSessions.ts` (readers) + `sessionActions.ts` (reply / new / stop,
   locally and on other machines),
@@ -185,6 +189,22 @@ manual is `/guide` (source: `lib/guideContent.ts`).
     being uploaded or read, `rename` onto it fails with EPERM/EBUSY for a moment.
     Use a retrying replace (`replaceFile` in lib/runs.ts) for anything rewritten
     often, or a step is silently lost.
+25. **Send work only to a machine that says it can do it.** Reachable is not
+    enough: a machine on older code accepts a job and silently drops fields it
+    doesn't know, such as a run's model choice and turn cap, so a Hermes task
+    there could run on a paid model with no leash. Run tasks go only to machines
+    whose shared summary carries `runWorker` (`RUN_WORKER` in
+    lib/sessionShare.ts); bump it when the contract a worker must honour grows.
+26. **A protocol marker is not part of the deliverable.** Workers end with a
+    "RESULT:" line; a reviewer read it as part of a four-line poem and rejected
+    good work, twice. Reviewers are told the marker is ours. And a rework reply
+    to an answer task REPLACES the old result (the rework prompt asks for the
+    whole corrected answer); appending it showed the reviewer two copies. Only
+    edit tasks append, because their real work is on disk.
+27. **A run never commits the owner's own work.** A branch is made only on a
+    clean working tree (lib/runGit.ts); nothing is pushed, merged, reset or
+    deleted; hooks run. Edit tasks take turns in a folder, so each task's diff
+    and commit hold only its own changes.
 
 ## Dev cycle (production server auto-starts at login)
 

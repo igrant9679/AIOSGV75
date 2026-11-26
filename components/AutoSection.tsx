@@ -77,6 +77,25 @@ export default function AutoSection() {
     [refreshRegistry, loadPool],
   );
 
+  // Failover drill: Auto's pick is told to fail, and the page shows where the ladder went instead
+  const [drill, setDrill] = useState<{ busy: boolean; text?: string; ok?: boolean }>({ busy: false });
+  const runDrill = useCallback(async () => {
+    setDrill({ busy: true });
+    try {
+      const res = await fetch("/api/auto/drill", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+      const j = (await res.json()) as { ok?: boolean; firstPick?: { name: string }; answeredBy?: string; route?: string; error?: string; ms?: number };
+      setDrill({
+        busy: false,
+        ok: j.ok,
+        text: j.ok
+          ? `${j.firstPick?.name} was told to fail; Auto moved on and ${j.answeredBy} answered (${((j.ms ?? 0) / 1000).toFixed(1)} s). Route: ${j.route}`
+          : `The drill did not reach another worker: ${j.error ?? "no answer"}${j.route ? ` (route: ${j.route})` : ""}`,
+      });
+    } catch (e) {
+      setDrill({ busy: false, ok: false, text: (e as Error).message });
+    }
+  }, []);
+
   const readyModels = pool?.ready ?? 1 + registry.llms.filter((l) => l.hasKey).length;
   const benched = pool?.dropped ?? [];
   const poolTitle = pool?.degraded
@@ -188,7 +207,7 @@ export default function AutoSection() {
               <p className="text-sm font-medium text-ink">One agent, whole fleet</p>
               <p className="max-w-sm text-xs leading-5 text-ink-faint">
                 Auto reads each task and routes it, cheapest first: a free model for simple questions, a subscription
-                tool for standard work, Claude for hard problems, with automatic failover to Claude if the pick errors.
+                tool for standard work, Claude for hard problems. If the pick errors, Auto moves to the next-cheapest worker, with Claude last.
                 Every reply shows who answered and why.
               </p>
             </>
@@ -279,6 +298,23 @@ export default function AutoSection() {
               </Link>{" "}
               tracks cost, latency, and reliability per model.
             </p>
+            <p>
+              If the pick fails, Auto climbs one rung at a time: another free worker, then a subscription tool, then Claude.{" "}
+              <button
+                type="button"
+                disabled={drill.busy}
+                onClick={() => void runDrill()}
+                title="Asks Auto a one-word question and tells the worker it picks to fail on purpose, so you can see the fallback happen. Nothing is changed; a drilled failure doesn't count against that worker."
+                className="cursor-pointer rounded-md border border-line px-2 py-0.5 font-mono text-[10px] text-ink hover:bg-white/[0.06] disabled:opacity-50"
+              >
+                {drill.busy ? "Testing…" : "Test failover"}
+              </button>
+            </p>
+            {drill.text && (
+              <p className="text-[11px]" style={{ color: drill.ok ? ACCENTS.lime.base : ACCENTS.rose.base }}>
+                {drill.text}
+              </p>
+            )}
           </div>
         </Panel>
       </div>

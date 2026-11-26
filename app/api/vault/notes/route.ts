@@ -1,7 +1,7 @@
 import fs from "fs/promises";
 import path from "path";
 import { vaultInfo, vaultAvailable } from "@/lib/vault";
-import { collectVaultFiles } from "@/lib/vaultSearch";
+import { collectVaultFilesInfo } from "@/lib/vaultSearch";
 
 export const dynamic = "force-dynamic";
 
@@ -9,7 +9,7 @@ const MAX_NOTE_BYTES = 200_000;
 
 /**
  * Content library over the vault's "Agentic OS/" tree.
- *   GET            → list all notes: { notes: [{ path, folder, name, mtime, size }] }
+ *   GET            → list the notes, newest first: { notes: [{ path, folder, name, mtime, size }], total }
  *   GET ?path=rel  → read one note: { path, content } (path is relative to "Agentic OS/")
  */
 export async function GET(request: Request) {
@@ -30,7 +30,7 @@ export async function GET(request: Request) {
     }
   }
 
-  const files = await collectVaultFiles(base);
+  const { files, total } = await collectVaultFilesInfo(base);
   const notes = await Promise.all(
     files.map(async (abs) => {
       try {
@@ -51,5 +51,6 @@ export async function GET(request: Request) {
   );
   const clean = notes.filter(Boolean) as NonNullable<(typeof notes)[number]>[];
   clean.sort((a, b) => b.mtime - a.mtime);
-  return Response.json({ notes: clean });
+  // total > notes.length = the vault has more notes than the list holds; it keeps the newest
+  return Response.json({ notes: clean, total });
 }

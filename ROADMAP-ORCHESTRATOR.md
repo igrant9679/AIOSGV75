@@ -1,6 +1,42 @@
 # Project runs — design
 
-**Status: phases 1 and 2 are built (`lib/runs.ts`, `lib/projectChecks.ts`, the Runs page) and have completed real runs, including runs whose work had to pass a real test command. Phases 3 to 5 are design. Written 2026-11-24.**
+**Status: phases 1 to 5 are built (`lib/runs.ts`, `lib/projectChecks.ts`, `lib/runPlacement.ts`, `lib/runLessons.ts`, `lib/runGit.ts`, the Runs page). Phases 1 and 2 have completed real runs, including runs whose work had to pass a real test command; phases 3 to 5 were tested on 2026-11-25 as described below. Written 2026-11-24.**
+
+> **Phases 3 to 5 as built (2026-11-25).**
+>
+> - **Distribution.** A run started with *Spread over my computers* may place an answer-only
+>   task on another machine (`lib/runPlacement.ts`, pure rules with a unit test). The tier
+>   still picks the tool first; machines compete only within it, by busyness, subscription
+>   use, LAN before OneDrive, with an edge for the run's own machine. Edit tasks and tasks with
+>   checks never move. A machine qualifies only if its shared summary says `runWorker` ≥ 1:
+>   older code drops a job's model and turn cap without a word. A job that a remote machine has
+>   not started after 4 min (LAN) / 12 min (vault) is taken back, that machine is avoided for
+>   the task, and no attempt is used. Rework replies reach a session on another machine even
+>   before that machine's next summary lists it (`startJob` builds the reply from the host and
+>   folder the run recorded; the target re-checks the key against its own sessions).
+>   *Tested* with a stand-in machine in the vault (a summary file for a host that does not
+>   exist): with this machine busy, the third task of three went to it through the vault, sat
+>   unstarted, and after 12 minutes came back and ran here. *Not yet tested* with a second real
+>   machine: none ran this version on 2026-11-25.
+> - **Codex reworks in its own session.** The session id is read from the header Codex prints
+>   on stderr (kept separately from the rolling stderr tail, where a long run would push it out).
+>   Tested: a reply to the captured session remembered a code word from the first turn.
+> - **Two false rejections found and fixed on the way.** The reviewer counted the worker's
+>   "RESULT:" marker line as part of a four-line poem; and once Codex reworked in place, its
+>   corrected answer was appended to the old one, so the reviewer saw two copies. Reviewers are
+>   now told the marker is the system's, and a rework reply replaces an answer task's result
+>   (edit tasks still append: their work is on disk).
+> - **Lessons (phase 4).** Each attempt leaves a note on its task. At delivery the notable ones
+>   become the run's Lessons.md and are appended to Agentic OS/Runs/Lessons/<project>.md; the
+>   next plan for that project gets the end of that file and each worker's review record by
+>   tier. Not built: proposals for Rules.md through the approval gate, and feeding the record
+>   into Auto's chat router.
+> - **A branch per run (phase 5).** In a clean git repository a run that may edit files works on
+>   `mc/run-…`; each accepted edit task is one commit; its reviewer is shown the real diff; a task
+>   that fails for good is committed as "[not accepted]"; at delivery the folder returns to its
+>   branch and the delivery says how to look and merge. Edit tasks now take turns in a folder.
+> - **Still open from phase 3:** continuing a task past the 20-minute job limit (a worker that
+>   needs longer is stopped and retried), and per-run budgets beyond the task and attempt caps.
 
 > **Phase 2 as built, and what its runs taught.**
 >

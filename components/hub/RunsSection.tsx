@@ -6,6 +6,7 @@ import EmptyState from "../ui/EmptyState";
 import Markdown from "../Markdown";
 import { ACCENTS, type Accent } from "@/lib/accents";
 import type { Run, RunStatus, RunTask, Tier } from "@/lib/runs";
+import type { RecordRow } from "@/lib/runLessons";
 import { workerLabel } from "@/lib/sessionTools";
 import { useHub, HubError, Chip, ago } from "./common";
 import { SmallButton } from "./SessionPanel";
@@ -60,7 +61,7 @@ async function post(body: object): Promise<{ ok?: boolean; error?: string; run?:
   }
 }
 
-function TaskRow({ t }: { t: RunTask }) {
+function TaskRow({ t, runHost }: { t: RunTask; runHost: string }) {
   const [open, setOpen] = useState(false);
   const s = TASK_STATE[t.status];
   const escalated = t.workTier !== t.tier;
@@ -83,6 +84,7 @@ function TaskRow({ t }: { t: RunTask }) {
           <span className="font-mono text-[10px] text-ink-dim" title={t.why}>
             {workerLabel(t.tool)}
             {t.model ? ` · ${t.model}` : ""}
+            {t.host && t.host !== runHost ? ` · on ${t.hostLabel ?? t.host}` : ""}
           </span>
         )}
         <Pill accent={s.accent}>{t.status === "done" && t.reviewNote ? "done · not reviewed" : s.label}</Pill>
@@ -96,6 +98,19 @@ function TaskRow({ t }: { t: RunTask }) {
           </p>
           {t.dependsOn.length > 0 && <p className="text-ink-faint">Starts after {t.dependsOn.join(", ")}.</p>}
           {t.why && <p className="text-ink-faint">Worker: {t.why}.</p>}
+          {(t.history ?? []).length > 1 && (
+            <ol className="list-decimal pl-5 text-[11px] text-ink-faint">
+              {(t.history ?? []).map((n) => (
+                <li key={n.at}>
+                  {n.tool ? workerLabel(n.tool) : "worker"}
+                  {n.model ? ` (${n.model})` : ""} · {n.tier}
+                  {n.host ? ` · ${n.host}` : ""} ·{" "}
+                  <span style={{ color: ACCENTS[n.outcome === "passed" ? "lime" : n.outcome === "not picked up" || n.outcome === "unreviewed" ? "amber" : "rose"].base }}>{n.outcome}</span>
+                  {n.note && n.outcome !== "passed" ? ` - ${n.note}` : ""}
+                </li>
+              ))}
+            </ol>
+          )}
           {(t.attempts > 0 || t.reviewedBy || t.reviewNote) && (
             <p className="text-ink-faint">
               {t.attempts > 0 ? `${t.attempts} failed attempt${t.attempts === 1 ? "" : "s"} · ` : ""}
@@ -150,7 +165,8 @@ function RunCard({ run, host, reload }: { run: Run; host: string; reload: () => 
         <button type="button" onClick={() => setOpen((v) => !v)} className="min-w-0 flex-1 cursor-pointer text-left" aria-expanded={open}>
           <p className="truncate text-sm font-semibold text-ink">{run.title}</p>
           <p className="truncate font-mono text-[10px] text-ink-faint">
-            {run.hostLabel} · {run.folder === "~" ? "home folder" : run.folder} · {run.allowEdit ? "may edit files" : "answer-only"} · started {ago(run.createdAt)} ago
+            {run.hostLabel} · {run.folder === "~" ? "home folder" : run.folder} · {run.allowEdit ? "may edit files" : "answer-only"}
+            {run.spread ? " · spreads to other machines" : ""} · started {ago(run.createdAt)} ago
             {run.driver !== host ? ` · advanced by ${run.driverLabel}` : ""}
           </p>
         </button>
@@ -166,11 +182,18 @@ function RunCard({ run, host, reload }: { run: Run; host: string; reload: () => 
         <div className="flex flex-col gap-2.5 border-t border-line px-4 py-3">
           <p className="whitespace-pre-wrap text-[11.5px] leading-5 text-ink-dim">{run.brief}</p>
           {run.planNote && <p className="text-[11px] text-ink-faint">{run.planNote}</p>}
+          {run.git && (
+            <p className="font-mono text-[10.5px] text-ink-dim" title="Each task that edits files and passes is committed on this branch. Nothing is merged for you.">
+              branch {run.git.branch} (from {run.git.base}) · {run.git.commits.length} commit{run.git.commits.length === 1 ? "" : "s"}
+              {run.git.returned ? ` · folder back on ${run.git.base}` : ""}
+            </p>
+          )}
+          {run.gitNote && <p className="text-[11px] text-ink-faint">{run.gitNote}</p>}
           {run.error && <p className="text-[11px]" style={{ color: ACCENTS.rose.base }}>{run.error}</p>}
           {run.status === "planning" && <p className="text-[11px] text-ink-faint">The planner is breaking the brief into tasks. This usually takes under two minutes.</p>}
 
           {run.tasks.map((t) => (
-            <TaskRow key={t.id} t={t} />
+            <TaskRow key={t.id} t={t} runHost={run.host} />
           ))}
 
           {run.status === "awaiting_approval" && (
@@ -344,14 +367,16 @@ export default function RunsSection() {
   const { hub, error: hubError } = useHub(30_000);
   const [runs, setRuns] = useState<Run[] | null>(null);
   const [host, setHost] = useState("");
+  const [record, setRecord] = useState<RecordRow[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
       const res = await fetch("/api/runs");
-      const body = (await res.json()) as { runs?: Run[]; host?: string; error?: string };
+      const body = (await res.json()) as { runs?: Run[]; host?: string; record?: RecordRow[]; error?: string };
       if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`);
       setRuns(body.runs ?? []);
+      setRecord(body.record ?? []);
       setHost(body.host ?? "");
       setError(null);
     } catch (e) {
@@ -383,6 +408,8 @@ export default function RunsSection() {
   const [place, setPlace] = useState("");
   const [planner, setPlanner] = useState<"auto" | "claude" | "hermes" | "codex">("auto");
   const [allowEdit, setAllowEdit] = useState(false);
+  const [spread, setSpread] = useState(true);
+  const [branch, setBranch] = useState(true);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const chosen = places.find((p) => p.key === place) ?? places[0];
@@ -394,7 +421,7 @@ export default function RunsSection() {
     }
     setBusy(true);
     setMsg(null);
-    const r = await post({ action: "create", brief, host: chosen?.host, folder: chosen?.folder, project: chosen?.project, planner, allowEdit });
+    const r = await post({ action: "create", brief, host: chosen?.host, folder: chosen?.folder, project: chosen?.project, planner, allowEdit, spread, branch });
     setBusy(false);
     if (r.error) setMsg({ text: r.error, ok: false });
     else {
@@ -451,6 +478,22 @@ export default function RunsSection() {
               <input type="checkbox" checked={allowEdit} onChange={(e) => setAllowEdit(e.target.checked)} />
               Tasks may edit files there
             </label>
+            <label
+              className="flex cursor-pointer items-center gap-1.5 pl-2 font-mono text-[10px] text-ink-dim"
+              title="On: when the chosen machine is busy, answer-only tasks may run on your other computers (ones that are online, up to date, accept work from this one and have the project's folder). Tasks that edit files always stay in the chosen folder."
+            >
+              <input type="checkbox" checked={spread} onChange={(e) => setSpread(e.target.checked)} />
+              Spread over my computers
+            </label>
+            {allowEdit && chosen && chosen.folder !== "~" && chosen.host === hub?.host && (
+              <label
+                className="flex cursor-pointer items-center gap-1.5 pl-2 font-mono text-[10px] text-ink-dim"
+                title="If the folder is a git repository with nothing uncommitted, the run works on a new branch: each accepted task becomes a commit, reviewers see the real diff, and at the end the folder goes back to the branch it was on. You merge the branch when you want the work."
+              >
+                <input type="checkbox" checked={branch} onChange={(e) => setBranch(e.target.checked)} />
+                Work on a git branch
+              </label>
+            )}
             <button
               type="button"
               onClick={() => void start()}
@@ -471,10 +514,33 @@ export default function RunsSection() {
             <p className="text-[10.5px] leading-4 text-ink-faint">Checks run only when a run works on the machine that started it, so this run will be reviewed but not checked. Start it from {chosen.hostLabel} to use that folder&apos;s checks.</p>
           )}
           <p className="text-[10.5px] leading-4 text-ink-faint">
-            Each task goes to the cheapest worker that fits: small text-only work to this machine's local model if it has one, other routine work to Hermes on a free model, standard work to Codex, hard work to Claude. A task that fails twice at one tier is retried one tier up. Tasks that edit files can be required to pass the folder&apos;s checks, which this machine runs itself; everything else is reviewed by a second model reading the output.
+            Each task goes to the cheapest worker that fits: small text-only work to this machine's local model if it has one, other routine work to Hermes on a free model, standard work to Codex, hard work to Claude. A task that fails twice at one tier is retried one tier up. With &quot;Spread over my computers&quot; on, answer-only tasks can run on your other computers when this one is busy; a computer that doesn&apos;t pick a task up within a few minutes is skipped, at no cost to the task. Tasks that edit files can be required to pass the folder&apos;s checks, which this machine runs itself; everything else is reviewed by a second model reading the output.
           </p>
         </div>
       </Panel>
+
+      {record.some((r) => r.tries >= 2) && (
+        <Panel title="Worker record">
+          <div className="flex flex-col gap-1.5 p-4">
+            <p className="text-[10.5px] leading-4 text-ink-faint">How often each worker&apos;s attempts passed review in recent runs, by tier. Planners see this too, and give harder tiers to work a cheap worker keeps failing. What went wrong in each run is kept in the vault under Agentic OS/Runs/Lessons and handed to the next plan for the same project.</p>
+            <div className="flex flex-wrap gap-2">
+              {record
+                .filter((r) => r.tries >= 2)
+                .map((r) => {
+                  const rate = r.passed / r.tries;
+                  return (
+                    <span key={`${r.tool}-${r.tier}`} className="rounded-lg border border-line px-2 py-1 font-mono text-[10.5px] text-ink-dim">
+                      {r.tier} · {workerLabel(r.tool)}:{" "}
+                      <span style={{ color: ACCENTS[rate >= 0.7 ? "lime" : rate >= 0.4 ? "amber" : "rose"].base }}>
+                        {r.passed}/{r.tries}
+                      </span>
+                    </span>
+                  );
+                })}
+            </div>
+          </div>
+        </Panel>
+      )}
 
       {error && (
         <p className="rounded-xl border border-line px-4 py-2 font-mono text-[11px]" style={{ color: ACCENTS.rose.base }}>

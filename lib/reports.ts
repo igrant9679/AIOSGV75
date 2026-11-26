@@ -137,7 +137,8 @@ async function graphStats() {
   if (!base || !(await vaultAvailable())) return empty;
   try {
     const { collectVaultFiles } = await import("./vaultSearch");
-    const files = (await collectVaultFiles(base)).slice(0, 600);
+    // the newest 600: a slice of the folder walk would have been whichever folders came first
+    const files = await collectVaultFiles(base, 600);
     const inbound = new Map<string, number>();
     const outbound = new Map<string, number>();
     const names = new Set(files.map((f) => path.basename(f, ".md").toLowerCase()));

@@ -41,6 +41,7 @@ export default function GraphSection() {
   const wrapRef = useRef<HTMLDivElement>(null);
   const [nodes, setNodes] = useState<GNode[]>([]);
   const [edges, setEdges] = useState<GEdge[]>([]);
+  const [total, setTotal] = useState(0);
   const [focusFolder, setFocusFolder] = useState<string | null>(null);
   const [hoverName, setHoverName] = useState<string | null>(null);
 
@@ -82,7 +83,8 @@ export default function GraphSection() {
     try {
       const res = await fetch("/api/vault/graph");
       if (!res.ok) return;
-      const json = (await res.json()) as { nodes: Omit<GNode, "x" | "y" | "vx" | "vy">[]; edges: GEdge[] };
+      const json = (await res.json()) as { nodes: Omit<GNode, "x" | "y" | "vx" | "vy">[]; edges: GEdge[]; total?: number };
+      setTotal(json.total ?? 0);
       const w = wrapRef.current?.clientWidth ?? 900;
       const h = 620;
       const seeded: GNode[] = json.nodes.map((n, i) => {
@@ -398,7 +400,9 @@ export default function GraphSection() {
             <span style={{ color: "var(--ac-cyan)" }}>
               <NumberTicker value={nodes.length} className="text-3xl font-bold" />
             </span>
-            <p className="pt-1 font-mono text-[10px] tracking-[0.14em] text-ink-faint">NODES IN THE GRAPH</p>
+            <p className="pt-1 font-mono text-[10px] tracking-[0.14em] text-ink-faint" title={total > nodes.length ? "The graph holds the most recently changed notes; older ones are left out." : undefined}>
+              {total > nodes.length ? `NEWEST ${nodes.length.toLocaleString()} OF ${total.toLocaleString()} NOTES` : "NODES IN THE GRAPH"}
+            </p>
           </div>
         </Panel>
         <Panel title="Links" delay={0.04}>

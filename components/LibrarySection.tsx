@@ -33,6 +33,7 @@ export default function LibrarySection() {
   const VAULT_NAME = useObsidianVault(); // obsidian:// links: the vault folder's name
   const { vaultOk } = useMission();
   const [notes, setNotes] = useState<NoteMeta[]>([]);
+  const [total, setTotal] = useState(0);
   const [filter, setFilter] = useState<string>("All");
   const [selected, setSelected] = useState<NoteMeta | null>(null);
   const [content, setContent] = useState<string>("");
@@ -41,7 +42,11 @@ export default function LibrarySection() {
   const load = useCallback(async () => {
     try {
       const res = await fetch("/api/vault/notes");
-      if (res.ok) setNotes(((await res.json()) as { notes: NoteMeta[] }).notes ?? []);
+      if (res.ok) {
+        const j = (await res.json()) as { notes: NoteMeta[]; total?: number };
+        setNotes(j.notes ?? []);
+        setTotal(j.total ?? 0);
+      }
     } catch {
       /* ignore */
     }
@@ -90,7 +95,9 @@ export default function LibrarySection() {
             <span style={{ color: ACCENTS.violet.base }}>
               <NumberTicker value={notes.length} className="text-3xl font-bold" />
             </span>
-            <p className="pt-1 font-mono text-[10px] tracking-[0.14em] text-ink-faint">MARKDOWN FILES · AGENTIC OS</p>
+            <p className="pt-1 font-mono text-[10px] tracking-[0.14em] text-ink-faint" title={total > notes.length ? "The list holds the most recently changed notes; older ones are still in the vault and in search." : undefined}>
+              {total > notes.length ? `NEWEST ${notes.length.toLocaleString()} OF ${total.toLocaleString()} FILES` : "MARKDOWN FILES · AGENTIC OS"}
+            </p>
           </div>
         </Panel>
         <Panel title="Collections" delay={0.04}>
