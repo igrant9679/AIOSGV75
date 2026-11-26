@@ -165,6 +165,27 @@ helper scripts now live in vault **`Agentic OS/Cluster/`** — all idempotent, a
   not `costUsd`, so no fabricated dollars appear — but the per-agent tag reads BILLED. Fix only
   if the Analytics split starts mattering.
 
+## ✅ DONE 2026-11-26 (Raider18) — load per machine, fleet pause, Fleet → Setup
+
+Commits `219f97f` (load + pause) and the Setup commit after it. AGENTS.md rules 31-33.
+
+- **Load** (`lib/machineLoad.ts`): CPU, RAM, Windows **commit charge**, GPU, biggest processes
+  (python/node named by script) each minute → `data/load.json` → cluster heartbeat. Fleet grid
+  line under each machine; Health "Memory" (warn 85, fail 93, names the culprit, WanGP hint);
+  run placement + Run somewhere skip a machine ≥93% and rank fuller ones lower (test extended).
+  Found: `Win32_OperatingSystem.FreeVirtualMemorySize` came back empty → "100%"; the perf class
+  said 80%. **Raider18 sits at ~80% commit; the top user is wgp.py ×2 (7.7 GB).**
+- **Fleet pause** (`lib/fleetPause.ts`, vault `Cluster/pause.json`): 1 h / 4 h / until resumed;
+  holds master AI duties, runs, queued isolated/check jobs on every machine; banner + Resume on
+  every page, Command → Fleet pause, Health entry. Verified hold and release with a queued job.
+- **Setup** (`lib/machineSetup.ts`, vault `Cluster/setup/<host>.json`, every 15 min): CLI
+  versions, MCP servers (user / plugin / Mission Control), plugins, skills + drift, hooks,
+  CLAUDE.md hash. Click an MCP server or plugin to turn it off/on (job mode `setup`; remote needs
+  that machine's "Answers + file edits"). Verified with a throwaway server (restored byte for
+  byte) and the claudebin plugin (off/on). **Not done on purpose: turning off the owner's WanGP
+  servers** — that is the owner's call (two of them on Raider18: user `wangp` and the
+  `local-media` plugin's). **Not built yet: copying a skill to another machine.**
+
 ## ✅ DONE 2026-11-26 (Raider18) — Fleet → Versions: update any machine from one place
 
 Commits `2619577` (feature), `d028651` (docs), `b39b121`, `8b9deae` (fixes found by testing).

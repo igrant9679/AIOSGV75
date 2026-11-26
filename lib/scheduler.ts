@@ -24,6 +24,7 @@ import { markSchedulerInstance, recordRunningBuild } from "./selfUpdate";
 import { MEM_FULL, MEM_WARN, memPressure, sampleLoad } from "./machineLoad";
 import { runHealthChecks } from "./health";
 import { isPaused } from "./fleetPause";
+import { publishSetup } from "./machineSetup";
 
 async function refreshScaffold(): Promise<void> {
   const reg = await readRegistry().catch(() => null);
@@ -52,6 +53,9 @@ export function startScheduler(): void {
   // Session summaries, conversation digests and tool memory → the vault, for
   // the rest of the machine group (every machine; throttled to 5 min inside).
   setInterval(() => void maybeShare().catch(() => {}), 60_000);
+  // Each machine's AI-tool setup (MCP servers, skills, plugins, CLI versions) → the vault for
+  // Fleet → Setup (every 15 minutes inside; names and versions only, never settings or keys).
+  setInterval(() => void publishSetup().catch(() => {}), 60_000);
   // Projects page: replies / new sessions / threads asked for by your other
   // machines (through the vault), and results of the ones this machine sent.
   setInterval(() => void sessionJobsTick().catch(() => {}), 15_000);

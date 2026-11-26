@@ -60,6 +60,8 @@ manual is `/guide` (source: `lib/guideContent.ts`).
   `machineLoad.ts` (CPU / memory / commit / GPU / biggest processes each minute,
   carried by the heartbeat; feeds Health, run placement and Run somewhere),
   `fleetPause.ts` (one vault flag that holds every machine's autonomous work),
+  `machineSetup.ts` (Fleet -> Setup: each machine's MCP servers, plugins, skills, CLI
+  versions as names only; MCP server / plugin off-on through Claude's own CLI),
   `sessionTools.ts` (the registry of session tools) + `sessions.ts` /
   `hermesSessions.ts` (readers) + `sessionActions.ts` (reply / new / stop,
   locally and on other machines),
@@ -250,6 +252,16 @@ manual is `/guide` (source: `lib/guideContent.ts`).
     and checks (project-run work). Replies, new sessions, Run somewhere, chats and
     missions started by hand still run, and updates still run (pause -> update -> resume).
     A new background duty that starts AI work must check `isPaused()` too.
+33. **Change another tool's configuration only through its own CLI, and share only names.**
+    Claude Code rewrites ~/.claude.json constantly, so Fleet -> Setup never edits it:
+    `claude mcp remove -s user` after saving the definition to data/mcp-parked.json, `claude
+    mcp add-json -s user` to restore it exactly, `claude plugin disable/enable -s user` for
+    plugins (a plugin-provided MCP server goes with its plugin). The shared inventory
+    (Agentic OS/Cluster/setup/) carries names, kinds, command FILE names and versions:
+    never args, env or headers, which hold keys. A setup change is a session job (mode
+    `setup`) with access "edit": another machine may make it only when that machine allows
+    file edits. Test with a throwaway server, not the owner's (verified: definition and
+    env restored byte for byte).
 
 ## Dev cycle (production server auto-starts at login)
 

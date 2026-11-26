@@ -18,6 +18,7 @@ import { isModelId } from "./nousModels";
 import { findCheck } from "./projectChecks";
 import { buildInfo, isSchedulerInstance, launchUpdate, readUpdateStatus, updateBlockers } from "./selfUpdate";
 import { isPaused } from "./fleetPause";
+import { applySetupAction, SETUP_ACTIONS, SETUP_NAME_RE, type SetupAction } from "./machineSetup";
 
 /**
  * Acting on sessions - from the Projects page, the live view and the
@@ -34,6 +35,8 @@ import { isPaused } from "./fleetPause";
  *  - open    terminal / folder / VS Code, on this machine only.
  *  - update  pull, build and restart Mission Control on a machine, once nothing runs there
  *            (lib/selfUpdate.ts).
+ *  - setup   turn an MCP server or a plugin off / on in Claude Code there (lib/machineSetup.ts);
+ *            from another machine only with "Answers + file edits".
  *
  * Another machine is reached over the LAN when it can be (lib/peer.ts,
  * instant), else through the vault (1-2 minutes, OneDrive):
@@ -49,7 +52,7 @@ import { isPaused } from "./fleetPause";
  * data/session-jobs.json is the source of truth (re-read on every call).
  */
 
-export type JobMode = "reply" | "new" | "thread" | "stop" | "import" | "export" | "check" | "update";
+export type JobMode = "reply" | "new" | "thread" | "stop" | "import" | "export" | "check" | "update" | "setup";
 export type JobAccess = "answer" | "edit";
 export type JobStatus = "queued" | "sent" | "running" | "done" | "error" | "expired";
 
@@ -107,6 +110,9 @@ export interface SessionJob {
   check?: string;
   /** mode "check": how the command ended (-1 = timed out or could not start) */
   exitCode?: number;
+  /** mode "setup": the change, and the MCP server or plugin it applies to (checked on the target) */
+  setupAction?: SetupAction;
+  setupTarget?: string;
   /** set on the TARGET machine for a job another machine asked for */
   requestedBy?: string;
   requestedByLabel?: string;
@@ -283,6 +289,9 @@ export interface StartInput {
   isolated?: boolean;
   /** check: the name of the check to run in `folder` */
   check?: string;
+  /** setup: what to change, and the MCP server / plugin name */
+  setupAction?: SetupAction;
+  setupTarget?: string;
   /**
    * A job id chosen by the caller. A project run writes the id into its own
    * state BEFORE starting the job, so a crash between the two is recovered by
@@ -438,6 +447,14 @@ export async function startJob(input: StartInput): Promise<SessionJob> {
       };
       break;
     }
+    case "setup": {
+      // An MCP server or plugin off / on in Claude Code on that machine (lib/machineSetup.ts). A
+      // change to a machine's configuration: from elsewhere it needs "Answers + file edits".
+      const host = input.host || me();
+      if (!input.setupAction || !SETUP_ACTIONS.includes(input.setupAction) || !input.setupTarget || !SETUP_NAME_RE.test(input.setupTarget)) throw new Error("Pick what to change.");
+      job = { ...base, access: "edit", mode: "setup", tool: "claude", host, hostLabel: labelOf(host), cwd: "", title: `${input.setupAction} ${input.setupTarget}`, setupAction: input.setupAction, setupTarget: input.setupTarget };
+      break;
+    }
     case "update": {
       // Pull, build and restart Mission Control there once nothing runs (lib/selfUpdate.ts).
       const host = input.host || me();
@@ -459,6 +476,7 @@ export async function startJob(input: StartInput): Promise<SessionJob> {
   if (job.host === me()) {
     await mutate((jobs) => void jobs.unshift(job));
     if (job.mode === "stop") return finishInline(job, () => stopLocal(job));
+    if (job.mode === "setup") return finishInline(job, async () => ({ status: "done", reply: await applySetupAction(job.setupAction!, job.setupTarget!) }));
     void pump();
     return job;
   }
@@ -596,6 +614,13 @@ export async function acceptRequest(r: SessionJob, via: "lan" | "vault", content
       }
       break;
     }
+    case "setup": {
+      // job.access is "edit" only when THIS machine allows edits (checked above, with a refusal)
+      if (job.access !== "edit") throw Object.assign(new Error(`${myLabel} only allows answers from other machines; changing its setup needs "Answers + file edits".`), { status: 403 });
+      if (!r.setupAction || !SETUP_ACTIONS.includes(r.setupAction) || typeof r.setupTarget !== "string" || !SETUP_NAME_RE.test(r.setupTarget)) throw new Error("bad setup change");
+      Object.assign(job, { setupAction: r.setupAction, setupTarget: r.setupTarget, title: `${r.setupAction} ${r.setupTarget}` });
+      break;
+    }
     case "update": {
       if (settings.remoteUpdates === false) throw Object.assign(new Error(`${myLabel} doesn't take updates from other machines (Fleet → Versions there).`), { status: 403 });
       // one at a time: a second request joins the one already waiting
@@ -622,6 +647,7 @@ export async function acceptRequest(r: SessionJob, via: "lan" | "vault", content
 
   // quick ones run right away; AI runs wait for a slot
   if (job.mode === "stop") return finishInline(job, () => stopLocal(job));
+  if (job.mode === "setup") return finishInline(job, async () => ({ status: "done", reply: await applySetupAction(job.setupAction!, job.setupTarget!) }));
   if (job.mode === "thread") {
     return finishInline(job, async () => {
       const t = await readThread({ key: job.key!, tool: job.tool }, 1500);

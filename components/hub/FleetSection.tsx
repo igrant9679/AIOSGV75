@@ -14,6 +14,7 @@ import { SESSION_SORTS } from "./sorts";
 import SharingPanel from "./SharingPanel";
 import BridgePanel from "./BridgePanel";
 import VersionsPanel from "./VersionsPanel";
+import SetupPanel from "./SetupPanel";
 import { AlertsPanel, NetworkPanel } from "./NetworkPanels";
 import { ConversationButton, ConversationView } from "./Conversation";
 import { useHub, SourcePill, HubError, IndexingNote, ago, fmtTokens, until } from "./common";
@@ -182,6 +183,7 @@ export default function FleetSection() {
       )}
 
       <VersionsPanel />
+      <SetupPanel />
       <NetworkPanel />
       <SharingPanel onShared={reload} />
       <AlertsPanel />
