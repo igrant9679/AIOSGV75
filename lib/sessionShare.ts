@@ -12,6 +12,7 @@ import { mirrorToolMemory } from "./toolMemory";
 import { peerFetch } from "./peer";
 import type { LiveSession } from "./sessionLive";
 import type { SessionEvent } from "./sessionEvents";
+import { buildInfo, COMMIT_RE, SELF_UPDATE, type BuildInfo } from "./selfUpdate";
 
 /**
  * Session sharing across the machine group — the same channel as cluster
@@ -50,6 +51,12 @@ export interface SharedSessionsFile {
    * so runs never place tasks on it.
    */
   runWorker?: number;
+  /** the build it serves (lib/selfUpdate.ts); missing = built before builds were stamped */
+  build?: BuildInfo;
+  /** it can be updated from another machine (SELF_UPDATE); missing = it needs update.cmd once */
+  selfUpdate?: number;
+  /** its "Updates from my other machines" setting */
+  updatesAllowed?: boolean;
 }
 
 /** Version of the run-worker contract this build honours: model, web, turn cap and isolation on a job, and the pickup rules in lib/runs.ts. */
@@ -65,9 +72,22 @@ export interface RemoteMachine {
   subscriptions: SubscriptionMeter[];
   acceptsReplies: RemoteReplies;
   runWorker?: number;
+  build?: BuildInfo;
+  selfUpdate?: number;
+  updatesAllowed?: boolean;
 }
 
 const PUBLISH_EVERY_MS = 5 * 60_000;
+
+/** What this machine says about its own version (Fleet → Versions). */
+const versionFields = (settings: ShareSettings) => {
+  const b = buildInfo();
+  return {
+    build: b ? { commit: b.commit, short: b.short, subject: b.subject, at: b.at, branch: b.branch, dirty: b.dirty, builtAt: b.builtAt } : undefined,
+    selfUpdate: SELF_UPDATE,
+    updatesAllowed: settings.remoteUpdates,
+  };
+};
 const MAX_SESSIONS = 500;
 
 function shareDir(): string {
@@ -121,6 +141,11 @@ export interface ShareSettings {
    * the vault could otherwise start AI runs here.
    */
   remoteReplies: RemoteReplies;
+  /**
+   * Updates asked for by your other machines (Fleet → Versions). On by default: an update only
+   * installs what is already on this install's own GitHub branch, and waits until nothing runs.
+   */
+  remoteUpdates: boolean;
 }
 
 export type RemoteReplies = "off" | "answer" | "edit";
@@ -129,7 +154,7 @@ const SETTINGS_FILE = path.join(process.cwd(), "data", "share-settings.json");
 // remoteReplies is ON by default ("answer": read and answer, nothing that needs
 // approval), so a machine that joins the group can be worked from the others
 // straight away. A machine where the setting was ever saved keeps what it saved.
-const DEFAULT_SETTINGS: ShareSettings = { conversations: true, toolMemory: true, remoteReplies: "answer" };
+const DEFAULT_SETTINGS: ShareSettings = { conversations: true, toolMemory: true, remoteReplies: "answer", remoteUpdates: true };
 
 export async function readShareSettings(): Promise<ShareSettings> {
   try {
@@ -185,7 +210,7 @@ export function shareNow(): Promise<ShareResult> {
     const local = snap.sessions.filter((s) => !s.indexing);
 
     const file = fileFor(os.hostname());
-    const body = { sessions: local.slice(0, MAX_SESSIONS).map(slim), subscriptions: snap.subscriptions, acceptsReplies: settings.remoteReplies, runWorker: RUN_WORKER };
+    const body = { sessions: local.slice(0, MAX_SESSIONS).map(slim), subscriptions: snap.subscriptions, acceptsReplies: settings.remoteReplies, runWorker: RUN_WORKER, ...versionFields(settings) };
     const hash = crypto.createHash("sha1").update(JSON.stringify(body)).digest("hex");
     const prev = await fsp.readFile(file, "utf8").then((t) => JSON.parse(t) as SharedSessionsFile & { hash?: string }).catch(() => null);
     let summaries: ShareResult["summaries"] = "unchanged";
@@ -242,6 +267,7 @@ export async function localSummary(): Promise<SharedSessionsFile> {
     subscriptions: snap.subscriptions,
     acceptsReplies: settings.remoteReplies,
     runWorker: RUN_WORKER,
+    ...versionFields(settings),
     via: "lan",
     live: await liveSnapshot().catch(() => []),
     events: await ownEvents(80).catch(() => []),
@@ -331,6 +357,9 @@ export async function mergeRemoteSessions(local: SessionSummary[]): Promise<Merg
       subscriptions: f.subscriptions ?? [],
       acceptsReplies: f.acceptsReplies ?? "off",
       runWorker: typeof f.runWorker === "number" ? f.runWorker : undefined,
+      build: f.build && typeof f.build.commit === "string" && COMMIT_RE.test(f.build.commit) ? f.build : undefined,
+      selfUpdate: typeof f.selfUpdate === "number" ? f.selfUpdate : undefined,
+      updatesAllowed: typeof f.updatesAllowed === "boolean" ? f.updatesAllowed : undefined,
     });
     for (const raw of f.sessions) {
       const s: SessionSummary = { ...raw, host: f.host };

@@ -16,6 +16,7 @@ import { setHidden } from "./sessionNaming";
 import { SESSION_KEY_RE, SESSION_TOOLS, asSessionTool, hermesToolsets, toolLabel, toolOfKey } from "./sessionTools";
 import { isModelId } from "./nousModels";
 import { findCheck } from "./projectChecks";
+import { buildInfo, isSchedulerInstance, launchUpdate, readUpdateStatus, updateBlockers } from "./selfUpdate";
 
 /**
  * Acting on sessions - from the Projects page, the live view and the
@@ -30,6 +31,8 @@ import { findCheck } from "./projectChecks";
  *  - import  hand a session from this machine to another one (push).
  *  - export  bring another machine's session to this one (pull).
  *  - open    terminal / folder / VS Code, on this machine only.
+ *  - update  pull, build and restart Mission Control on a machine, once nothing runs there
+ *            (lib/selfUpdate.ts).
  *
  * Another machine is reached over the LAN when it can be (lib/peer.ts,
  * instant), else through the vault (1-2 minutes, OneDrive):
@@ -45,7 +48,7 @@ import { findCheck } from "./projectChecks";
  * data/session-jobs.json is the source of truth (re-read on every call).
  */
 
-export type JobMode = "reply" | "new" | "thread" | "stop" | "import" | "export" | "check";
+export type JobMode = "reply" | "new" | "thread" | "stop" | "import" | "export" | "check" | "update";
 export type JobAccess = "answer" | "edit";
 export type JobStatus = "queued" | "sent" | "running" | "done" | "error" | "expired";
 
@@ -434,6 +437,19 @@ export async function startJob(input: StartInput): Promise<SessionJob> {
       };
       break;
     }
+    case "update": {
+      // Pull, build and restart Mission Control there once nothing runs (lib/selfUpdate.ts).
+      const host = input.host || me();
+      if (host !== me()) {
+        const m = remote.find((r) => r.host === host);
+        if (!m?.selfUpdate) throw new Error(`${labelOf(host)} runs an older ${productName()} that can't be updated from here. Run update.cmd there once; after that it can.`);
+        if (m.updatesAllowed === false) throw new Error(`${labelOf(host)} doesn't take updates from other machines (its Fleet → Versions setting).`);
+      }
+      const pending = (await listJobs()).find((j) => j.host === host && j.mode === "update" && isActive(j) && !j.requestedBy);
+      if (pending) return pending;
+      job = { ...base, mode: "update", tool: "claude", host, hostLabel: labelOf(host), cwd: "", title: `Update ${productName()}` };
+      break;
+    }
     default:
       throw new Error("unknown action");
   }
@@ -577,6 +593,14 @@ export async function acceptRequest(r: SessionJob, via: "lan" | "vault", content
         if (!s) throw new Error("That session isn't on this machine.");
         Object.assign(job, { key: s.key, sessionId: s.id, tool: s.tool, cwd: s.cwd, title: s.title });
       }
+      break;
+    }
+    case "update": {
+      if (settings.remoteUpdates === false) throw Object.assign(new Error(`${myLabel} doesn't take updates from other machines (Fleet → Versions there).`), { status: 403 });
+      // one at a time: a second request joins the one already waiting
+      const pending = (await listJobs()).find((j) => j.host === me() && j.mode === "update" && isActive(j));
+      if (pending) return pending;
+      job.title = `Update ${productName()}`;
       break;
     }
     case "import": {
@@ -897,6 +921,8 @@ async function pump(minAgeMs = 0): Promise<void> {
   try {
     for (;;) {
       const next = await mutate((jobs) => {
+        // An update is waiting for this machine to go quiet: start nothing new until it has restarted.
+        if (jobs.some((j) => j.host === me() && j.mode === "update" && isActive(j))) return undefined;
         const running = jobs.filter((j) => j.host === me() && j.status === "running").length;
         if (running >= MAX_RUNNING) return undefined;
         const j = [...jobs].reverse().find((x) => x.host === me() && x.status === "queued" && (x.mode === "reply" || x.mode === "new" || x.mode === "check") && Date.now() - x.createdAt >= minAgeMs);
@@ -1002,6 +1028,78 @@ function orphanProcesses(pid: number, tool: string, startedAt: number): number[]
     .map(([id]) => Number(id));
 }
 
+// ─── updates asked of this machine (lib/selfUpdate.ts) ───
+
+const UPDATE_WAIT_MS = 6 * 60 * 60_000;
+const UPDATE_STALL_MS = 25 * 60_000;
+const UPDATE_RESTART_MS = 12 * 60_000;
+const short = (c?: string) => (c ?? "").slice(0, 7);
+
+/**
+ * Waits until a restart would cut nothing off, starts the detached update script, mirrors its
+ * steps into the job, and settles the job from data/update-status.json once the server is back
+ * on the new build (the update restarts the server, so this usually finishes in the NEXT one).
+ */
+async function updateJobsTick(): Promise<void> {
+  if (!isSchedulerInstance()) return;
+  const jobs = (await listJobs()).filter((j) => j.host === me() && j.mode === "update" && isActive(j)).sort((a, b) => a.createdAt - b.createdAt);
+  if (!jobs.length) return;
+  const [job, ...extra] = jobs;
+  for (const x of extra) await patchJob(x.id, { status: "error", error: "Another update was already waiting here; this one joined it.", finishedAt: Date.now() });
+  const now = Date.now();
+  const st = readUpdateStatus();
+  const mine = st?.jobId === job.id ? st : null;
+  const progress = (text: string): JobProgress => ({ text, steps: mine?.steps.slice(-12) ?? [], updatedAt: now });
+
+  if (mine && mine.state !== "running") {
+    if (mine.state === "failed") {
+      const error = mine.note || "The update failed.";
+      await patchJob(job.id, { status: "error", error, progress: progress(error), finishedAt: now });
+      return;
+    }
+    const serving = buildInfo()?.commit;
+    if (mine.upToDate || (mine.newHead && serving === mine.newHead)) {
+      const reply = mine.upToDate ? `Already up to date (${short(serving ?? mine.newHead)}).` : `Updated ${short(mine.oldHead)} → ${short(mine.newHead)} and restarted.`;
+      await patchJob(job.id, { status: "done", reply, progress: progress(reply), finishedAt: now });
+      return;
+    }
+    // built; this is still the old server, about to be replaced - or the restart never came
+    if (now - mine.at > UPDATE_RESTART_MS) {
+      await patchJob(job.id, { status: "error", error: `Built ${short(mine.newHead)}, but ${productName()} didn't come back on it. Restart it on that machine, or wait for the watchdog (5 minutes).`, finishedAt: now });
+    }
+    return;
+  }
+  if (mine) {
+    if (now - mine.at > UPDATE_STALL_MS) {
+      await patchJob(job.id, { status: "error", error: `The update stopped reporting at "${mine.step}". Its log is data/update.log on that machine.`, finishedAt: now });
+      return;
+    }
+    const text = mine.steps.at(-1)?.replace(/^\d\d:\d\d:\d\d /, "") ?? "Updating…";
+    // rewrite only on change (or every 5 minutes as a sign of life): a vault result is a OneDrive upload
+    if (job.reply !== text || now - (job.progress?.updatedAt ?? 0) > 5 * 60_000) await patchJob(job.id, { status: "running", reply: text, progress: progress(text) });
+    return;
+  }
+  if (now - job.createdAt > UPDATE_WAIT_MS) {
+    await patchJob(job.id, { status: "error", error: "Still busy after 6 hours, so nothing was changed. Ask again when it's quieter.", finishedAt: now });
+    return;
+  }
+  const blockers = await updateBlockers(job.id);
+  if (blockers.length) {
+    const text = `Waiting for ${blockers.join(", ")} to finish. Nothing new starts here meanwhile.`;
+    if (job.reply !== text || now - (job.progress?.updatedAt ?? 0) > 5 * 60_000) {
+      await patchJob(job.id, { status: "running", startedAt: job.startedAt ?? now, reply: text, progress: progress(text) });
+    }
+    return;
+  }
+  try {
+    launchUpdate(job.id, job.requestedByLabel || "this machine");
+  } catch (e) {
+    await patchJob(job.id, { status: "error", error: (e as Error).message, finishedAt: now });
+    return;
+  }
+  await patchJob(job.id, { status: "running", startedAt: job.startedAt ?? now, reply: "Getting the new code", progress: progress("Getting the new code") });
+}
+
 // ─── the background tick (every machine) ───
 
 let ticking = false;
@@ -1012,7 +1110,8 @@ export async function sessionJobsTick(minAgeMs = 10_000): Promise<void> {
     const orphans: { pid: number; tool: string; startedAt: number }[] = [];
     await mutate((jobs) => {
       for (const j of jobs) {
-        if (j.host !== me() || j.status !== "running") continue;
+        // an update outlives the server on purpose (it restarts it): updateJobsTick settles it
+        if (j.host !== me() || j.status !== "running" || j.mode === "update") continue;
         // Started by an earlier server process that has since died: nothing can collect its output any
         // more, but the CLI it started keeps going (once, a run's worker, allowed to edit files, ran on
         // for fifteen minutes after a crash). Stop it now instead of waiting out the 20-minute limit.
@@ -1026,6 +1125,7 @@ export async function sessionJobsTick(minAgeMs = 10_000): Promise<void> {
     for (const o of orphans) for (const pid of orphanProcesses(o.pid, o.tool, o.startedAt)) killTree(pid);
     if (await groupOn()) await takeVaultRequests();
     await collectResults();
+    await updateJobsTick().catch((e: Error) => console.error(`[mission-control] update: ${e.message}`));
     await pump(minAgeMs);
   } finally {
     ticking = false;
@@ -1122,7 +1222,9 @@ async function collectOne(j: SessionJob): Promise<void> {
     if (final && j.via !== "lan") await fsp.rm(path.join(requestsDir(j.host), "results", `${j.id}.json`), { force: true }).catch(() => {});
     return;
   }
-  if (Date.now() - j.createdAt > REMOTE_EXPIRE_MS) {
+  // from its last sign of life, not from when it was sent: an update can wait hours for the
+  // machine to go quiet, and is out of reach for a minute while that machine restarts
+  if (Date.now() - Math.max(j.createdAt, j.progress?.updatedAt ?? 0) > REMOTE_EXPIRE_MS) {
     await patchJob(j.id, {
       status: "expired",
       error: `No answer from ${j.hostLabel} in 30 minutes. Is ${productName()} running there, with "Replies from my other machines" turned on?`,

@@ -863,6 +863,8 @@ async function boardFinish(taskId: string | undefined, ok: boolean): Promise<voi
 
 /** Long calls (plan, review, deliver) run outside the lock; this stops the tick starting one twice. */
 const working = new Set<string>();
+/** Plan / review / local-work / delivery steps running now (in this module instance: the scheduler's). lib/selfUpdate.ts waits for them. */
+export const runStepsInFlight = () => working.size;
 function detach(key: string, work: () => Promise<void>): void {
   if (working.has(key)) return;
   working.add(key);

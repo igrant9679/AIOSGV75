@@ -20,6 +20,7 @@ import { sessionsSnapshot } from "./sessions";
 import { mergeRemoteSessions } from "./sessionShare";
 import { maybeWeeklyRollup } from "./rollup";
 import { runsTick } from "./runs";
+import { markSchedulerInstance, recordRunningBuild } from "./selfUpdate";
 
 async function refreshScaffold(): Promise<void> {
   const reg = await readRegistry().catch(() => null);
@@ -39,6 +40,9 @@ export function startScheduler(): void {
   if (started) return;
   started = true;
   console.log("[mission-control] schedule tick armed (30s interval)");
+  // Which build this process serves (Fleet → Versions), and: updates start from this instance only.
+  recordRunningBuild();
+  markSchedulerInstance();
   // Health checks run on EVERY machine (a signed-out CLI on a backup node
   // matters the moment it becomes master). Throttled to every 10 min inside.
   setInterval(() => void maybeRunHealth().catch(() => {}), 60_000);
