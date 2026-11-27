@@ -9,6 +9,8 @@ import { ACCENTS, type Accent } from "@/lib/accents";
 import { useMission } from "./store";
 import StatusOrb from "./ui/StatusOrb";
 import Avatar, { type AvatarKind } from "./Avatar";
+import { useLook } from "./useLook";
+import { arrangeGroup, arrangeGroups } from "@/lib/lookCustom";
 import { IconGrid, IconTarget, IconBook, IconBrain, IconGear, IconPlus, IconRocket, IconSwords, IconPulse, IconCheck, IconHelp, IconWrench, IconSpark, IconGraph, IconWing, IconTerminal, IconMic, IconStudio, IconArticle, IconImport, IconSearch } from "./icons";
 
 interface NavItem {
@@ -68,7 +70,18 @@ const WORKSPACE_NAV: NavItem[] = [
   { href: "/guide", label: "Guide", sub: "Searchable manual", accent: "magenta", icon: IconHelp },
 ];
 
+/** The menu's groups, for Appearance → Menu (labels and links only; agents added in Settings join "agents"). */
+export const NAV_GROUPS: { id: string; label: string; items: { href: string; label: string; sub: string }[] }[] = [
+  { id: "brain", label: "Second brain", items: BRAIN_NAV.map(({ href, label, sub }) => ({ href, label, sub })) },
+  { id: "agents", label: "Agents", items: AGENT_NAV.map(({ href, label, sub }) => ({ href, label, sub })) },
+  { id: "workspace", label: "Workspace", items: WORKSPACE_NAV.map(({ href, label, sub }) => ({ href, label, sub })) },
+];
+/** Never hidden from the menu: it's where the menu is changed back. */
+export const NAV_ALWAYS = ["/appearance"];
+
 export default function Sidebar() {
+  const { look } = useLook();
+  const menu = look.menu;
   const pathname = usePathname();
   const { system, agents, busy, vaultOk, registry } = useMission();
   // phones: the menu is a drawer behind a button, closed again after picking a page
@@ -156,24 +169,31 @@ export default function Sidebar() {
   };
 
   const current = [...BRAIN_NAV, ...AGENT_NAV, ...dynamicNav, ...WORKSPACE_NAV].find((i) => i.href === pathname);
+  // the owner's order, names and hidden items (Appearance → Menu); Appearance itself always stays
+  const visibleMenu = menu ? { ...menu, hidden: (menu.hidden ?? []).filter((h) => !NAV_ALWAYS.includes(h)) } : undefined;
+  const groupItems: Record<string, NavItem[]> = { brain: BRAIN_NAV, agents: [...AGENT_NAV, ...dynamicNav], workspace: WORKSPACE_NAV };
+  const groupLabel: Record<string, string> = { brain: "Second brain", agents: "Agents", workspace: "Workspace" };
   const items = (
     <>
-      <span className="sb-section panel-title px-2 pb-2 pt-1">Second brain</span>
-      {BRAIN_NAV.map((item) => renderItem(item))}
-
-      <span className="sb-section panel-title px-2 pb-2 pt-4">Agents</span>
-      {AGENT_NAV.map((item) => renderItem(item))}
-      {dynamicNav.map((item) => renderItem(item))}
-      <Link
-        href="/settings"
-        title="Add agent"
-        className="sb-add flex min-h-9 items-center gap-2 rounded-xl px-3 py-1.5 text-[11px] font-medium text-ink-faint transition-colors hover:bg-white/[0.04] hover:text-ink"
-      >
-        <IconPlus width={13} height={13} /> <span className="sb-add-label">Add agent</span>
-      </Link>
-
-      <span className="sb-section panel-title px-2 pb-2 pt-4">Workspace</span>
-      {WORKSPACE_NAV.map((item) => renderItem(item))}
+      {arrangeGroups(["brain", "agents", "workspace"], menu).map((gid, gi) => {
+        const list = arrangeGroup(gid, groupItems[gid], visibleMenu);
+        if (!list.length && gid !== "agents") return null;
+        return (
+          <div key={gid} className="contents">
+            <span className={`sb-section panel-title px-2 pb-2 ${gi === 0 ? "pt-1" : "pt-4"}`}>{menu?.groupLabels?.[gid] || groupLabel[gid]}</span>
+            {list.map((item) => renderItem(item))}
+            {gid === "agents" && (
+              <Link
+                href="/settings"
+                title="Add agent"
+                className="sb-add flex min-h-9 items-center gap-2 rounded-xl px-3 py-1.5 text-[11px] font-medium text-ink-faint transition-colors hover:bg-white/[0.04] hover:text-ink"
+              >
+                <IconPlus width={13} height={13} /> <span className="sb-add-label">Add agent</span>
+              </Link>
+            )}
+          </div>
+        );
+      })}
 
       <div className="sb-host mt-auto rounded-xl border border-line bg-white/[0.02] p-3">
         <p className="panel-title pb-1.5">Host</p>

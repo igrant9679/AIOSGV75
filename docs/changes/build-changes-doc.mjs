@@ -37,7 +37,7 @@ const META = {
   period: "24–27 November 2026",
   since: "2026-11-20", // git log --since (the last 7 days when first written)
   updated: "27 November 2026",
-  version: "1.7",
+  version: "1.8",
 };
 
 const SUMMARY = [
@@ -106,6 +106,7 @@ const SECTIONS = [
   {
     title: "Help, networking and installers",
     items: [
+      { name: "Appearance: customize everything (sidebar → Appearance)", date: "27 Nov", what: "Beyond the presets: any colour for every accent, background, panel, border and text tone (dark and light separately); any font installed on the computer for the interface, headings and code; zoom 70–160%, corner roundness, panel opacity and menu width; a background colour, gradient or your own picture (dimmed and blurred if you like); the menu renamed, reordered and trimmed, groups included, and placed on the left, the right or across the top. Saved looks keep several, and Export / Import copy one to another machine. Applied before the page draws, so there's no flash; every value is checked so nothing unexpected can get into the page's styles." },
       { name: "Help on every page", date: "25 Nov", what: "A Help button (or F1) opens a panel: what this page is for, step-by-step instructions, a “which page do I use?” guide, ~30 searchable how-tos, a glossary, and Ask (answers from the manual)." },
       { name: "Proof that OneDrive works", date: "25 Nov", what: "Fleet → Network shows when each machine was last heard from through OneDrive, and “Test OneDrive” measures a real round trip." },
       { name: "Installers: a better local chat model", date: "24 Nov", what: "gpt-oss:20b replaces llama3.2 (which failed simple tasks), offered according to the machine's graphics card, and the installer adds it to Mission Control automatically." },
@@ -148,6 +149,7 @@ const WAITING = [
 // Changes to this document itself.
 const HISTORY = [
   { date: "27 Nov 2026", change: "First version: changes from 24–27 November, findings, and what's waiting on you." },
+  { date: "27 Nov 2026", change: "1.8: Appearance: customize everything (colours, fonts, sizes, background, menu, placement, saved looks)." },
   { date: "27 Nov 2026", change: "1.7: LevelUp hand-offs to the fleet, with client / personal areas; three new waiting items." },
   { date: "27 Nov 2026", change: "1.1: the GitHub dashboard; new waiting item: sign the GitHub CLI in to both accounts." },
   { date: "27 Nov 2026", change: "1.6: the Telegram gateway check in each machine's health." },

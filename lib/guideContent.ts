@@ -57,7 +57,7 @@ export const GUIDE_SECTIONS: GuideSection[] = [
   {
     id: "appearance",
     title: "Appearance — Theme, Colors, Fonts & Layout",
-    keywords: "appearance customize look feel theme dark light system palette colors missioncommand teal maroon plus jakarta sans neon deck ocean sunset forest pastel terminal monochrome font inter plex serif readable atkinson monospace size zoom scale density compact spacious sidebar icons right width corners rounded sharp panels glass solid outline flat glow shimmer animation motion reduced start page preset reset",
+    keywords: "appearance customize look feel custom colour color picker any font installed font background image picture wallpaper gradient menu order rename hide reorder top menu placement zoom radius opacity saved looks export import theme dark light system palette colors missioncommand teal maroon plus jakarta sans neon deck ocean sunset forest pastel terminal monochrome font inter plex serif readable atkinson monospace size zoom scale density compact spacious sidebar icons right width corners rounded sharp panels glass solid outline flat glow shimmer animation motion reduced start page preset reset",
     body: `**Appearance** (Workspace → Appearance, or Ctrl/⌘+K → "appearance") changes the whole deck live — no reload.
 
 **Default look: MissionCommand** — deep teal, maroon, gold, navy and green on light grey with white cards and a dark teal title band, set in **Plus Jakarta Sans** (numbers too; code and tool output stay monospace). Light mode by default; the same colors work in dark mode. Every browser was switched to it once; pick *Neon deck* to go back to the original. Each page's title band takes that page's own color. Charts: **Command** shows new sessions per day stacked by machine (last 14 days; hover a day for the breakdown, **Table** for the numbers) and 7-day mini bars in the Done today / Memories tiles; each **Projects** row has an 8-week strip of when its sessions were last active.
@@ -68,11 +68,18 @@ export const GUIDE_SECTIONS: GuideSection[] = [
 
 **Type** — Interface font (Plus Jakarta Sans, Space Grotesk, Inter, IBM Plex Sans, Atkinson Hyperlegible, Source Serif, Segoe UI, or monospace everywhere) · Code and data font (same as the interface — code stays monospace —, JetBrains Mono, IBM Plex Mono, Fira Code, Cascadia/Consolas) · Label style (SPACED CAPS or normal case) · Interface size (90–125%).
 
-**Layout** — Density (compact, comfortable, spacious) · Sidebar (full, compact, icons only — hover an icon for its name) · Sidebar position (left/right) · Content width (focused, standard, full width) · Footer ticker.
+**Layout** — Density (compact, comfortable, spacious) · Sidebar (full, compact, icons only — hover an icon for its name) · Menu position (left, right, or **across the top**) · Content width (focused, standard, full width) · Footer ticker.
 
 **Behavior** — Animation (full; reduced stops looping effects; none) · Start page (Overview, Command, Timeline, Projects or Board — applied once per browser tab, so Overview stays reachable).
 
-Settings are stored in this browser (\`localStorage\`: \`mc-appearance\`, theme in \`mc-theme\`) and applied before first paint, so there's no flash. Each machine/browser keeps its own look.`,
+**Customize everything** (below the presets; these win over them):
+- **Colors**: pick any color for each of the six accents, the page background and its second tone, panels, borders and the three text tones. The dark and light themes have separate sets, and **reset** next to a color returns it to the preset.
+- **Fonts and sizes**: any font installed on the computer for the interface, headings and code (type its name; suggestions are offered). Also **Size (zoom)** from 70% to 160%, **Corner roundness** 0–32 px, **Panel opacity** and **Menu width**.
+- **Background**: the preset, plain, a color, a gradient (two colors and an angle), or **your own picture**. A picture is shrunk to 2560 px and kept in this browser; it can fill, fit or tile, and be dimmed and blurred so text stays readable.
+- **Menu**: rename the groups and every item, move them up and down, hide what you don't use, and hide the small line under each name or the Host box. Appearance always stays in the menu.
+- **Saved looks**: name and save the whole look (presets, theme and custom settings) and switch between saved looks. **Export file** / **Import file** carry a look to another machine.
+
+Settings are stored in this browser (\`localStorage\`: \`mc-appearance\`, theme in \`mc-theme\`, custom look in \`mc-look-custom\`, saved looks in \`mc-looks-saved\`) and applied before first paint, so there's no flash. Each machine/browser keeps its own look; use Export / Import to copy one.`,
   },
   {
     id: "second-brain",

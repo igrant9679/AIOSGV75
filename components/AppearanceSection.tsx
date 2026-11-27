@@ -14,6 +14,7 @@ import {
   type ThemeChoice,
 } from "@/lib/appearance";
 import { useAppearance } from "./useAppearance";
+import AppearanceCustom from "./AppearanceCustom";
 
 /** Swatches for the palette buttons and preset cards (the bright --nb-* set). */
 const PALETTE_SWATCH: Record<string, string[]> = {
@@ -202,6 +203,7 @@ export default function AppearanceSection() {
           <p className="px-1 text-[11px] text-ink-faint">
             Saved in this browser. Each browser or machine keeps its own look, the same way the light/dark toggle does.
           </p>
+          <AppearanceCustom />
         </div>
 
         <div className="flex flex-col gap-4 xl:sticky xl:top-4 xl:self-start">

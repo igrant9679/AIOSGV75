@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import localFont from "next/font/local";
 import Shell from "@/components/Shell";
 import { appearanceBootScript } from "@/lib/appearance";
+import { lookBootScript } from "@/lib/lookCustom";
 import "./globals.css";
 
 // Fonts live in app/fonts (latin subset, SIL Open Font License; see app/fonts/README.md).
@@ -62,6 +63,8 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col">
         {/* apply the saved theme and appearance before first paint */}
         <script dangerouslySetInnerHTML={{ __html: appearanceBootScript() }} />
+        {/* and the custom look (colours, fonts, background, menu…), also before first paint */}
+        <script dangerouslySetInnerHTML={{ __html: lookBootScript() }} />
         <Shell>{children}</Shell>
       </body>
     </html>

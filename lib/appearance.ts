@@ -235,11 +235,12 @@ export const APPEARANCE_OPTIONS: AppearanceOption[] = [
     key: "sidebarSide",
     attr: "sidebar-side",
     group: "Layout",
-    label: "Sidebar position",
-    hint: "Which side the navigation sits on.",
+    label: "Menu position",
+    hint: "Where the navigation sits: down the left, down the right, or across the top.",
     choices: [
       { value: "left", label: "Left" },
       { value: "right", label: "Right" },
+      { value: "top", label: "Top" },
     ],
   },
   {

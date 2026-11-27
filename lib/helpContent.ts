@@ -402,9 +402,13 @@ export const PAGE_HELP: Record<string, PageHelp> = {
     guide: ["settings-env", "api-llms", "multi-machine", "new-network"],
   },
   "/appearance": {
-    what: "Change the look of the app: theme, colours, fonts, density, layout.",
-    useFor: ["Making it easier to read", "Choosing your start page"],
-    tips: ["Changes are instant and remembered per browser. **Reset to default** undoes everything."],
+    what: "Change the look of the app: theme, colours, fonts, sizes, background, the menu's order and where it sits.",
+    useFor: ["Making it easier to read", "Making it yours: your colours, fonts and background picture", "Putting the pages you use first, hiding the rest", "Choosing your start page"],
+    steps: [
+      { title: "Quick", items: ["Pick a **preset**, then adjust Look, Type, Layout and Behavior.", "**Menu position**: left, right or across the top."] },
+      { title: "Fully custom", items: ["**Colors**: any colour for each accent, background, panel and text tone (dark and light separately).", "**Fonts and sizes**: any installed font, zoom 70–160%, corner roundness, panel opacity, menu width.", "**Background**: a colour, a gradient or your own picture (dim and blur it).", "**Menu**: rename, reorder or hide items and groups.", "**Saved looks**: save, switch, and Export / Import to copy a look to another machine."] },
+    ],
+    tips: ["Changes are instant and remembered per browser. **Reset to default** undoes the presets; **Clear custom look** undoes the custom settings.", "Appearance always stays in the menu, so you can't lock yourself out."],
     guide: ["appearance"],
   },
   "/guide": {
