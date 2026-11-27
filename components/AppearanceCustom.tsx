@@ -7,6 +7,7 @@ import { readAppearance, readThemeChoice, saveAppearance } from "./useAppearance
 import { NAV_GROUPS, NAV_ALWAYS } from "./Sidebar";
 import { COLOR_KEYS, FONT_SUGGESTIONS, arrangeGroup, arrangeGroups, cleanLook, type ColorKey, type CustomLook, type LookBackground, type LookMenu, type SavedLook } from "@/lib/lookCustom";
 import { sanitizeAppearance, type ThemeChoice } from "@/lib/appearance";
+import { FLEET_FOLLOW_KEY, checkFleetLook, followsFleet, markApplied } from "./FleetLookSync";
 
 /**
  * Appearance → the custom layer (lib/lookCustom.ts): any colour, installed font, exact sizes, background,
@@ -425,6 +426,86 @@ export default function AppearanceCustom() {
           )}
         </div>
       </Panel>
+
+      <FleetLookPanel snapshot={() => snapshot("fleet")} say={say} />
     </div>
+  );
+}
+
+/** Push the look to every machine (lib/fleetLook.ts); each browser applies it once unless it keeps its own. */
+function FleetLookPanel({ snapshot, say }: { snapshot: () => { appearance: Record<string, string>; theme?: string; custom: CustomLook }; say: (t: string, bad?: boolean) => void }) {
+  const [meta, setMeta] = useState<{ version: number; at: number; by: string; name?: string } | null>(null);
+  const [follow, setFollow] = useState(true);
+  const [confirm, setConfirm] = useState(false);
+  const [name, setName] = useState("");
+  const [busy, setBusy] = useState(false);
+  const load = () => fetch("/api/look?meta=1", { cache: "no-store" }).then((r) => r.json()).then((j) => setMeta(j.look ?? null)).catch(() => {});
+  useEffect(() => {
+    load();
+    setFollow(followsFleet());
+  }, []);
+  const push = async () => {
+    setBusy(true);
+    try {
+      const s = snapshot();
+      const r = await (await fetch("/api/look", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "push", ...s, name: name.trim() || undefined }) })).json();
+      if (r.error) throw new Error(r.error);
+      markApplied(r.version);
+      say("Pushed to the whole Fleet. Each machine applies it within a few minutes (OneDrive), the next time Mission Control is open there; machines on an older version apply it after their update.");
+      setConfirm(false);
+      load();
+    } catch (e) {
+      say(`Couldn't push it: ${(e as Error).message}`, true);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const stop = async () => {
+    await fetch("/api/look", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "clear" }) });
+    say("Stopped sharing. Every machine keeps the look it has.");
+    load();
+  };
+  const setFollowing = async (on: boolean) => {
+    try {
+      localStorage.setItem(FLEET_FOLLOW_KEY, on ? "on" : "off");
+    } catch {
+      /* private mode */
+    }
+    setFollow(on);
+    if (on && (await checkFleetLook(true))) say("This browser now has the fleet look.");
+  };
+  return (
+    <Panel title="The whole Fleet">
+      <div className="flex flex-col gap-3 p-4">
+        <p className="text-[11px] text-ink-faint">Push this browser’s whole look (presets, theme and the custom settings above, picture included) to every machine. Each one applies it once; after that it can be changed there again until the next push. A machine’s browser can choose to keep its own look.</p>
+        <p className="font-mono text-[10px] text-ink-dim">{meta ? `Fleet look${meta.name ? ` “${meta.name}”` : ""}: pushed by ${meta.by} on ${new Date(meta.at).toLocaleString()}` : "No look is being shared with the Fleet."}</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name (optional)" aria-label="Fleet look name" className={`${field} w-48`} />
+          {!confirm ? (
+            <button type="button" className={btn} onClick={() => setConfirm(true)} disabled={busy}>
+              Push this look to the whole Fleet…
+            </button>
+          ) : (
+            <>
+              <span className="text-[11px]" style={{ color: "var(--ac-amber)" }}>Every machine’s Mission Control will switch to this look.</span>
+              <button type="button" className={btn} style={{ borderColor: "var(--ac-amber)", color: "var(--color-ink)" }} onClick={() => void push()} disabled={busy}>
+                {busy ? "Pushing…" : "Yes, push it"}
+              </button>
+              <button type="button" className={btn} onClick={() => setConfirm(false)}>
+                Cancel
+              </button>
+            </>
+          )}
+          {meta && (
+            <button type="button" className={btn} onClick={() => void stop()}>
+              Stop sharing
+            </button>
+          )}
+        </div>
+        <label className="flex cursor-pointer items-center gap-1.5 font-mono text-[10px] text-ink-dim">
+          <input type="checkbox" checked={follow} onChange={(e) => void setFollowing(e.target.checked)} /> this browser takes looks pushed to the Fleet (untick to keep its own)
+        </label>
+      </div>
+    </Panel>
   );
 }

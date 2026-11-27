@@ -18,6 +18,7 @@ import Celebration from "./ui/Celebration";
 import { SessionAlertsWatcher } from "./hub/NetworkPanels";
 import PermissionPrompts from "./hub/PermissionPrompts";
 import { FleetPauseBar } from "./hub/FleetPause";
+import FleetLookSync from "./FleetLookSync";
 
 /** Agent chat routes get a FULL theme takeover — the whole sky in their color. */
 const TAKEOVER_ROUTES = new Set(["/auto", "/claude", "/openclaw", "/hermes"]);
@@ -90,6 +91,7 @@ export default function Shell({ children }: { children: ReactNode }) {
         <DeckFrame>{children}</DeckFrame>
         <SessionAlertsWatcher />
         <PermissionPrompts />
+        <FleetLookSync />
       </MissionProvider>
     </MotionConfig>
   );

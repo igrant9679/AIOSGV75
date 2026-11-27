@@ -37,7 +37,7 @@ const META = {
   period: "24–27 November 2026",
   since: "2026-11-20", // git log --since (the last 7 days when first written)
   updated: "27 November 2026",
-  version: "1.8",
+  version: "1.9",
 };
 
 const SUMMARY = [
@@ -106,6 +106,7 @@ const SECTIONS = [
   {
     title: "Help, networking and installers",
     items: [
+      { name: "Appearance: push a look to the whole Fleet", date: "27 Nov", what: "Appearance → The whole Fleet → Push this look to the whole Fleet: every machine's Mission Control switches to this browser's whole look (presets, theme, custom colours, fonts, background picture, menu) within a few minutes, once; after that each can change again until the next push. A browser can keep its own look instead, and Stop sharing leaves every machine as it is. Machines need this version first (Fleet → Versions → Update all)." },
       { name: "Appearance: customize everything (sidebar → Appearance)", date: "27 Nov", what: "Beyond the presets: any colour for every accent, background, panel, border and text tone (dark and light separately); any font installed on the computer for the interface, headings and code; zoom 70–160%, corner roundness, panel opacity and menu width; a background colour, gradient or your own picture (dimmed and blurred if you like); the menu renamed, reordered and trimmed, groups included, and placed on the left, the right or across the top. Saved looks keep several, and Export / Import copy one to another machine. Applied before the page draws, so there's no flash; every value is checked so nothing unexpected can get into the page's styles." },
       { name: "Help on every page", date: "25 Nov", what: "A Help button (or F1) opens a panel: what this page is for, step-by-step instructions, a “which page do I use?” guide, ~30 searchable how-tos, a glossary, and Ask (answers from the manual)." },
       { name: "Proof that OneDrive works", date: "25 Nov", what: "Fleet → Network shows when each machine was last heard from through OneDrive, and “Test OneDrive” measures a real round trip." },
@@ -126,7 +127,8 @@ const FINDINGS = [
 
 // What the owner needs to do or decide. status: "to do" | "decision" | "optional" | "done"
 const WAITING = [
-  { item: "LevelUp's Fleet: OK it going live", status: "decision", why: "LevelUp's part is on the branch fleet-integration. Merging it to main deploys it to levelupnow.tools, where only you (the owner of your workspace) will see the Fleet.", how: "Say go and it will be merged (after LevelUp's full checks), or look at the branch first." },
+  { item: "Update the machines for the fleet look", status: "to do", why: "Pushing a look to the whole Fleet, and the LevelUp hand-offs, need the latest version on each machine.", how: "Fleet → Versions → Update all (each waits until it is idle)." },
+  { item: "LevelUp's Fleet: OK it going live", status: "done", why: "LevelUp's part is on the branch fleet-integration. Merging it to main deploys it to levelupnow.tools, where only you (the owner of your workspace) will see the Fleet.", how: "Say go and it will be merged (after LevelUp's full checks), or look at the branch first." },
   { item: "Connect Mission Control to LevelUp", status: "to do", why: "Once LevelUp's part is live.", how: "LevelUp → Fleet → Make a key for Mission Control; then Mission Control → Work → LevelUp → paste the address and key → Connect (on Raider18, where Work lives)." },
   { item: "Set areas", status: "optional", why: "Hand-offs that name no repository need a work folder for their area to change files; repositories need an area for the area filter and for LevelUp's list.", how: "Work → LevelUp → Areas: a work folder for LSI Media, CommunityForce, MeYouSocial and Personal, and an area per repository."  },
   { item: "Add igrant9679 back to Git Credential Manager", status: "done", why: "After the two GitHub sign-ins, git on Raider18 only has sgrant5724 saved, so pushes to igrant9679's repositories from any other folder or Claude session are refused (Mission Control's own repository was given a local fix).", how: "In a normal PowerShell window: git credential-manager github login, and sign in as igrant9679." },
@@ -149,6 +151,7 @@ const WAITING = [
 // Changes to this document itself.
 const HISTORY = [
   { date: "27 Nov 2026", change: "First version: changes from 24–27 November, findings, and what's waiting on you." },
+  { date: "27 Nov 2026", change: "1.9: push a look to the whole Fleet; LevelUp's Fleet is live (merged after its full checks); Talos's notes now explain the fleet." },
   { date: "27 Nov 2026", change: "1.8: Appearance: customize everything (colours, fonts, sizes, background, menu, placement, saved looks)." },
   { date: "27 Nov 2026", change: "1.7: LevelUp hand-offs to the fleet, with client / personal areas; three new waiting items." },
   { date: "27 Nov 2026", change: "1.1: the GitHub dashboard; new waiting item: sign the GitHub CLI in to both accounts." },

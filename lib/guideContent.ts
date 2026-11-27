@@ -78,6 +78,7 @@ export const GUIDE_SECTIONS: GuideSection[] = [
 - **Background**: the preset, plain, a color, a gradient (two colors and an angle), or **your own picture**. A picture is shrunk to 2560 px and kept in this browser; it can fill, fit or tile, and be dimmed and blurred so text stays readable.
 - **Menu**: rename the groups and every item, move them up and down, hide what you don't use, and hide the small line under each name or the Host box. Appearance always stays in the menu.
 - **Saved looks**: name and save the whole look (presets, theme and custom settings) and switch between saved looks. **Export file** / **Import file** carry a look to another machine.
+- **The whole Fleet**: **Push this look to the whole Fleet** sends this browser's whole look (picture included) to every machine through the vault. Each machine's Mission Control applies it once, within a few minutes, and after that it can be changed there again until the next push. A browser can untick **this browser takes looks pushed to the Fleet** to keep its own. **Stop sharing** leaves every machine with the look it has.
 
 Settings are stored in this browser (\`localStorage\`: \`mc-appearance\`, theme in \`mc-theme\`, custom look in \`mc-look-custom\`, saved looks in \`mc-looks-saved\`) and applied before first paint, so there's no flash. Each machine/browser keeps its own look; use Export / Import to copy one.`,
   },

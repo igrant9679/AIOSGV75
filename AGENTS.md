@@ -83,7 +83,8 @@ manual is `/guide` (source: `lib/guideContent.ts`).
   `appearance.ts` (preset options as data-* attributes) + `lookCustom.ts` (the free-form look: any colour,
   installed font, zoom, radius, background picture, menu order / names / hidden, saved looks; its CSS builder is
   self-contained because the pre-paint boot script embeds its source; every value validated:
-  scripts/test-look.mjs),
+  scripts/test-look.mjs), `fleetLook.ts` (a look pushed to every machine: vault Cluster/look.json, served at /api/look,
+  applied once per push by components/FleetLookSync.tsx unless the browser opted out; cleaned on both ends),
   `team.ts` + `teamParse.ts` (Command -> Team: named teammates in their own sessions, @mentions and
   "@Name: task" hand-offs, settled by the scheduler's `teamTick`),
   `sessionTools.ts` (the registry of session tools) + `sessions.ts` /
