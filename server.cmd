@@ -22,13 +22,19 @@ rem -H 127.0.0.1: never expose the dashboard (which can run commands) to the LAN
 rem --log (the watchdog starts it this way, hidden): keep everything it prints in
 rem data\server.log, so a crash leaves its reason behind. Over 5 MB, the old log
 rem becomes server.log.1. Double-clicked (no --log), the output stays on screen.
+rem The server is started with node directly, NOT through `npm start`. npm (Node/libuv) puts the
+rem process it starts in a job object with KILL_ON_JOB_CLOSE, so npm dying took the server with it,
+rem and one more Node process could fail. Note: a crash still leaves no Windows Error Reporting
+rem entry or dump: libuv calls SetErrorMode(SEM_NOGPFAULTERRORBOX) in every Node process. Six
+rem silent deaths (exit 0xC0000409) 2026-11-14..26 are why; see AGENTS.md rule 41.
+set "NEXT_BIN=%~dp0node_modules\next\dist\bin\next"
 if /i not "%~1"=="--log" (
-  npm start -- -H 127.0.0.1
+  node "%NEXT_BIN%" start -H 127.0.0.1
   exit /b
 )
 if not exist "data" mkdir "data"
 if exist "data\server.log" for %%F in ("data\server.log") do if %%~zF GTR 5242880 move /y "data\server.log" "data\server.log.1" >nul
 echo.>> "data\server.log"
 echo ===== %date% %time% server.cmd: starting =====>> "data\server.log"
-call npm start -- -H 127.0.0.1 >> "data\server.log" 2>&1
-echo ===== %date% %time% server.cmd: npm start ended, exit code %errorlevel% =====>> "data\server.log"
+node "%NEXT_BIN%" start -H 127.0.0.1 >> "data\server.log" 2>&1
+echo ===== %date% %time% server.cmd: server ended, exit code %errorlevel% =====>> "data\server.log"

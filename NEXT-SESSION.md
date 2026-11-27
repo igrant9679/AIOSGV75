@@ -165,6 +165,23 @@ helper scripts now live in vault **`Agentic OS/Cluster/`** — all idempotent, a
   not `costUsd`, so no fabricated dollars appear — but the per-agent tag reads BILLED. Fix only
   if the Analytics split starts mattering.
 
+## ✅ DONE 2026-11-27 (Raider18) — the silent 0xC0000409 server deaths: investigated, three changes
+
+Raider18's server died 6 times (2026-11-14..26, exit 0xC0000409 = fail-fast) with nothing logged anywhere.
+Ruled out: memory (71% commit), Node fatal errors (reportOnFatalError on, no report), Mission Control jobs
+(none running at 3 of 4), the watchdog's 3-minute task limit (timings don't fit), Smart App Control /
+exploit protection / Defender (no events). Why Windows records nothing: libuv's SetErrorMode
+(SEM_NOGPFAULTERRORBOX) in every Node process; checked in libuv's source and with a real test crash.
+The search results' "libuv 1.51 uv__tcp_connect" bug did NOT hold up against Node's changelog (that fix
+came with libuv 1.52.1 in 24.16.0). Cause still unknown. Done, with the user's OK:
+1. server.cmd starts `next start` with node directly (not npm: npm's libuv job killed the server with it).
+2. WER LocalDumps for node.exe (HKLM, full, 3 kept, %LOCALAPPDATA%\CrashDumps\node). Inert for Node
+   because of (above); left in place, harmless. A debugger (ProcDump -e) is what would catch the next one.
+3. Node 24.15.0 → 24.22.3 (libuv 1.52.1), official MSI, SHA-256 + OpenJS signature checked. Other machines
+   are still on whatever Node they have. The OpenClaw gateway on Raider18 was stopped for the install and
+   restarted (it runs here via the "OpenClaw Gateway" task); Claude's claudebin MCP server was stopped too.
+Watch data/server.log for "server ended, exit code" lines.
+
 ## ✅ DONE 2026-11-26 (Raider18) — fallback on limit, send when free, ACP agents, Team (ideas from openbot.run)
 
 The user asked whether openbot.run would add anything; OpenBot itself was NOT adopted (PolyForm

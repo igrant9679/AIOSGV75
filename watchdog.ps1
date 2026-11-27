@@ -231,7 +231,7 @@ function Invoke-Check {
       return
     }
   }
-  Write-Log "ERROR relaunched server.cmd but port $Port still not listening after 90s - check .env.local / npm start by hand"
+  Write-Log "ERROR relaunched server.cmd but port $Port still not listening after 90s - check .env.local / run server.cmd by hand"
 }
 
 if     ($Install)   { Install-Watchdog }

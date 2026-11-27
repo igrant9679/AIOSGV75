@@ -331,6 +331,18 @@ pm: it works in Claude Code's
     person; a teammate never hands to itself. Messages to a teammate with a session are `whenFree` replies,
     so they queue behind each other. A fallback moves the teammate to the new session (`fellBack`, not local).
 
+41. **A Node crash on Windows leaves no trace by itself, so start the server bare and read exit codes.**
+    libuv calls `SetErrorMode(SEM_NOGPFAULTERRORBOX)` in every Node process (src/win/core.c), so Windows
+    Error Reporting is never invoked: no Application Error event, no WER entry, and LocalDumps (set for
+    node.exe on Raider18, 2026-11-27) don't fire either; verified with a real 0xC00000FD test crash. And a
+    child libuv spawns sits in a job with KILL_ON_JOB_CLOSE (src/win/process.c), so under `npm start`
+    npm's death killed the server too. server.cmd therefore runs `node node_modules\next\dist\bin\next
+    start` directly. Raider18's server died six times (2026-11-14..26) with 0xC0000409 (fail-fast),
+    nothing logged, no Node report, memory fine, not tied to jobs or the watchdog; Node was 24.15.0
+    (libuv 1.51.0), now 24.22.3 (libuv 1.52.1). To capture the next one a debugger must be attached
+    (e.g. Sysinternals ProcDump `-e`): nothing else sees it. Editing server.cmd while it runs: cmd.exe
+    reads a batch file live, so restart the server after changing it (once it ran the new line by itself).
+
 ## Dev cycle (production server auto-starts at login)
 
 - The **prod** server starts at Windows login via the "Mission Control Watchdog"
