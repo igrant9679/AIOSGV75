@@ -211,6 +211,16 @@ export const PAGE_HELP: Record<string, PageHelp> = {
     tips: ["For work in a project folder, with file edits, tests and approval of the plan first, use **Runs** instead."],
     guide: ["orchestrator-attention"],
   },
+  "/work": {
+    what: "Every task your repositories mention (to-do lists, next steps, “waiting on you” sections, open issues, and what GitHub says needs you) on one board, each assigned to you, a Team teammate, or a machine and tool in the fleet.",
+    useFor: ["Managing the work across all your apps and projects in one place", "Handing development tasks to the fleet and checking the results", "Keeping your own to-dos from every project together"],
+    steps: [
+      { title: "Fill it", items: ["Make a GitHub report (GitHub → Refresh); its tasks come in here by themselves, or press **Sync from GitHub**.", "**Assign for me**: Mission Control gives things only you can do (decisions, sign-ins, approvals, secrets, merges) to you, and development work to the machine or teammate that has the project's folder.", "**Smart assign**: Claude (with no tools) looks at the unclear ones."] },
+      { title: "Work it", items: ["Change anyone's assignment with the picker on the card; choose *answer only* or *may edit files* for an AI.", "**Start** sends the task with its context; the card moves to *In progress*, then *Review* with the result and a link to the session.", "Mark **Done**, send it **Again**, or **✕** dismiss what isn't real work."] },
+    ],
+    tips: ["*by project* shows each app's open, yours, the fleet's, in progress and done.", "A task that disappears from its document is flagged “no longer in its source”, not deleted.", "“start assigned tasks automatically” is off until you switch it on; it never runs while the fleet is paused."],
+    guide: ["work-tasks"],
+  },
   "/github": {
     what: "Every repository on your GitHub accounts in one place: what changed, what is waiting on you, and a written report for each, plus an overview with priorities.",
     useFor: ["Seeing what happened across all your projects this week", "Finding reviews, failing checks, issues and to-dos that need you", "Reading each project's own status documents' “waiting on you” items in one list"],

@@ -163,7 +163,7 @@ export function extractWaiting(text: string, max = 25): WaitingItem[] {
       if (cells.some((c) => /^(done|✅|complete|completed|closed)$/i.test(c))) continue;
       item = cells.join(" — ");
     } else if (/^[-*•]\s+\[[xX]\]/.test(line)) continue; // checked box: done
-    else if (/^[-*•]\s+|^\d+[.)]\s+/.test(line)) item = line.replace(/^[-*•]\s+(\[ \]\s*)?|^\d+[.)]\s+/, "");
+    else if (/^[-*•]\s+|^\d+[.)]\s+/.test(line)) item = line.replace(/^[-*•]\s+(\[[ ~/-]\]\s*)?|^\d+[.)]\s+/, "");
     else continue; // prose under the heading: not an item
     item = item.replace(/\*\*/g, "").replace(/\s+/g, " ").trim();
     if (item.length < 3) continue;

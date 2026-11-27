@@ -651,6 +651,24 @@ The token is stored in the vault, so any machine that takes over as master can s
 **Where it lives** — data/github-report.json on this computer only; private repositories' details never go to the vault. Each computer makes its own report if its GitHub CLI is signed in.`,
   },
   {
+    id: "work-tasks",
+    title: "Work — the tasks your repositories mention, assigned to you or the fleet",
+    keywords: "work tasks todo to-do next steps action items waiting on you issues assign assignee fleet teammate machine tool start review done dismissed board by project auto assign smart assign automatically repo tasks",
+    body: `**Work (/work)** — one board for the tasks in all your repositories, so you can manage the work across your apps and projects.
+
+**Where tasks come from** (after every GitHub report, or **Sync from GitHub**): the items in each repository's status documents (to-do lists, next steps, action items, "waiting on you" and "for you to do" sections, in this-week, changes, status, handoff and to-do files); what GitHub says needs you (reviews asked of you, your pull requests to merge or fix, failing checks, security alerts); and every open issue. Each task keeps the same identity from one sync to the next (repository + source + its words), so your assignments, status and notes stay; one that disappears from its document is flagged "no longer in its source" rather than deleted, and a closed issue closes its task.
+
+**Who does it** — you, a **Team** teammate (Command → Team), or a **machine and tool** in the fleet that has the project's folder: Claude Code, Codex or an ACP agent on that machine. Mission Control works out where each repository lives: on this computer from each project folder's git remote, on the others from a folder or project with the repository's name.
+
+**Let Mission Control assign** — **Assign for me** (and, if ticked, after every report): things only you can do (decisions, approvals, sign-ins, secrets, payments, replies, merges, reviews) and anything a document addressed to you go to you; development work goes to the best place that has the folder: a teammate there first, then this computer, then a LAN machine, Claude Code before Codex. A task no machine can reach stays unassigned with the reason. **Smart assign** asks Claude (with every tool switched off: task text comes from repositories) about the open ones: owner or agent, how hard, and whether files must change.
+
+**Start** — sends the task with its context (repository, source, link, your notes) as an ordinary session on that machine, or as a Team message to the teammate, *answer only* unless you set *may edit files* (and that machine allows edits). The card moves to **In progress**, then to **Review** with the result and a link to the session; a failure comes back to **To do** with the reason. **Start all assigned** starts every assigned, unstarted fleet task. "Start assigned tasks automatically" (off by default) starts one at a time, at most two running, and never while the fleet is paused.
+
+**Views** — the board (Inbox, To do, In progress, Review, Done) or **by project** (each app's open, yours, the fleet's, in progress, review and done, and which machines have it); filter by project, assignee, source and words.
+
+The task list lives on this computer (data/repo-tasks.json): its text can come from private repositories, so it doesn't go to the vault.`,
+  },
+  {
     id: "studio-suite",
     title: "Mastermind, Builds, Goal Mode & Watcher",
     keywords: "mastermind group chat room agents mention builds games apps shelf play goal mode hermes autonomous long horizon walk away youtube watcher trends signals titles angles command palette ctrl k",

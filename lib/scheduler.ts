@@ -15,6 +15,7 @@ import { bridgeTick } from "./bridge";
 import { sessionJobsTick } from "./sessionActions";
 import { teamTick } from "./team";
 import { githubDailyTick } from "./githubReport";
+import { workTick } from "./repoTasks";
 import { startPeerServer } from "./peer";
 import { alertsTick, drainSpool, maintainHooks } from "./sessionEvents";
 import { publishLive } from "./fleetLive";
@@ -66,6 +67,8 @@ export function startScheduler(): void {
   // Projects page: replies / new sessions / threads asked for by your other
   // machines (through the vault), and results of the ones this machine sent.
   setInterval(() => void sessionJobsTick().catch(() => {}), 15_000);
+  // Work: follow tasks handed to the fleet (and start the next one if "start automatically" is on)
+  setInterval(() => void workTick().catch((e: Error) => console.error(`[mission-control] work: ${e.message}`)), 30_000);
   // GitHub dashboard: a fresh report once a day where the GitHub CLI is signed in (held by the fleet pause)
   setInterval(() => void (isPaused() ? Promise.resolve() : githubDailyTick()).catch(() => {}), 30 * 60_000);
   // Command -> Team: settle teammates' replies and send their hand-offs (only this instance does, rule 1)

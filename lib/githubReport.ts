@@ -375,7 +375,7 @@ async function readDocs(token: string, repo: RepoReport, paths: string[]): Promi
         text = docxText(buf);
       } else if (blob && !blob.isBinary) text = String(blob.text ?? "");
       text = text.slice(0, 80_000);
-      info.waiting = extractWaiting(text);
+      info.waiting = extractWaiting(text, 60);
       info.excerpt = text.replace(/\n{3,}/g, "\n\n").slice(0, 1800);
     } catch (e) {
       info.error = (e as Error).message;
@@ -397,6 +397,18 @@ function extractJson<T>(text: string): T | null {
     return null;
   }
 }
+
+/**
+ * Claude with every tool disallowed, no MCP servers, no saved session and an empty working folder:
+ * for writing about text that other people wrote (it may contain instructions). Shared with Work
+ * (lib/repoTasks.ts). Returns the reply text, or an error.
+ */
+export async function claudeNoTools(prompt: string, model: "haiku" | "sonnet"): Promise<{ text: string; error?: string }> {
+  const r = await runClaudeText(prompt, ["--model", model, ...AI_TOOLS_OFF], emptyDir());
+  return { text: r.text ?? "", error: r.error };
+}
+
+export { extractJson };
 
 const emptyDir = () => {
   const d = path.join(os.tmpdir(), "mc-github-summary");
@@ -710,6 +722,9 @@ export async function refreshGithubReport(days = 7): Promise<void> {
     }
     report.tookMs = Date.now() - started;
     writeJson(REPORT, report);
+    // Work (/work): bring the report's tasks in and assign them (lazy import: lib/repoTasks.ts imports this file)
+    setProgress({ step: "Updating Work" });
+    await import("./repoTasks").then((m) => m.afterGithubReport(report)).catch((e: Error) => console.error(`[mission-control] work sync: ${e.message}`));
     setProgress({ running: false, step: "Done", finishedAt: Date.now(), done: progress?.total ?? 0 });
   } catch (e) {
     setProgress({ running: false, step: "Failed", error: (e as Error).message, finishedAt: Date.now() });

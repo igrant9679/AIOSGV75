@@ -39,6 +39,7 @@ const BRAIN_NAV: NavItem[] = [
   { href: "/board", label: "Board", sub: "Manager · workers · reviewer", accent: "amber", icon: IconRocket },
   { href: "/runs", label: "Runs", sub: "Projects done by workers", accent: "violet", icon: IconRocket },
   { href: "/github", label: "GitHub", sub: "Repos · changes · waiting on you", accent: "lime", icon: IconBook },
+  { href: "/work", label: "Work", sub: "Repo tasks · assign the fleet", accent: "lime", icon: IconCheck },
 ];
 
 const WORKSPACE_NAV: NavItem[] = [
@@ -96,7 +97,7 @@ export default function Sidebar() {
     if (href === "/auto") return busy.auto ? "amber" : "lime";
     if (href === "/hermes-lab") { const h = agents.find((a) => a.id === "hermes"); return h?.available ? "lime" : "rose"; }
     if (href === "/watcher") return "lime";
-    if (href === "/command" || href === "/timeline" || href === "/projects" || href === "/fleet" || href === "/board" || href === "/runs" || href === "/github" || href === "/appearance") return "lime";
+    if (href === "/command" || href === "/timeline" || href === "/projects" || href === "/fleet" || href === "/board" || href === "/runs" || href === "/github" || href === "/work" || href === "/appearance") return "lime";
     if (href === "/" || href === "/settings" || href === "/missions" || href === "/arena" || href === "/analytics" || href === "/reports" || href === "/evals" || href === "/guide" || href === "/tasks" || href === "/schedule" || href === "/mastermind" || href === "/jarvis" || href === "/pipeline") return "lime";
     if (href === "/goals" || href === "/journal" || href === "/memory" || href === "/library" || href === "/graph" || href === "/builds" || href === "/studio" || href === "/content" || href === "/import" || href === "/conversations") return vaultOk ? "lime" : "rose";
     const id = href.replace("/agent/", "").replace("/", "");

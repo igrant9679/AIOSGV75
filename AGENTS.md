@@ -76,6 +76,8 @@ manual is `/guide` (source: `lib/guideContent.ts`).
   routine text task; rule 42),
   `github.ts` + `githubReport.ts` + `githubDocs.ts` (/github: every repository on the owner's GitHub
   accounts, changes, waiting-on-you and Claude-written reports; rule 44),
+  `repoTasks.ts` + `repoTaskRules.ts` (/work: the tasks the repositories mention, assigned to the owner or
+  the fleet and started from there; rule 45),
   `team.ts` + `teamParse.ts` (Command -> Team: named teammates in their own sessions, @mentions and
   "@Name: task" hand-offs, settled by the scheduler's `teamTick`),
   `sessionTools.ts` (the registry of session tools) + `sessions.ts` /
@@ -380,6 +382,21 @@ pm: it works in Claude Code's
     private repositories never go to the vault. Without a sign-in only public repositories are listed and the
     overview must say details are missing (it once called a busy week "no activity"). Document reading
     (status-doc names, .docx text, "waiting on you" sections) is pure: scripts/test-github-docs.mjs.
+
+45. **Work hands repository tasks to the fleet; Mission Control proposes, the owner (or a switch) starts.**
+    lib/repoTasks.ts syncs tasks from each GitHub report (status-document items, GitHub's own owner signals,
+    open issues) under stable ids (repository + source + normalized words), so status, assignee and notes
+    survive re-syncs; one that leaves its document is flagged, never deleted. Assigning by rules
+    (lib/repoTaskRules.ts, tested): an owner-only action must START with its verb ("Sign in…", "Paste…",
+    "Merge #100 / … change"), or ask the owner to provide a secret, because the same words inside a feature
+    ("Merge variable resolution… job changes", "password-policy section") are development work; a re-run
+    redoes only Mission Control's own picks, never the owner's. Where a repository lives: this machine's
+    folders by git remote, others' by folder/project name. Smart assign asks Claude with no tools. Starting
+    is an ordinary session job or Team message (answer only unless set otherwise and allowed there);
+    `workTick` (scheduler instance only) follows it to Review. Auto-start is off by default, one at a time,
+    two running at most, held by the fleet pause. Local data only (private repository text).
+    Git note: after `gh auth login` for two accounts, Git Credential Manager kept only the last one, so this
+    repository has a local credential helper (`gh auth token --user igrant9679`) in .git/config.
 
 ## Dev cycle (production server auto-starts at login)
 
