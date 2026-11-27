@@ -165,6 +165,29 @@ helper scripts now live in vault **`Agentic OS/Cluster/`** — all idempotent, a
   not `costUsd`, so no fabricated dollars appear — but the per-agent tag reads BILLED. Fix only
   if the Analytics split starts mattering.
 
+## ✅ DONE 2026-11-26 (Raider18) — Accounts, Remote actions, skill copy, local model choice (`b384609`)
+
+- **Fleet → Accounts** (`lib/accountUsage.ts`, pure; `scripts/test-account-usage.mjs`, 13 tests). Meters
+  carry `account` = 12-hex hash of `accountUuid` (Claude) / `tokens.account_id` (Codex). Claude's
+  `"error":"rate_limit"` lines ("You've hit your session limit · resets 6:10pm (Zone)") make the Claude meter
+  `limited` until the reset; CACHE_VERSION 6 forced a re-parse. `withAccountLimits` applied in
+  `rankMachines` (dispatch.ts) and `placementMachines` (runs.ts).
+- **Fleet → Remote actions** (`lib/remoteLog.ts` + pure `lib/remoteCheck.ts`; `scripts/test-remote-log.mjs`,
+  8 tests). Logged: `acceptRequest` (in), `startJob` remote path (out), `/peer/export`, `/peer/permission`,
+  `/peer/skill` (in), `decideFleet` + copy route (out). Not logged: conversation reads. Shared to
+  `Agentic OS/Cluster/actions/<host>.json`. Cross-check needs BOTH machines on this version to mean anything.
+- **Skill copy** (`lib/skillCopy.ts`): Setup "+ skill" / "≠ skill" chips → `POST /api/hub/setup
+  {action:"copy-skill", from, to, name, replace}`; source packed locally or via LAN `/peer/skill`; target
+  installs locally or via setup job `skill-install` (package rides on the request only). Setup also lists
+  `skillHashes` and `ollamaModels`.
+- **Local model choice**: `"local": "<id|name|model>"` in data/worker-models.json; unset = first registered
+  local model that is RUNNING (was: first registered, so a second local model was never used).
+- **Not yet built (owner's plan: inkling-2-mini in Ollama on the stronger machines for low-complexity
+  work):** a run still uses only the DRIVING machine's local model. Sending local-model tasks to another
+  machine needs a new job mode + `RUN_WORKER` bump (rule 25) — proposed, not started.
+- **Untested between machines** (no other machine on this version yet): remote skill install, remote logs,
+  account merging across machines. Tested here: unit tests, typecheck, local UI.
+
 ## ✅ DONE 2026-11-26 (Raider18) — load per machine, fleet pause, Fleet → Setup
 
 Commits `219f97f` (load + pause) and the Setup commit after it. AGENTS.md rules 31-33.
