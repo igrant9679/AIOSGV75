@@ -67,6 +67,13 @@ manual is `/guide` (source: `lib/guideContent.ts`).
   "you've hit your limit" lines; `withAccountLimits` for placement and Run somewhere; pure, tested),
   `remoteLog.ts` + `remoteCheck.ts` (Fleet -> Remote actions: every cross-machine request logged on
   both ends, shared in the vault, cross-checked for requests the named sender never sent),
+  `fallback.ts` + `fallbackPlan.ts` (a reply / new session whose plan hit its limit carries on with the
+  next ready tool, conversation included; `fallBack` in sessionActions.ts; plan is pure, tested),
+  `acpAgents.ts` / `acpPresets.ts` / `acpClient.ts` / `acpPolicy.ts` / `acpStore.ts` (Agent Client
+  Protocol agents as session tool "acp": per-machine commands, the JSON-RPC client, what they may do,
+  and Mission Control's own record of their threads), `localModel.ts` (the local model that is running),
+  `team.ts` + `teamParse.ts` (Command -> Team: named teammates in their own sessions, @mentions and
+  "@Name: task" hand-offs, settled by the scheduler's `teamTick`),
   `sessionTools.ts` (the registry of session tools) + `sessions.ts` /
   `hermesSessions.ts` (readers) + `sessionActions.ts` (reply / new / stop,
   locally and on other machines),
@@ -289,6 +296,40 @@ manual is `/guide` (source: `lib/guideContent.ts`).
     outside ~/.claude/skills and moved into place in one step. A different skill of the same name is
     replaced only when asked and kept in ~/.claude/skills-replaced (outside the skills folder, so Claude
     doesn't load it). The package rides on the request only and is never stored in the job store.
+
+37. **A fallback carries the conversation, never the credentials, and never for a run's workers.** `execute()`
+    in lib/sessionActions.ts calls `runTool`, and only an error that `isLimitError` (lib/fallbackPlan.ts)
+    recognises moves a reply / new job to the next step of THIS machine's data/fallback.json order whose
+    `stepReady` is true. The first message is `handoffPrompt` (who it replaces and why, the history newest
+    first within a budget, saying what was cut: rule 18, then the message). `isolated` jobs (project-run
+    workers) never fall back: runs place their own tasks. The local model only for answer-only jobs, with a
+    6,000-character prompt and no memory written (rule 23). The job keeps its `tool`; `fellBack` says who
+    answered, and travels in `resultOf` so the requesting machine sees it.
+38. **"Send when free" waits on the machine that has the session, and only a machine that says it can.**
+    `whenFree` replies stay "queued" with a `waitReason` until `waitReasons()` finds nothing ahead of them
+    on the same key, the session ended, and its meter not limited; then they continue the session (no
+    fork). They expire after 24 hours, and the requester's 30-minute expiry is stretched for them. A remote
+    target must advertise `queue` (QUEUE in lib/sessionShare.ts, rule 25): an older one would drop the
+    field and fork at once. Bump QUEUE if the contract changes.
+39. **An ACP agent is named by id; its command is the machine's own.** data/acp-agents.json is changed only
+    through the machine's local /api/hub/agents-setup; other machines see `acpAgents` (id + label) and a
+    request naming an id that isn't switched on is refused (rule 21's reasoning). Mission Control never
+    calls ACP `authenticate` (Gemini offers a billed API key) and strips API keys and GOOGLE_CLOUD_PROJECT /
+    GOOGLE_GENAI_USE_VERTEXAI from the agent's environment. Permission answers come from
+    lib/acpPolicy.ts: allow ONCE only (an "always" may be saved in the agent's settings), commands /
+    deletes / unknown kinds refused at every level, fs reads and writes inside the session folder only.
+    Resolve the command to an absolute path (`resolveAcpCommand`): the server's PATH is not your
+    terminal's, and `where gemini` also lists npm's extensionless script that cmd.exe can't run.
+    And a CLI installed with `npm install -g` from a terminal INSIDE the Claude desktop app (MSIX) lives in
+    that app's private %LOCALAPPDATA%\Packages\Claude_*\LocalCache\Roaming
+pm: it works in Claude Code's
+    shell and doesn't exist for the server (`fs.existsSync` false). Raider18's Gemini CLI is one.
+    Test: scripts/test-fallback.mjs; a mock agent is the quickest end-to-end check.
+40. **Team hand-offs are background work: one instance sends them, the pause holds them, a cap ends them.**
+    Only the scheduler's `teamTick` settles teammates' jobs and sends hand-offs (rule 1: two instances would
+    send one twice); hand-offs are held while `isPaused()` (rule 32) and stop after MAX_HOPS without the
+    person; a teammate never hands to itself. Messages to a teammate with a session are `whenFree` replies,
+    so they queue behind each other. A fallback moves the teammate to the new session (`fellBack`, not local).
 
 ## Dev cycle (production server auto-starts at login)
 

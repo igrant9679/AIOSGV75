@@ -21,6 +21,16 @@ import { buildInfo, isSchedulerInstance, launchUpdate, readUpdateStatus, updateB
 import { isPaused } from "./fleetPause";
 import { applySetupAction, publishSetup, SETUP_ACTIONS, SETUP_NAME_RE, type SetupAction } from "./machineSetup";
 import { installSkill, type SkillPackage } from "./skillCopy";
+import { findAcpAgent } from "./acpAgents";
+import { runAcpTurn } from "./acpClient";
+import { readAcpSession, writeAcpSession, forgetAcpListing, type AcpSessionRecord } from "./acpStore";
+import { splitAcpId } from "./sessionTools";
+import { handoffPrompt, isLimitError, nextSteps, type CarryEntry } from "./fallbackPlan";
+import { readFallback, stepLabels, stepReady } from "./fallback";
+import { servedLocalModel } from "./localModel";
+import { readWorkerModelSettings } from "./nousModels";
+import { runAgentText } from "./runners";
+import { QUEUE } from "./sessionShare";
 
 /**
  * Acting on sessions - from the Projects page, the live view and the
@@ -124,6 +134,33 @@ export interface SessionJob {
   requestedByLabel?: string;
   /** while it runs: what Claude has written so far and the tools it used (streamed) */
   progress?: JobProgress;
+  /** tool "acp": which of the machine's ACP agents (data/acp-agents.json there), and its name */
+  agent?: string;
+  agentLabel?: string;
+  /**
+   * A reply that waits until the session is free: not open in a terminal or app, no other message
+   * to it running or waiting ahead of it, and its login not at its limit. Then it continues the
+   * session itself instead of a new branch. Gives up after WAIT_MAX_MS.
+   */
+  whenFree?: boolean;
+  /** while it waits: what for, in words */
+  waitReason?: string;
+  /** don't move to another tool when the plan hits its limit (lib/fallback.ts) */
+  noFallback?: boolean;
+  /** it hit its plan's limit and another tool took over (lib/fallback.ts) */
+  fellBack?: FellBack;
+}
+
+export interface FellBack {
+  from: string;
+  fromLabel: string;
+  to: string;
+  toLabel: string;
+  reason: string;
+  /** the local model answered: no session holds it */
+  local?: boolean;
+  /** tools that couldn't take over, and why */
+  skipped?: string[];
 }
 
 export interface JobProgress {
@@ -139,6 +176,11 @@ const MAX_RUNNING = 2;
 const RUN_TIMEOUT_MS = 20 * 60_000;
 const REMOTE_EXPIRE_MS = 30 * 60_000;
 const MAX_PROMPT = 20_000;
+/** a "send when free" message gives up after this long */
+const WAIT_MAX_MS = 24 * 60 * 60_000;
+/** what a fallback may hand on to a session tool / to the local model (rule 23: keep it short) */
+const CARRY_MAX = 60_000;
+const CARRY_LOCAL_MAX = 6_000;
 
 const me = () => os.hostname();
 const ACTIVE: JobStatus[] = ["queued", "sent", "running"];
@@ -245,6 +287,8 @@ const resultOf = (job: SessionJob) => ({
   liveKey: job.liveKey,
   costUsd: job.costUsd,
   progress: job.progress,
+  fellBack: job.fellBack,
+  waitReason: job.waitReason,
 });
 
 async function writeVaultResult(job: SessionJob): Promise<void> {
@@ -301,6 +345,11 @@ export interface StartInput {
   /** setup "skill-install": the packed skill, and whether a different one of that name may be replaced */
   skillPackage?: SkillPackage;
   replace?: boolean;
+  /** tool "acp": the agent's id on the machine that runs it */
+  agent?: string;
+  /** reply: wait until the session is free (see SessionJob.whenFree) */
+  whenFree?: boolean;
+  noFallback?: boolean;
   /**
    * A job id chosen by the caller. A project run writes the id into its own
    * state BEFORE starting the job, so a crash between the two is recovered by
@@ -339,6 +388,7 @@ export async function startJob(input: StartInput): Promise<SessionJob> {
     web: typeof input.web === "boolean" ? input.web : undefined,
     maxTurns: turnCap(input.maxTurns),
     isolated: input.isolated === true ? true : undefined,
+    noFallback: input.noFallback === true ? true : undefined,
   };
 
   let job: SessionJob;
@@ -376,8 +426,11 @@ export async function startJob(input: StartInput): Promise<SessionJob> {
         cwd: s.cwd,
         project: s.project,
         title: s.title,
-        // only Claude can fork: it does when asked, or when the session is open right now
-        fork: SESSION_TOOLS[s.tool].canFork && input.mode === "reply" && (Boolean(input.fork) || (local && s.status !== "ended")),
+        // only Claude can fork: it does when asked, or when the session is open right now (unless the
+        // message is to wait until it's free: then it continues the session itself, later)
+        fork: SESSION_TOOLS[s.tool].canFork && input.mode === "reply" && (Boolean(input.fork) || (!input.whenFree && local && s.status !== "ended")),
+        whenFree: input.mode === "reply" && input.whenFree === true ? true : undefined,
+        ...(s.tool === "acp" ? { agent: splitAcpId(s.id)?.agent, agentLabel: s.model } : {}),
       };
       break;
     }
@@ -389,6 +442,13 @@ export async function startJob(input: StartInput): Promise<SessionJob> {
       const known = folder === "~" || sessions.some((x) => x.host === host && (x.folder === folder || x.cwd === folder));
       if (!folder || !known) throw new Error("Pick a project that has a folder first.");
       job = { ...base, mode: "new", tool, host, hostLabel: labelOf(host), cwd: folder, project: input.project };
+      if (tool === "acp") {
+        const id = input.agent ?? "";
+        const info = host === me() ? await findAcpAgent(id) : remote.find((r) => r.host === host)?.acpAgents?.find((a) => a.id === id);
+        if (!info) throw new Error(`${labelOf(host)} has no ACP agent "${id}" switched on (Fleet → Agents & fallback there).`);
+        job.agent = info.id;
+        job.agentLabel = info.label;
+      }
       break;
     }
     case "check": {
@@ -496,6 +556,8 @@ export async function startJob(input: StartInput): Promise<SessionJob> {
   const level: RemoteReplies = m?.acceptsReplies ?? "off";
   if (level === "off") throw new Error(`${job.hostLabel} doesn't accept requests from other machines. Turn it on there: Fleet → Sharing → Replies from my other machines.`);
   if (job.access === "edit" && level !== "edit") throw new Error(`${job.hostLabel} only allows answers (no file edits) from other machines.`);
+  // an older version would drop the field and run the message at once, as a new branch (rule 25)
+  if (job.whenFree && !((m?.queue ?? 0) >= QUEUE)) throw new Error(`${job.hostLabel} runs an older ${productName()} that can't hold a message until the session is free. Update it (Fleet → Versions), or send it now.`);
   // a copied skill rides along with the request only; it is never kept in this machine's job store
   const request = { ...job, requestedBy: me(), requestedByLabel: myLabel, ...(input.skillPackage && job.mode === "setup" ? { skillPackage: input.skillPackage } : {}) };
   // the remote-action log (lib/remoteLog.ts): reads of a conversation aren't actions, everything else is
@@ -643,6 +705,8 @@ async function acceptRequestInner(r: SessionJob, via: "lan" | "vault", content?:
     web: typeof r.web === "boolean" ? r.web : undefined,
     maxTurns: turnCap(r.maxTurns),
     isolated: r.isolated === true ? true : undefined,
+    noFallback: r.noFallback === true ? true : undefined,
+    whenFree: r.mode === "reply" && r.whenFree === true ? true : undefined,
   };
   if (r.access === "edit" && job.access !== "edit") throw Object.assign(new Error(`${myLabel} only allows answers (no file edits) from other machines.`), { status: 403 });
 
@@ -653,7 +717,8 @@ async function acceptRequestInner(r: SessionJob, via: "lan" | "vault", content?:
       const s = known(r.key);
       if (!s) throw new Error("That session isn't on this machine.");
       Object.assign(job, { key: s.key, sessionId: s.id, tool: s.tool, cwd: s.cwd, title: s.title });
-      job.fork = SESSION_TOOLS[s.tool].canFork && r.mode === "reply" && (Boolean(r.fork) || s.status !== "ended");
+      if (s.tool === "acp") Object.assign(job, { agent: splitAcpId(s.id)?.agent, agentLabel: s.model });
+      job.fork = SESSION_TOOLS[s.tool].canFork && r.mode === "reply" && (Boolean(r.fork) || (!job.whenFree && s.status !== "ended"));
       if (r.mode === "reply" && !job.prompt.trim()) throw new Error("Empty message.");
       break;
     }
@@ -662,6 +727,12 @@ async function acceptRequestInner(r: SessionJob, via: "lan" | "vault", content?:
       if (!ok) throw new Error("That folder isn't one this machine's sessions use.");
       if (!job.prompt.trim()) throw new Error("Empty message.");
       job.cwd = r.cwd;
+      if (job.tool === "acp") {
+        // by id only: the command is this machine's own (data/acp-agents.json), never the request's
+        const a = await findAcpAgent(r.agent);
+        if (!a) throw new Error(`No ACP agent "${String(r.agent ?? "")}" is switched on on ${myLabel}.`);
+        Object.assign(job, { agent: a.id, agentLabel: a.label });
+      }
       break;
     }
     case "stop": {
@@ -899,7 +970,83 @@ function streamParser(jobId: string) {
   };
 }
 
+/**
+ * Run a job, and when its plan has hit its limit, carry the conversation on with the next tool in
+ * this machine's fallback order (lib/fallback.ts). Not for a project run's workers (isolated): a
+ * run places its tasks itself and already steers clear of a login at its limit.
+ */
 async function execute(job: SessionJob): Promise<Partial<SessionJob>> {
+  const first = await runTool(job);
+  if (first.status !== "error" || job.isolated || job.noFallback || (job.mode !== "reply" && job.mode !== "new") || !isLimitError(first.error)) return first;
+  return fallBack(job, first).catch((e: Error) => ({ ...first, error: `${first.error} (Couldn't hand it to another tool: ${e.message})` }));
+}
+
+const stepOf = (job: Pick<SessionJob, "tool" | "agent">) => (job.tool === "acp" ? `acp:${job.agent}` : job.tool);
+
+/** The conversation so far, for the tool that takes over: the session's thread on this machine. */
+async function carryEntries(job: SessionJob): Promise<CarryEntry[]> {
+  if (job.mode !== "reply" || !job.key) return [];
+  const t = await readThread({ key: job.key, tool: job.tool }, 400).catch(() => null);
+  return (t?.entries ?? []).map((e) => (e.kind === "tool" ? { kind: "tool" as const, summary: e.summary } : { kind: e.kind, text: e.text }));
+}
+
+async function fallBack(job: SessionJob, first: Partial<SessionJob>): Promise<Partial<SessionJob>> {
+  const settings = await readFallback();
+  if (!settings.enabled) return first;
+  const labels = await stepLabels();
+  const from = stepOf(job);
+  const fromLabel = job.tool === "acp" ? job.agentLabel || labels[from] || "the agent" : labels[from] || toolLabel(job.tool);
+  const reason = (first.error ?? "").replace(/\s+/g, " ").slice(0, 200) || "its plan's limit";
+  const meters = (await sessionsSnapshot()).subscriptions;
+  const entries = await carryEntries(job);
+  const skipped: string[] = [];
+  const cwd = homeOr(job.cwd);
+  for (const step of nextSteps(settings.order, from, job.access)) {
+    const toLabel = labels[step] ?? step;
+    const ready = await stepReady(step, meters);
+    if (!ready.ok) {
+      skipped.push(`${toLabel} (${ready.why})`);
+      continue;
+    }
+    const cur = (await listJobs()).find((x) => x.id === job.id);
+    if (cur && !isActive(cur)) return {}; // stopped meanwhile
+    await patchJob(job.id, { progress: { text: `${fromLabel} hit its limit. Continuing with ${toLabel}…`, steps: [], updatedAt: Date.now() } }).catch(() => {});
+    const fellBack: FellBack = { from, fromLabel, to: step, toLabel, reason, skipped: skipped.length ? [...skipped] : undefined };
+    if (step === "local") {
+      // text in, text out: no folder, no tools, no shared memory written (rule 23)
+      const pref = (await readWorkerModelSettings()).local;
+      const lm = await servedLocalModel(typeof pref === "string" ? pref : undefined);
+      if (!lm) {
+        skipped.push(`${toLabel} (stopped running)`);
+        continue;
+      }
+      const prompt = handoffPrompt({ fromLabel, reason, entries, message: job.prompt, max: CARRY_LOCAL_MAX });
+      const out = await runAgentText(lm.id, prompt, { injectMemory: false });
+      if (out.error || !out.text.trim()) {
+        skipped.push(`${toLabel} (${(out.error || "no reply").slice(0, 80)})`);
+        continue;
+      }
+      return { status: "done", finishedAt: Date.now(), pid: undefined, error: undefined, reply: out.text.trim(), resultKey: undefined, fellBack: { ...fellBack, toLabel: `${toLabel} (${lm.model})`, local: true } };
+    }
+    const tool = step.startsWith("acp:") ? "acp" : asSessionTool(step);
+    const agent = tool === "acp" ? await findAcpAgent(step.slice(4)) : undefined;
+    const prompt = handoffPrompt({ fromLabel, reason, entries, message: job.prompt, folder: cwd, max: CARRY_MAX });
+    const sub: SessionJob = { ...job, mode: "new", tool, agent: agent?.id, agentLabel: agent?.label, key: undefined, sessionId: undefined, fork: false, model: undefined, web: undefined, maxTurns: undefined, prompt };
+    const r = await runTool(sub, MAX_CARRY_PROMPT);
+    if (!Object.keys(r).length) return {}; // stopped meanwhile
+    if (r.status === "error" && isLimitError(r.error)) {
+      skipped.push(`${toLabel} (also at its limit)`);
+      continue;
+    }
+    return { ...r, fellBack };
+  }
+  return { ...first, error: `${first.error}${skipped.length ? ` No other tool could take over: ${skipped.join(", ")}.` : " No other tool is set to take over (Fleet → Agents & fallback)."}` };
+}
+
+/** a fallback's first message carries the conversation, so it may be longer than one typed by hand */
+const MAX_CARRY_PROMPT = CARRY_MAX + 4_000;
+
+async function runTool(job: SessionJob, maxPrompt = MAX_PROMPT): Promise<Partial<SessionJob>> {
   const done = (p: Partial<SessionJob>) => ({ finishedAt: Date.now(), pid: undefined, ...p });
   const cwd = homeOr(job.cwd);
   const st = await fsp.stat(cwd).catch(() => null);
@@ -952,6 +1099,8 @@ async function execute(job: SessionJob): Promise<Partial<SessionJob>> {
     return done({ status: "error", error: (r.err.trim() || text || `claude exited with code ${r.code}`).slice(-800) });
   }
 
+  if (job.tool === "acp") return runAcp(job, cwd, setPid, maxPrompt).then(done);
+
   if (job.tool === "hermes") {
     // `hermes chat -q … -Q`: the reply on stdout, "session_id: <id>" on stderr. (`hermes -z` is
     // cleaner but ignores --resume.) Neither mode can stop and ask, so what the run may do is
@@ -999,6 +1148,88 @@ async function execute(job: SessionJob): Promise<Partial<SessionJob>> {
   return done({ status: "done", reply, resultKey: sid ? `codex:${sid}` : job.mode === "reply" ? job.key : undefined });
 }
 
+/**
+ * One turn with an ACP agent (lib/acpClient.ts), recorded in data/acp-sessions (lib/acpStore.ts).
+ * A reply reopens the agent's own session (session/load). If the agent can't, the conversation is
+ * carried into a new session of it, the same way a fallback carries one.
+ */
+async function runAcp(job: SessionJob, cwd: string, setPid: (pid?: number) => void, maxPrompt: number): Promise<Partial<SessionJob>> {
+  const agent = await findAcpAgent(job.agent);
+  if (!agent) return { status: "error", error: `The ACP agent "${job.agent ?? "?"}" isn't switched on on ${job.hostLabel} any more.` };
+  if (job.prompt.length > maxPrompt) return { status: "error", error: "That message is too long." };
+  const old = job.mode === "reply" && job.key ? await readAcpSession(job.key) : null;
+  const progress = (text: string, steps: string[]) => void patchJob(job.id, { progress: { text: text.slice(-6000), steps: steps.slice(-40), updatedAt: Date.now() } }).catch(() => {});
+  let rec: AcpSessionRecord | null = null;
+  const onSession = (sid: string) => {
+    const key = `acp:${agent.id}.${sid}`;
+    rec = old && old.key === key ? { ...old } : { v: 1, key, agent: agent.id, agentLabel: agent.label, sessionId: sid, cwd: job.cwd, title: (job.title && job.mode === "reply" ? job.title : job.prompt).replace(/\s+/g, " ").slice(0, 80), startedAt: Date.now(), updatedAt: Date.now(), turnOpen: true, userTurns: 0, entries: [] };
+    if (old && old.key !== key) rec.entries = [...old.entries, { kind: "note", ts: Date.now(), text: `Continued in a new ${agent.label} session (it couldn't reopen the old one).` }];
+    rec.turnOpen = true;
+    rec.updatedAt = Date.now();
+    void patchJob(job.id, { liveKey: key }).catch(() => {});
+    void writeAcpSession(rec).then(forgetAcpListing).catch(() => {});
+  };
+  const sid = job.mode === "reply" && job.sessionId ? splitAcpId(job.sessionId)?.sessionId : undefined;
+  let r = await runAcpTurn({ agent, cwd, prompt: job.prompt, access: job.access, sessionId: sid, timeoutMs: RUN_TIMEOUT_MS, onSpawn: setPid, onProgress: progress, onSession });
+  let sent = job.prompt;
+  if (sid && r.loaded === false) {
+    const cur = (await listJobs()).find((x) => x.id === job.id);
+    if (cur && !isActive(cur)) return {};
+    const entries: CarryEntry[] = (old?.entries ?? []).map((e) => (e.kind === "tool" ? { kind: "tool", summary: e.summary } : { kind: e.kind, text: e.text }));
+    sent = handoffPrompt({ fromLabel: `an earlier ${agent.label} session`, reason: "the agent couldn't reopen it", entries, message: job.prompt, folder: cwd, max: CARRY_MAX });
+    r = await runAcpTurn({ agent, cwd, prompt: sent, access: job.access, timeoutMs: RUN_TIMEOUT_MS, onSpawn: setPid, onProgress: progress, onSession });
+  }
+  const cur = (await listJobs()).find((x) => x.id === job.id);
+  const final = rec as AcpSessionRecord | null;
+  if (final) {
+    // the record shows what you typed, not the carried-over history around it
+    const entries = r.entries.map((e) => (e.kind === "user" && e.text === sent && sent !== job.prompt ? { ...e, text: job.prompt } : e));
+    final.entries.push(...entries);
+    final.userTurns += 1;
+    final.turnOpen = false;
+    final.updatedAt = Date.now();
+    await writeAcpSession(final).catch(() => {});
+    forgetAcpListing();
+  }
+  if (cur && !isActive(cur)) return {}; // stopped meanwhile
+  const note = r.refused.length ? `\n\n_${productName()} refused: ${r.refused.slice(0, 6).join("; ")} (not allowed with ${job.access === "edit" ? "Can edit files" : "Answer only"})._` : "";
+  const resultKey = final?.key ?? job.key;
+  if (r.error) return { status: "error", error: r.error, reply: r.text ? r.text + note : undefined, resultKey };
+  if (!r.text) return { status: r.stopReason === "end_turn" ? "done" : "error", reply: note.trim() || "(no text reply)", error: r.stopReason === "end_turn" ? undefined : `${agent.label} stopped (${r.stopReason ?? "no reason"}) without a reply.`, resultKey };
+  return { status: "done", reply: r.text + note, resultKey };
+}
+
+// ─── "send when it's free" ───
+
+/**
+ * Why a queued job can't start yet, or undefined when it can. Only "send when free" replies wait:
+ *  - an earlier message to the same session is still running or waiting (they go in order)
+ *  - the session is open now (a terminal, the app, or a run of another tool)
+ *  - its login is at its limit on this machine (until the reset)
+ */
+async function waitReasons(jobs: SessionJob[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  const waiting = jobs.filter((j) => j.host === me() && j.status === "queued" && j.whenFree && j.mode === "reply");
+  if (!waiting.length) return out;
+  const snap = await sessionsSnapshot();
+  const clock = (t: number) => new Date(t).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  for (const j of waiting) {
+    const ahead = jobs.find((x) => x.id !== j.id && x.host === me() && isActive(x) && (x.key === j.key || x.resultKey === j.key || x.liveKey === j.key) && (x.status === "running" || x.createdAt < j.createdAt));
+    if (ahead) {
+      out.set(j.id, ahead.status === "running" ? "an earlier message to this session to finish" : "an earlier message to this session to go first");
+      continue;
+    }
+    const s = snap.sessions.find((x) => x.key === j.key);
+    if (s && s.status !== "ended") {
+      out.set(j.id, `the session to close (it is ${s.status === "idle" ? "open" : s.status} now)`);
+      continue;
+    }
+    const meter = snap.subscriptions.find((m) => m.tool === j.tool && m.status === "limited");
+    if (meter && (!meter.resetsAt || meter.resetsAt > Date.now())) out.set(j.id, `${meter.label}'s limit to reset${meter.resetsAt ? ` (${clock(meter.resetsAt)})` : ""}`);
+  }
+  return out;
+}
+
 let pumping = false;
 /**
  * Start queued local AI runs, at most MAX_RUNNING at a time. The background
@@ -1010,6 +1241,22 @@ async function pump(minAgeMs = 0): Promise<void> {
   pumping = true;
   try {
     const paused = isPaused();
+    // "send when free" messages: what each is waiting for (asked before the store is locked)
+    const waits = await waitReasons(await listJobs()).catch(() => new Map<string, string>());
+    const now = Date.now();
+    const expired: SessionJob[] = [];
+    await mutate((jobs) => {
+      for (const j of jobs) {
+        if (j.host !== me() || j.status !== "queued" || !j.whenFree) continue;
+        if (now - j.createdAt > WAIT_MAX_MS) {
+          Object.assign(j, { status: "error", error: "The session never became free in 24 hours, so this wasn't sent. Send it again, or as a new branch.", finishedAt: now, waitReason: undefined });
+          expired.push({ ...j });
+        } else if (j.waitReason !== waits.get(j.id)) {
+          j.waitReason = waits.get(j.id);
+        }
+      }
+    });
+    for (const j of expired) if (j.requestedBy && j.via === "vault") await writeVaultResult(j).catch(() => {});
     for (;;) {
       const next = await mutate((jobs) => {
         // An update is waiting for this machine to go quiet: start nothing new until it has restarted.
@@ -1019,9 +1266,12 @@ async function pump(minAgeMs = 0): Promise<void> {
         // Fleet → Pause holds project-run work (workers are isolated; checks are run checks). What
         // someone started by hand - a reply, a new session, Run somewhere - still runs.
         const held = (x: SessionJob) => paused && (x.isolated === true || x.mode === "check");
-        const j = [...jobs].reverse().find((x) => x.host === me() && x.status === "queued" && (x.mode === "reply" || x.mode === "new" || x.mode === "check") && !held(x) && Date.now() - x.createdAt >= minAgeMs);
+        const j = [...jobs].reverse().find((x) => x.host === me() && x.status === "queued" && (x.mode === "reply" || x.mode === "new" || x.mode === "check") && !held(x) && !waits.has(x.id) && Date.now() - x.createdAt >= minAgeMs);
         if (!j) return undefined;
+        // the next "send when free" message to the same session waits for this one
+        for (const x of jobs) if (x.whenFree && x.status === "queued" && x.id !== j.id && x.key && x.key === j.key) waits.set(x.id, "an earlier message to this session to finish");
         j.status = "running";
+        j.waitReason = undefined;
         j.startedAt = Date.now();
         j.serverPid = process.pid;
         return { ...j };
@@ -1310,6 +1560,8 @@ async function collectOne(j: SessionJob): Promise<void> {
       liveKey: res.liveKey,
       costUsd: res.costUsd,
       progress: res.progress,
+      fellBack: res.fellBack,
+      waitReason: res.waitReason,
     };
     // a pulled session waits in the vault: import it here
     if (j.mode === "export" && res.status === "done" && j.via === "vault") {
@@ -1329,7 +1581,8 @@ async function collectOne(j: SessionJob): Promise<void> {
   }
   // from its last sign of life, not from when it was sent: an update can wait hours for the
   // machine to go quiet, and is out of reach for a minute while that machine restarts
-  if (Date.now() - Math.max(j.createdAt, j.progress?.updatedAt ?? 0) > REMOTE_EXPIRE_MS) {
+  // a "send when free" message can wait for hours there; it has a day (and the target ends it itself)
+  if (Date.now() - Math.max(j.createdAt, j.progress?.updatedAt ?? 0) > (j.whenFree ? WAIT_MAX_MS + REMOTE_EXPIRE_MS : REMOTE_EXPIRE_MS)) {
     await patchJob(j.id, {
       status: "expired",
       error: `No answer from ${j.hostLabel} in 30 minutes. Is ${productName()} running there, with "Replies from my other machines" turned on?`,
@@ -1401,11 +1654,13 @@ export async function openLocal(what: OpenWhat, target: { key?: string; folder?:
     if (!s) throw new Error("That session isn't on this machine.");
     cwd = what === "terminal" ? s.cwd : s.folder || s.cwd;
     command = resumeCommand(s);
+    if (what === "terminal" && !command) throw new Error(`${toolLabel(s.tool)} sessions can't be opened in a terminal - continue it here.`);
   } else {
     const folder = target.folder ?? "";
     if (!folder || !snap.sessions.some((s) => s.folder === folder || s.cwd === folder)) throw new Error("That folder isn't one of this machine's projects.");
     cwd = folder;
     command = SESSION_TOOLS[asSessionTool(target.tool)].cli;
+    if (what === "terminal" && !command) throw new Error("Start an ACP agent in a terminal yourself; from here, use New session.");
   }
   const st = await fsp.stat(cwd).catch(() => null);
   if (!st?.isDirectory()) throw new Error(`The folder ${cwd} doesn't exist any more.`);

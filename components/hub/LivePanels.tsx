@@ -11,7 +11,7 @@ import type { EventsView, NeedsItem } from "@/lib/sessionEvents";
 import type { Candidate } from "@/lib/dispatch";
 import type { HubSnapshot } from "@/lib/activity";
 import { ago, fmtTokens, SourcePill } from "./common";
-import { JobBubble, SmallButton, sessionsPost, useSessionJobs } from "./SessionPanel";
+import { JobBubble, SmallButton, parseToolChoice, sessionsPost, toolChoices, useSessionJobs } from "./SessionPanel";
 import { SESSION_TOOL_IDS, isSessionTool, toolLabel, type SessionTool } from "@/lib/sessionTools";
 
 /**
@@ -185,7 +185,8 @@ export function RunSomewherePanel({ hub }: { hub: HubSnapshot | null }) {
   const product = useProductName(); // this network's product name
   const [prompt, setPrompt] = useState("");
   const [project, setProject] = useState("");
-  const [tool, setTool] = useState<SessionTool>("claude");
+  const [choice, setChoice] = useState("claude");
+  const { tool, agent } = parseToolChoice(choice);
   const [access, setAccess] = useState<"answer" | "edit">("answer");
   const [ranked, setRanked] = useState<Candidate[] | null>(null);
   const [pick, setPick] = useState<string>("");
@@ -202,7 +203,7 @@ export function RunSomewherePanel({ hub }: { hub: HubSnapshot | null }) {
   useEffect(() => {
     let live = true;
     setRanked(null);
-    fetch(`/api/hub/dispatch?tool=${tool}${project ? `&project=${encodeURIComponent(project)}` : ""}`)
+    fetch(`/api/hub/dispatch?tool=${tool}${agent ? `&agent=${encodeURIComponent(agent)}` : ""}${project ? `&project=${encodeURIComponent(project)}` : ""}`)
       .then((r) => r.json())
       .then((b: { candidates?: Candidate[] }) => {
         if (!live) return;
@@ -213,7 +214,7 @@ export function RunSomewherePanel({ hub }: { hub: HubSnapshot | null }) {
     return () => {
       live = false;
     };
-  }, [tool, project]);
+  }, [tool, agent, project]);
 
   const chosen = ranked?.find((c) => c.host === pick);
   const run = async () => {
@@ -225,6 +226,7 @@ export function RunSomewherePanel({ hub }: { hub: HubSnapshot | null }) {
       host: chosen.host,
       folder: chosen.folder ?? "~",
       tool,
+      agent,
       project: project || undefined,
       prompt: prompt.trim(),
       access,
@@ -267,10 +269,10 @@ export function RunSomewherePanel({ hub }: { hub: HubSnapshot | null }) {
               </option>
             ))}
           </select>
-          <select value={tool} onChange={(e) => setTool(isSessionTool(e.target.value) ? e.target.value : "claude")} aria-label="Tool" className="rounded-md border border-line bg-transparent px-1.5 py-1 text-[10px] text-ink">
-            {SESSION_TOOL_IDS.map((t) => (
-              <option key={t} value={t} style={{ background: "var(--color-panel)" }}>
-                {toolLabel(t)}
+          <select value={choice} onChange={(e) => setChoice(e.target.value)} aria-label="Tool" className="rounded-md border border-line bg-transparent px-1.5 py-1 text-[10px] text-ink">
+            {toolChoices(hub).map((c) => (
+              <option key={c.value} value={c.value} style={{ background: "var(--color-panel)" }}>
+                {c.label}
               </option>
             ))}
           </select>

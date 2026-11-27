@@ -165,6 +165,29 @@ helper scripts now live in vault **`Agentic OS/Cluster/`** — all idempotent, a
   not `costUsd`, so no fabricated dollars appear — but the per-agent tag reads BILLED. Fix only
   if the Analytics split starts mattering.
 
+## ✅ DONE 2026-11-26 (Raider18) — fallback on limit, send when free, ACP agents, Team (ideas from openbot.run)
+
+The user asked whether openbot.run would add anything; OpenBot itself was NOT adopted (PolyForm
+Noncommercial licence: their work is commercial; its agents act without asking; it would spend the same
+logins unseen by Accounts). Four of its ideas were built natively instead:
+
+- **When a plan hits its limit** (Fleet → Agents & fallback; lib/fallback.ts, fallbackPlan.ts, `fallBack` in
+  sessionActions.ts): reply/new jobs whose error `isLimitError` → next ready step of data/fallback.json
+  (default claude → codex → local) with the conversation carried. Not for isolated run workers. Rule 37.
+- **Send when free** (`whenFree` on replies; `waitReasons` in the pump; QUEUE capability). Rule 38.
+- **ACP agents** as session tool `acp` (lib/acp*.ts; data/acp-agents.json, data/acp-sessions/). Gemini CLI
+  0.71.1 handshake verified (protocol 1, loadSession); it is NOT signed in on Raider18, so no real Gemini
+  turn was run. Presets for Kimi/Qwen/Goose/OpenCode are untested. Rule 39.
+- **Command → Team** (lib/team.ts, teamParse.ts, `teamTick` every 15 s in the scheduler). Rule 40.
+
+Tests: `node scripts/test-fallback.mjs` (16 pass). End-to-end on Raider18 with a mock ACP agent
+(scratchpad, not committed): answer-only/edit permission answers, path escape refused, session/load
+reply, two held replies ran in order, a fake "usage limit" fell back to Claude Code in a new session with
+the conversation, and a two-teammate hand-off chain (Ada → Bob) plus a second round as held replies.
+The local-model fallback was NOT run for real: Raider18 sat near 80% memory and inkling-2-mini is 18.3 GB.
+Test data removed afterwards (mock agent, its sessions, the test teammates); the Claude session the
+fallback test created ("Reply with just the word: carried") stays in Claude's history.
+
 ## ✅ DONE 2026-11-26 (Raider18) — Accounts, Remote actions, skill copy, local model choice (`b384609`)
 
 - **Fleet → Accounts** (`lib/accountUsage.ts`, pure; `scripts/test-account-usage.mjs`, 13 tests). Meters

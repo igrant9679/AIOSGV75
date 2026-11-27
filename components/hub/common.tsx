@@ -35,6 +35,7 @@ export const SOURCE_META: Record<ActivitySource | "kimi", { label: string; accen
   claude: { label: "Claude", accent: "violet" },
   codex: { label: "Codex", accent: "lime" },
   hermes: { label: "Hermes", accent: "amber" },
+  acp: { label: "Agent", accent: "cyan" },
   kimi: { label: "Kimi", accent: "rose" },
   chat: { label: "Chat", accent: "cyan" },
   mission: { label: "Mission", accent: "cyan" },

@@ -8,6 +8,8 @@ import { collectAttention, type AttentionItem } from "./attention";
 import { listExchanges } from "./conversations";
 import { readMemory } from "./vault";
 import { toolLabel } from "./sessionTools";
+import { acpAgentInfos } from "./acpAgents";
+import type { AcpAgentInfo } from "./acpPresets";
 
 /**
  * The hub snapshot behind the five "second brain" pages (Command, Timeline,
@@ -20,7 +22,7 @@ import { toolLabel } from "./sessionTools";
  * instead of failing the whole page.
  */
 
-export type ActivitySource = "claude" | "codex" | "hermes" | "chat" | "mission" | "orchestration" | "memory";
+export type ActivitySource = "claude" | "codex" | "hermes" | "acp" | "chat" | "mission" | "orchestration" | "memory";
 export type ActivityStatus = "running" | "waiting" | "idle" | "done" | "error";
 
 export interface ActivityItem {
@@ -61,6 +63,8 @@ export interface HubSnapshot {
   indexing: { done: number; total: number };
   /** other machines in the group that publish their sessions through the vault */
   machines: RemoteMachine[];
+  /** this machine's switched-on ACP agents (names only), for the tool pickers */
+  acpAgents?: AcpAgentInfo[];
 }
 
 const MEMORY_LINE_RE = /^- \[(\d{4}-\d{2}-\d{2}) (\d{2}):(\d{2}) · (?:\[\[(?:[^|\]]*\|)?([^\]]+)\]\]|([^\]]+))\] (.+)$/;
@@ -201,5 +205,6 @@ export async function hubSnapshot(): Promise<HubSnapshot> {
     orchestrations,
     memory: memory.slice(0, 200),
     indexing: snap.indexing,
+    acpAgents: await acpAgentInfos().catch(() => []),
   };
 }

@@ -58,8 +58,8 @@ export async function GET(req: Request) {
 }
 
 /**
- * { action: "reply", key, prompt, access?, fork? }
- * { action: "new", host, folder, tool, project?, prompt, access? }
+ * { action: "reply", key, prompt, access?, fork?, whenFree? }   whenFree: wait until the session is free
+ * { action: "new", host, folder, tool, agent?, project?, prompt, access? }   agent: an ACP agent's id (tool "acp")
  * { action: "thread", key }                     (a session on another machine)
  * { action: "open", what: terminal|folder|editor, key? | folder?, tool? }
  * { action: "hide", keys, hidden }
@@ -91,6 +91,8 @@ export async function POST(req: Request) {
     dispatch?: string;
     model?: unknown;
     web?: unknown;
+    agent?: unknown;
+    whenFree?: boolean;
   };
   try {
     b = await req.json();
@@ -124,6 +126,8 @@ export async function POST(req: Request) {
           dispatch: typeof b.dispatch === "string" ? b.dispatch.slice(0, 300) : undefined,
           model: typeof b.model === "string" ? b.model : undefined,
           web: typeof b.web === "boolean" ? b.web : undefined,
+          agent: typeof b.agent === "string" ? b.agent : undefined,
+          whenFree: b.whenFree === true,
         });
         if ((b.action === "stop" || b.action === "export") && job.status === "error") return Response.json({ error: job.error, job }, { status: 400 });
         return Response.json({ job });

@@ -14,7 +14,7 @@
  * execute() in lib/sessionActions.ts that runs it. Nothing else should need to
  * know the tool exists.
  */
-export type SessionTool = "claude" | "codex" | "hermes";
+export type SessionTool = "claude" | "codex" | "hermes" | "acp";
 
 export interface SessionToolInfo {
   id: SessionTool;
@@ -67,6 +67,21 @@ export const SESSION_TOOLS: Record<SessionTool, SessionToolInfo> = {
     runsOn: "Hermes sign-in",
     resume: (id) => `hermes --resume ${id}`,
     cli: "hermes",
+    canFork: false,
+    canMove: false,
+    hasLiveStatus: false,
+  },
+  // Any agent that speaks the Agent Client Protocol (Gemini CLI, Kimi CLI, Goose, Qwen Code, …),
+  // configured per machine in data/acp-agents.json (lib/acpAgents.ts). The session id is
+  // "<agent id>.<the agent's own session id>"; Mission Control keeps these sessions' threads itself
+  // (lib/acpStore.ts) because ACP has no standard way to list them.
+  acp: {
+    id: "acp",
+    label: "ACP agent",
+    short: "Agent",
+    runsOn: "agent's own sign-in",
+    resume: () => "",
+    cli: "",
     canFork: false,
     canMove: false,
     hasLiveStatus: false,
@@ -141,3 +156,15 @@ export function hermesToolsets(access: "answer" | "edit", web?: boolean, isolate
  * did to Hermes's memory either, where the next session would take it for the truth.
  */
 const ISOLATED_OUT = ["memory", "session_search"];
+
+/** An ACP agent's id in data/acp-agents.json: lowercase letters, digits and dashes (no dot: it separates the agent from the session id). */
+export const ACP_AGENT_RE = /^[a-z0-9][a-z0-9-]{0,31}$/;
+
+/** "gemini.0b1c…" → { agent: "gemini", sessionId: "0b1c…" }. The id part of an `acp:` session key. */
+export function splitAcpId(id: string): { agent: string; sessionId: string } | null {
+  const i = id.indexOf(".");
+  if (i <= 0) return null;
+  const agent = id.slice(0, i);
+  const sessionId = id.slice(i + 1);
+  return ACP_AGENT_RE.test(agent) && /^[\w.-]{1,160}$/.test(sessionId) ? { agent, sessionId } : null;
+}

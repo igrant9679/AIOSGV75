@@ -13,6 +13,7 @@ import HealthPanel from "./HealthPanel";
 import { FleetPausePanel } from "./FleetPause";
 import { ACTIVITY_SORTS } from "./sorts";
 import { LiveSessionsPanel, RunSomewherePanel, useSessionAlerts } from "./LivePanels";
+import TeamPanel from "./TeamPanel";
 import { ActivityChart, MiniBars, perDay } from "./Charts";
 
 /**
@@ -154,6 +155,8 @@ export default function CommandSection() {
       <LiveSessionsPanel />
 
       <RunSomewherePanel hub={hub} />
+
+      <TeamPanel hub={hub} />
 
       <Panel title="Latest across everything" delay={0.2}>
         <div className="flex flex-col p-4">

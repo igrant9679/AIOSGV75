@@ -13,6 +13,9 @@ import { peerFetch } from "./peer";
 import type { LiveSession } from "./sessionLive";
 import type { SessionEvent } from "./sessionEvents";
 import { buildInfo, COMMIT_RE, SELF_UPDATE, type BuildInfo } from "./selfUpdate";
+import { acpAgentInfos } from "./acpAgents";
+import type { AcpAgentInfo } from "./acpPresets";
+import { ACP_AGENT_RE } from "./sessionTools";
 
 /**
  * Session sharing across the machine group — the same channel as cluster
@@ -57,7 +60,14 @@ export interface SharedSessionsFile {
   selfUpdate?: number;
   /** its "Updates from my other machines" setting */
   updatesAllowed?: boolean;
+  /** it can hold a reply until the session is free (QUEUE); missing = an older version, which would send it at once */
+  queue?: number;
+  /** its switched-on ACP agents, by id and name only (lib/acpAgents.ts) */
+  acpAgents?: AcpAgentInfo[];
 }
+
+/** Version of "send when free": a reply with whenFree waits on the target instead of running as a new branch. */
+export const QUEUE = 1;
 
 /** Version of the run-worker contract this build honours: model, web, turn cap and isolation on a job, and the pickup rules in lib/runs.ts. */
 export const RUN_WORKER = 1;
@@ -75,7 +85,12 @@ export interface RemoteMachine {
   build?: BuildInfo;
   selfUpdate?: number;
   updatesAllowed?: boolean;
+  queue?: number;
+  acpAgents?: AcpAgentInfo[];
 }
+
+/** What this machine can do for the others beyond its version: hold messages, and its ACP agents (names only). */
+const capabilityFields = async () => ({ queue: QUEUE, acpAgents: await acpAgentInfos().catch(() => [] as AcpAgentInfo[]) });
 
 const PUBLISH_EVERY_MS = 5 * 60_000;
 
@@ -210,7 +225,7 @@ export function shareNow(): Promise<ShareResult> {
     const local = snap.sessions.filter((s) => !s.indexing);
 
     const file = fileFor(os.hostname());
-    const body = { sessions: local.slice(0, MAX_SESSIONS).map(slim), subscriptions: snap.subscriptions, acceptsReplies: settings.remoteReplies, runWorker: RUN_WORKER, ...versionFields(settings) };
+    const body = { sessions: local.slice(0, MAX_SESSIONS).map(slim), subscriptions: snap.subscriptions, acceptsReplies: settings.remoteReplies, runWorker: RUN_WORKER, ...versionFields(settings), ...(await capabilityFields()) };
     const hash = crypto.createHash("sha1").update(JSON.stringify(body)).digest("hex");
     const prev = await fsp.readFile(file, "utf8").then((t) => JSON.parse(t) as SharedSessionsFile & { hash?: string }).catch(() => null);
     let summaries: ShareResult["summaries"] = "unchanged";
@@ -268,6 +283,7 @@ export async function localSummary(): Promise<SharedSessionsFile> {
     acceptsReplies: settings.remoteReplies,
     runWorker: RUN_WORKER,
     ...versionFields(settings),
+    ...(await capabilityFields()),
     via: "lan",
     live: await liveSnapshot().catch(() => []),
     events: await ownEvents(80).catch(() => []),
@@ -360,6 +376,10 @@ export async function mergeRemoteSessions(local: SessionSummary[]): Promise<Merg
       build: f.build && typeof f.build.commit === "string" && COMMIT_RE.test(f.build.commit) ? f.build : undefined,
       selfUpdate: typeof f.selfUpdate === "number" ? f.selfUpdate : undefined,
       updatesAllowed: typeof f.updatesAllowed === "boolean" ? f.updatesAllowed : undefined,
+      queue: typeof f.queue === "number" ? f.queue : undefined,
+      acpAgents: Array.isArray(f.acpAgents)
+        ? f.acpAgents.filter((a) => a && typeof a.id === "string" && ACP_AGENT_RE.test(a.id) && typeof a.label === "string").map((a) => ({ id: a.id, label: a.label.slice(0, 40) })).slice(0, 20)
+        : undefined,
     });
     for (const raw of f.sessions) {
       const s: SessionSummary = { ...raw, host: f.host };

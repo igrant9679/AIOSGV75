@@ -23,6 +23,7 @@ import {
 import { readNames } from "./sessionNaming";
 import type { SessionTool } from "./sessionTools";
 import { hermesInstalled, hermesSessions } from "./hermesSessions";
+import { listAcpSessions } from "./acpStore";
 
 /**
  * Native session reader — the "capture" layer of the second brain. Reads the
@@ -807,6 +808,33 @@ export async function sessionsSnapshot(): Promise<SessionsSnapshot> {
     // mid-turn = not closed, touched in the last few minutes, and the last word isn't Hermes's
     const open = !h.ended && now - h.updatedAt < RUNNING_WINDOW_MS && h.lastRole !== "assistant";
     sessions.push({ ...base, ...named, hidden: names.sessions[key]?.hidden || undefined, host, status: open ? "running" : "ended" });
+  }
+
+  // ACP agents (Gemini CLI, Kimi CLI, …): the sessions Mission Control ran, from its own record (lib/acpStore.ts)
+  for (const a of listAcpSessions()) {
+    const base: CachedEntry["summary"] = {
+      key: a.key,
+      id: a.key.slice("acp:".length),
+      tool: "acp",
+      title: "",
+      cwd: a.cwd === "~" ? HOME : a.cwd,
+      project: "",
+      startedAt: a.startedAt,
+      updatedAt: a.updatedAt,
+      userTurns: a.userTurns,
+      tokensIn: 0,
+      tokensOut: 0,
+      tokensCached: 0,
+      // shown where a model name would be: which agent this is
+      model: a.agentLabel,
+      origin: "acp_exec",
+      firstPrompt: cleanPrompt(a.firstPrompt) || undefined,
+      aiTitle: a.title,
+    };
+    const named = resolveNames(base, { override: names.sessions[a.key], job: jobTitle(base.firstPrompt, a.startedAt, jobs) });
+    // a turn left open by a server that died is not running: 25 minutes is past any run's limit
+    const open = a.turnOpen && now - a.updatedAt < 25 * 60_000;
+    sessions.push({ ...base, ...named, hidden: names.sessions[a.key]?.hidden || undefined, host, status: open ? "running" : "ended" });
   }
 
   sessions.sort((a, b) => b.updatedAt - a.updatedAt);

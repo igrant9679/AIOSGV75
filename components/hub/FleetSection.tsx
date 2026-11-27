@@ -17,6 +17,7 @@ import VersionsPanel from "./VersionsPanel";
 import SetupPanel from "./SetupPanel";
 import AccountsPanel from "./AccountsPanel";
 import RemoteLogPanel from "./RemoteLogPanel";
+import AgentsFallbackPanel from "./AgentsFallbackPanel";
 import { useCallback } from "react";
 import { AlertsPanel, NetworkPanel } from "./NetworkPanels";
 import { ConversationButton, ConversationView } from "./Conversation";
@@ -190,6 +191,7 @@ export default function FleetSection() {
       <AccountsPanel hub={hub} labelOf={labelOf} />
       <VersionsPanel />
       <SetupPanel />
+      <AgentsFallbackPanel />
       <RemoteLogPanel />
       <NetworkPanel />
       <SharingPanel onShared={reload} />

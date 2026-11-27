@@ -13,7 +13,7 @@ import { readTasks, writeTasks, newTaskId } from "./tasks";
 import { pickHermesModel, readWorkerModelSettings } from "./nousModels";
 import { cliAvailable } from "./cliAvailable";
 import { toolLabel, workerLabel, type SessionTool, type WorkerTool } from "./sessionTools";
-import { readRegistry, isLocalEndpoint } from "./registry";
+import { servedLocalModel } from "./localModel";
 import { productName } from "./netSettings";
 import { readChecks } from "./projectChecks";
 import { placeTask, type PlacementMachine } from "./runPlacement";
@@ -731,24 +731,7 @@ async function localWorker(run: Run): Promise<LocalModel | null> {
   if (run.host !== me() && !run.spread) return null;
   const pref = (await readWorkerModelSettings()).local;
   if (pref === false) return null;
-  const bare = (s: string) => s.toLowerCase().replace(/:latest$/, "");
-  const all = (await readRegistry()).llms.filter((l) => isLocalEndpoint(l.baseUrl) && !l.apiKey && l.model);
-  const named = pref ? all.filter((l) => [l.id, l.name, l.model].some((v) => v && bare(v) === bare(pref))) : [];
-  const candidates = pref ? named : all;
-  const served = new Map<string, string[] | null>(); // one /models call per endpoint
-  for (const llm of candidates) {
-    const base = llm.baseUrl.replace(/\/+$/, "");
-    if (!served.has(base)) {
-      try {
-        const res = await fetch(`${base}/models`, { signal: AbortSignal.timeout(2500) });
-        served.set(base, res.ok ? (((await res.json()) as { data?: { id?: string }[] }).data ?? []).map((m) => bare(String(m.id ?? ""))) : null);
-      } catch {
-        served.set(base, null);
-      }
-    }
-    if (served.get(base)?.includes(bare(llm.model))) return { id: llm.id, name: llm.name, model: llm.model };
-  }
-  return null;
+  return servedLocalModel(pref || undefined);
 }
 
 /** One request at a time to the local model, across every run: a second would only queue inside Ollama with its time limit already running. */

@@ -3,6 +3,7 @@ import readline from "readline";
 import { cleanPromptText, findSessionFile, readCodexText, textOf, type SessionSummary } from "./sessions";
 import { redactSecrets } from "./sessionDigest";
 import { hermesMessages } from "./hermesSessions";
+import { readAcpSession } from "./acpStore";
 
 /**
  * The COMPLETE thread of a Claude Code / Codex session, for the Projects page:
@@ -259,6 +260,11 @@ export async function readThread(s: Pick<SessionSummary, "key" | "tool">, limit 
   if (s.tool === "hermes") {
     all = hermesThread(s.key.slice("hermes:".length));
     if (all.length === 0) return null;
+  } else if (s.tool === "acp") {
+    // Mission Control's own record of the turns it ran (lib/acpStore.ts)
+    const rec = await readAcpSession(s.key);
+    if (!rec) return null;
+    all = rec.entries.map((e) => (e.kind === "tool" ? { ...e, input: tidy(e.input, MAX_TOOL_IN), output: e.output === undefined ? undefined : tidy(e.output, MAX_TOOL_OUT) } : { ...e, text: tidy(e.text, MAX_TEXT) }));
   } else {
     const file = await findSessionFile(s.key);
     if (!file) return null;

@@ -55,11 +55,30 @@ export function useSessionJobs() {
   return { jobs, reloadJobs: load };
 }
 
+/**
+ * The tools a new session can use, as select options: the session tools, then each ACP agent
+ * ("acp:gemini"). With a host, that machine's agents only; without, every agent any machine has.
+ */
+export function toolChoices(hub: HubSnapshot | null, host?: string): { value: string; label: string }[] {
+  const base = SESSION_TOOL_IDS.filter((t) => t !== "acp").map((t) => ({ value: t as string, label: toolLabel(t) }));
+  const lists = !hub ? [] : host ? [host === hub.host ? (hub.acpAgents ?? []) : (hub.machines.find((m) => m.host === host)?.acpAgents ?? [])] : [hub.acpAgents ?? [], ...hub.machines.map((m) => m.acpAgents ?? [])];
+  const seen = new Set<string>();
+  const agents: { value: string; label: string }[] = [];
+  for (const l of lists) for (const a of l) if (!seen.has(a.id)) seen.add(a.id) && agents.push({ value: `acp:${a.id}`, label: `${a.label} (ACP)` });
+  return [...base, ...agents];
+}
+
+/** "acp:gemini" → { tool: "acp", agent: "gemini" }; "codex" → { tool: "codex" }. */
+export function parseToolChoice(v: string): { tool: SessionTool; agent?: string } {
+  if (v.startsWith("acp:")) return { tool: "acp", agent: v.slice(4) };
+  return { tool: isSessionTool(v) ? v : "claude" };
+}
+
 /** What another machine lets this one do with its sessions. */
-export function machineInfo(hub: HubSnapshot | null, host: string): { local: boolean; label: string; level: Level } {
-  if (!hub || host === hub.host) return { local: true, label: "this machine", level: "edit" };
+export function machineInfo(hub: HubSnapshot | null, host: string): { local: boolean; label: string; level: Level; queue: boolean } {
+  if (!hub || host === hub.host) return { local: true, label: "this machine", level: "edit", queue: true };
   const m = hub.machines.find((x) => x.host === host);
-  return { local: false, label: m?.label ?? host, level: (m?.acceptsReplies as Level) ?? "off" };
+  return { local: false, label: m?.label ?? host, level: (m?.acceptsReplies as Level) ?? "off", queue: (m?.queue ?? 0) >= 1 };
 }
 
 export function SmallButton({ onClick, children, title, disabled, accent }: { onClick: () => void; children: ReactNode; title?: string; disabled?: boolean; accent?: boolean }) {
@@ -350,11 +369,13 @@ function LiveProgress({ progress }: { progress: NonNullable<SessionJob["progress
 export function JobBubble({ job, onOpenSession, knownKeys }: { job: SessionJob; onOpenSession?: (key: string) => void; knownKeys?: Set<string> }) {
   const product = useProductName(); // this network's product name
   const [busy, setBusy] = useState(false);
-  const toolName = toolShort(job.tool);
+  const toolName = job.fellBack ? job.fellBack.toLabel : job.tool === "acp" ? job.agentLabel || "Agent" : toolShort(job.tool);
   const final = !ACTIVE.includes(job.status);
   const status =
-    job.status === "queued"
-      ? "Waiting to start…"
+    job.waitReason && (job.status === "queued" || job.status === "sent")
+      ? `Held until it's free: waiting for ${job.waitReason}`
+      : job.status === "queued"
+      ? job.whenFree ? "Held until the session is free…" : "Waiting to start…"
       : job.status === "sent"
         ? `Sent to ${job.hostLabel} through the vault - waiting for it to pick it up (OneDrive sync can take a minute)`
         : job.status === "running"
@@ -368,7 +389,24 @@ export function JobBubble({ job, onOpenSession, knownKeys }: { job: SessionJob; 
           <span style={{ color: "var(--page-accent)" }}>You, from {product}</span> · {when(job.createdAt)}
           {job.requestedByLabel ? ` · asked from ${job.requestedByLabel}` : ""} · {job.access === "edit" ? "can edit files" : "answer only"}
           {job.fork ? " · as a new branch" : ""}
+          {job.whenFree ? " · when it's free" : ""}
         </p>
+        {!final && job.whenFree && (job.status === "queued" || job.status === "sent") && (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true);
+              await sessionsPost({ action: "stop", jobId: job.id });
+              setBusy(false);
+              window.dispatchEvent(new Event("mc-session-jobs"));
+            }}
+            title="Don't send this message"
+            className="cursor-pointer font-mono text-[10px] text-ink-faint underline hover:text-ink"
+          >
+            cancel
+          </button>
+        )}
         {final && (
           <button
             type="button"
@@ -403,6 +441,12 @@ export function JobBubble({ job, onOpenSession, knownKeys }: { job: SessionJob; 
         </p>
       )}
       {job.status === "running" && job.progress && (job.progress.steps.length > 0 || job.progress.text) && <LiveProgress progress={job.progress} />}
+      {job.fellBack && (
+        <p className="font-mono text-[10px]" style={{ color: ACCENTS.amber.base }}>
+          {job.fellBack.fromLabel} hit its limit, so {job.fellBack.toLabel} took over{job.fellBack.local ? " (an answer only: no session holds it)" : ", with the conversation so far"}.
+          {job.fellBack.skipped?.length ? ` Skipped: ${job.fellBack.skipped.join(", ")}.` : ""}
+        </p>
+      )}
       {(job.status === "error" || job.status === "expired") && (
         <p className="text-[11px]" style={{ color: ACCENTS.rose.base }}>
           {job.error}
@@ -420,7 +464,7 @@ export function JobBubble({ job, onOpenSession, knownKeys }: { job: SessionJob; 
       )}
       {job.status === "done" && newKey && onOpenSession && (
         <p className="font-mono text-[10px] text-ink-faint">
-          {job.mode === "new" ? "Started a new session." : "Continued as a new branch of this session."}{" "}
+          {job.fellBack ? `Continued in a new ${job.fellBack.toLabel} session.` : job.mode === "new" ? "Started a new session." : "Continued as a new branch of this session."}{" "}
           {knownKeys?.has(newKey) ? (
             <button type="button" onClick={() => onOpenSession(newKey)} className="cursor-pointer underline" style={{ color: "var(--page-accent)" }}>
               Open it
@@ -445,6 +489,8 @@ function Composer({
   hint,
   onSend,
   extra,
+  toolName,
+  whenFree,
 }: {
   placeholder: string;
   tool: string;
@@ -454,12 +500,17 @@ function Composer({
   forkLocked: boolean;
   disabledReason?: string;
   hint: string;
-  onSend: (prompt: string, access: "answer" | "edit", fork: boolean) => Promise<string | undefined>;
+  onSend: (prompt: string, access: "answer" | "edit", fork: boolean, held: boolean) => Promise<string | undefined>;
   extra?: ReactNode;
+  /** the button's name for the tool, when toolShort can't say (an ACP agent) */
+  toolName?: string;
+  /** offer "when it's free": available = the machine can hold a message */
+  whenFree?: { available: boolean; busy: boolean };
 }) {
   const [text, setText] = useState("");
   const [access, setAccess] = useState<"answer" | "edit">("answer");
   const [fork, setFork] = useState(forkDefault);
+  const [held, setHeld] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   useEffect(() => setFork(forkDefault), [forkDefault]);
@@ -468,7 +519,7 @@ function Composer({
     if (!text.trim() || busy || disabledReason) return;
     setBusy(true);
     setErr(null);
-    const e = await onSend(text.trim(), access, fork);
+    const e = await onSend(text.trim(), access, fork, held);
     setBusy(false);
     if (e) setErr(e);
     else setText("");
@@ -513,10 +564,23 @@ function Composer({
             Can edit files{allowEdit ? "" : " (not allowed there)"}
           </option>
         </select>
+        {whenFree && (
+          <label
+            className={`flex items-center gap-1 ${whenFree.available ? "cursor-pointer" : "opacity-50"}`}
+            title={
+              whenFree.available
+                ? "Hold the message until the session is free - closed in the app or terminal, nothing else still running in it, and its plan not at its limit - then continue the session itself. Gives up after 24 hours."
+                : "That machine runs an older version that can't hold a message. Update it (Fleet → Versions)."
+            }
+          >
+            <input type="checkbox" checked={held} disabled={!whenFree.available} onChange={(e) => setHeld(e.target.checked)} /> when it&apos;s free
+            {whenFree.busy && !held ? " (it's busy)" : ""}
+          </label>
+        )}
         {showFork && (
-          <label className="flex cursor-pointer items-center gap-1" title={forkLocked ? "The session is open right now, so the reply goes into a new branch of it - the two can't collide." : "Leave the original session as it is and continue in a new branch."}>
-            <input type="checkbox" checked={fork || forkLocked} disabled={forkLocked} onChange={(e) => setFork(e.target.checked)} /> as a new branch
-            {forkLocked ? " (session is open)" : ""}
+          <label className="flex cursor-pointer items-center gap-1" title={forkLocked && !held ? "The session is open right now, so the reply goes into a new branch of it - the two can't collide." : "Leave the original session as it is and continue in a new branch."}>
+            <input type="checkbox" checked={fork || (forkLocked && !held)} disabled={forkLocked && !held} onChange={(e) => setFork(e.target.checked)} /> as a new branch
+            {forkLocked && !held ? " (session is open)" : ""}
           </label>
         )}
         <span className="flex-1" />
@@ -527,7 +591,7 @@ function Composer({
           className="cursor-pointer rounded-md border px-3 py-1 font-mono text-[11px] font-semibold transition-colors hover:bg-white/[0.06] disabled:cursor-default disabled:opacity-40"
           style={{ borderColor: "var(--page-accent)", color: "var(--page-accent)" }}
         >
-          {busy ? "Sending…" : `Send to ${toolShort(tool)}`}
+          {busy ? "Sending…" : held ? "Send when free" : `Send to ${toolName ?? toolShort(tool)}`}
         </button>
       </div>
       <p className="text-[10px] leading-4 text-ink-faint">{hint}</p>
@@ -791,14 +855,16 @@ export function SessionDetail({
       <Composer
         placeholder={`Reply to this session…`}
         tool={s.tool}
+        toolName={s.tool === "acp" ? s.model : undefined}
+        whenFree={{ available: m.local || m.queue, busy }}
         allowEdit={m.level === "edit"}
         showFork={SESSION_TOOLS[s.tool].canFork}
         forkDefault={busy}
         forkLocked={m.local && busy}
         disabledReason={!m.local && m.level === "off" ? `Replies to ${m.label} are off - turn on "Replies from my other machines" there (Fleet → Sharing).` : undefined}
-        hint={`Continues this session on ${m.local ? "this machine" : m.label} with your ${toolRunsOn(s.tool)} (${s.tool === "claude" ? "claude --resume" : s.tool === "codex" ? "codex exec resume" : "hermes chat --resume"}, in ${s.cwd}). The reply is saved in the session itself, so ${s.tool === "claude" ? "the Claude app and terminal show" : s.tool === "codex" ? "the Codex app shows" : "Hermes shows"} it too.${s.tool === "hermes" ? " Hermes can't stop to ask, so a run from here never gets its terminal, browser or desktop tools: Answer only reads the web and its memory, Can edit files adds file access and its skills." : ""}`}
-        onSend={async (prompt, access, fork) => {
-          const r = await sessionsPost({ action: "reply", key: s.key, prompt, access, fork });
+        hint={s.tool === "acp" ? `Continues this ${s.model ?? "agent"} session on ${m.local ? "this machine" : m.label} with the agent's own sign-in (ACP session/load, in ${s.cwd}). Answer only lets it read, search and fetch; Can edit files also lets it edit files in this folder. Commands and deletions are always refused.` : `Continues this session on ${m.local ? "this machine" : m.label} with your ${toolRunsOn(s.tool)} (${s.tool === "claude" ? "claude --resume" : s.tool === "codex" ? "codex exec resume" : "hermes chat --resume"}, in ${s.cwd}). The reply is saved in the session itself, so ${s.tool === "claude" ? "the Claude app and terminal show" : s.tool === "codex" ? "the Codex app shows" : "Hermes shows"} it too.${s.tool === "hermes" ? " Hermes can't stop to ask, so a run from here never gets its terminal, browser or desktop tools: Answer only reads the web and its memory, Can edit files adds file access and its skills." : ""}`}
+        onSend={async (prompt, access, fork, held) => {
+          const r = await sessionsPost({ action: "reply", key: s.key, prompt, access, fork, whenFree: held });
           reloadJobs();
           return r.error;
         }}
@@ -827,7 +893,10 @@ export function NewSessionPanel({
   onOpenSession: (key: string) => void;
 }) {
   const m = machineInfo(hub, host);
-  const [tool, setTool] = useState<SessionTool>("claude");
+  const [choice, setChoice] = useState("claude");
+  const { tool, agent } = parseToolChoice(choice);
+  const choices = toolChoices(hub, host);
+  const agentLabel = choices.find((c) => c.value === choice)?.label.replace(/ \(ACP\)$/, "");
   const knownKeys = useMemo(() => new Set(hub?.sessions.map((x) => x.key)), [hub]);
   const started = jobs.filter((j) => j.mode === "new" && (j.project === project || j.cwd === folder)).sort((a, b) => a.createdAt - b.createdAt);
   return (
@@ -838,28 +907,29 @@ export function NewSessionPanel({
       <Composer
         placeholder={`Start a new session in ${project}…`}
         tool={tool}
+        toolName={tool === "acp" ? agentLabel : undefined}
         allowEdit={m.level === "edit"}
         showFork={false}
         forkDefault={false}
         forkLocked={false}
         disabledReason={!m.local && m.level === "off" ? `This folder is on ${m.label}, which doesn't accept requests from other machines (Fleet → Sharing there).` : undefined}
-        hint={`Runs in ${folder} on ${m.local ? "this machine" : m.label}, with your ${toolRunsOn(tool)}. It becomes a normal session in this project - open it afterwards to keep going.`}
+        hint={`Runs in ${folder} on ${m.local ? "this machine" : m.label}, with ${tool === "acp" ? `${agentLabel}'s own sign-in` : `your ${toolRunsOn(tool)}`}. It becomes a normal session in this project - open it afterwards to keep going.`}
         extra={
           <select
-            value={tool}
-            onChange={(e) => setTool(isSessionTool(e.target.value) ? e.target.value : "claude")}
+            value={choice}
+            onChange={(e) => setChoice(e.target.value)}
             aria-label="Which tool"
             className="rounded-md border border-line bg-transparent px-1.5 py-1 text-[10px] text-ink"
           >
-            {SESSION_TOOL_IDS.map((t) => (
-              <option key={t} value={t} style={{ background: "var(--color-panel)" }}>
-                {toolLabel(t)}
+            {choices.map((c) => (
+              <option key={c.value} value={c.value} style={{ background: "var(--color-panel)" }}>
+                {c.label}
               </option>
             ))}
           </select>
         }
         onSend={async (prompt, access) => {
-          const r = await sessionsPost({ action: "new", host, folder, tool, project, prompt, access });
+          const r = await sessionsPost({ action: "new", host, folder, tool, agent, project, prompt, access });
           reloadJobs();
           return r.error;
         }}
