@@ -5,7 +5,7 @@ import path from "node:path";
 // Unit test for lib/runPlacement.ts (which machine a project-run task goes to).
 // Run: node scripts/test-run-placement.mjs   (Node 23.6+ reads the .ts file directly)
 const here = path.dirname(fileURLToPath(import.meta.url));
-const { placeTask, blockedReason } = await import(pathToFileURL(path.join(here, "..", "lib", "runPlacement.ts")).href);
+const { placeTask, blockedReason, pickLocalMachine } = await import(pathToFileURL(path.join(here, "..", "lib", "runPlacement.ts")).href);
 
 const sub = (tool, status = "ok", usedPercent) => ({ id: tool, tool, label: tool, status, usedPercent, tokens5h: 0, tokens7d: 0, note: "" });
 const all = [sub("claude", "ok", 40), sub("codex", "ok", 40), sub("hermes", "ok")];
@@ -68,4 +68,18 @@ assert.equal(p.host, "raider", "below MEM_WARN memory costs nothing");
 // 14. between two remote machines the emptier one wins
 p = placeTask([M({ ...home, busy: 2 }), M({ ...legion, memory: 91 }), M({ host: "sabine", label: "Sabine", memory: 40 })], { tools: ["claude"], pinned: false });
 assert.equal(p.host, "sabine");
+// 15. another machine's local model (pickLocalMachine): only machines that share one, not this one
+const lm = (o) => M({ localModel: "inkling-2-mini", memory: 50, ...o });
+assert.equal(pickLocalMachine([M({ ...home, localModel: "llama" }), legion, area]), null, "nobody else shares a local model; this machine never picks itself");
+let q = pickLocalMachine([home, lm({ host: "gv", label: "GV", via: "vault", memory: 20 }), lm({ host: "legion", label: "Legion7", memory: 60 })]);
+assert.equal(q.host, "legion", "LAN beats OneDrive even with more memory used");
+q = pickLocalMachine([home, lm({ host: "a", memory: 70 }), lm({ host: "b", memory: 30 })]);
+assert.equal(q.host, "b", "then the least memory used");
+// 16. memory at MEM_WARN, a local task already in flight, avoided, off or offline: skipped
+assert.equal(pickLocalMachine([home, lm({ host: "a", memory: 85 })]), null, "a local model loads gigabytes: not on a machine at 85%");
+assert.equal(pickLocalMachine([home, lm({ host: "a", localBusy: 1 })]), null, "Ollama answers one at a time");
+assert.equal(pickLocalMachine([home, lm({ host: "a" })], ["a"]), null, "skipped for this task before");
+assert.equal(pickLocalMachine([home, lm({ host: "a", accepts: "off" }), lm({ host: "b", online: false })]), null);
+assert.equal(pickLocalMachine([home, lm({ host: "a", memory: undefined })]).host, "a", "unknown memory is not a reason to skip (rule 31)");
+assert.equal(pickLocalMachine([home, lm({ host: "a", localFits: false }), lm({ host: "b", via: "vault" })]).host, "b", "a machine that says its model won't fit in memory now is skipped");
 console.log("all placement tests passed");

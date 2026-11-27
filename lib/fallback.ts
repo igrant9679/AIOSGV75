@@ -5,7 +5,7 @@ import path from "path";
 import { cliAvailable } from "./cliAvailable";
 import { hermesInstalled } from "./hermesSessions";
 import { acpInstalled, findAcpAgent, readAcpAgents } from "./acpAgents";
-import { servedLocalModel } from "./localModel";
+import { localModelFits, servedLocalModel } from "./localModel";
 import { readWorkerModelSettings } from "./nousModels";
 import { DEFAULT_ORDER, STEP_RE, type FallbackStep } from "./fallbackPlan";
 import type { SubscriptionMeter } from "./sessions";
@@ -78,7 +78,10 @@ export async function stepReady(step: FallbackStep, meters: SubscriptionMeter[] 
   if (step === "local") {
     const pref = (await readWorkerModelSettings()).local;
     if (pref === false) return { ok: false, why: 'switched off ("local": false)' };
-    return (await servedLocalModel(pref || undefined)) ? { ok: true } : { ok: false, why: "no local model running" };
+    const lm = await servedLocalModel(pref || undefined);
+    if (!lm) return { ok: false, why: "no local model running" };
+    const fit = await localModelFits(lm);
+    return fit.ok ? { ok: true } : { ok: false, why: fit.why };
   }
   if (step.startsWith("acp:")) {
     const a = await findAcpAgent(step.slice(4));

@@ -165,6 +165,22 @@ helper scripts now live in vault **`Agentic OS/Cluster/`** — all idempotent, a
   not `costUsd`, so no fabricated dollars appear — but the per-agent tag reads BILLED. Fix only
   if the Analytics split starts mattering.
 
+## ✅ DONE 2026-11-27 (Raider18) — another machine's local model for routine run tasks (inkling-2-mini plan)
+
+- Job mode "local" (lib/sessionActions.ts): a run's routine text task on another machine's local model,
+  answer only, target's own model choice, one at a time, fleet pause holds it. Machines share
+  `localModel` {model, gb, fits}; `pickLocalMachine` (lib/runPlacement.ts, tests in
+  scripts/test-run-placement.mjs) places it on spreading runs when the driver has no usable local model.
+- MEMORY FINDING: Ollama on Windows commits ~1.4x the model size even fully on the GPU (gpt-oss:20b took
+  Raider18 69% -> 94%). `localModelFits` (lib/localModel.ts) now gates every local load (runs, local jobs,
+  fallback): commit must stay < 93% after loading. On Raider18 right now gpt-oss doesn't fit (23 GB needed,
+  22 free) and inkling-2-mini (18.3 GB, ~31 GB needed) won't fit unless memory is freed (WanGP's two
+  ~3.9 GB python servers are the obvious candidates). Rule 42.
+- Tested: peer-port requests from a pretend sender: too-long refused, edit request downgraded to answer,
+  a real gpt-oss completion ("pong", 40 s, all in VRAM, then unloaded), and a memory refusal with numbers;
+  all logged in Remote actions. NOT tested: a full spreading run placing a task on another machine (needs a
+  second machine on this version; the pickup-timeout path is the existing one).
+
 ## ✅ DONE 2026-11-27 (Raider18) — the silent 0xC0000409 server deaths: investigated, three changes
 
 Raider18's server died 6 times (2026-11-14..26, exit 0xC0000409 = fail-fast) with nothing logged anywhere.

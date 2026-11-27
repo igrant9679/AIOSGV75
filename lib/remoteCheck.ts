@@ -4,7 +4,7 @@
  * scripts/test-remote-log.mjs and the Fleet page can both use it.
  */
 
-export type RemoteKind = "reply" | "new" | "thread" | "stop" | "import" | "export" | "check" | "update" | "setup" | "permission" | "skill";
+export type RemoteKind = "reply" | "new" | "thread" | "stop" | "import" | "export" | "check" | "update" | "setup" | "local" | "permission" | "skill";
 
 export interface RemoteAction {
   /** the job id (the same on both ends), or perm-<id> for a permission answer */

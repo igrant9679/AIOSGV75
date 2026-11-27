@@ -27,6 +27,7 @@ const KIND: Record<string, string> = {
   setup: "setup change",
   permission: "permission",
   skill: "skill copy",
+  local: "local model task",
   thread: "read",
 };
 

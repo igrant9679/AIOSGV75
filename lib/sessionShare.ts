@@ -16,6 +16,8 @@ import { buildInfo, COMMIT_RE, SELF_UPDATE, type BuildInfo } from "./selfUpdate"
 import { acpAgentInfos } from "./acpAgents";
 import type { AcpAgentInfo } from "./acpPresets";
 import { ACP_AGENT_RE } from "./sessionTools";
+import { localModelFits, servedLocalModel } from "./localModel";
+import { readWorkerModelSettings } from "./nousModels";
 
 /**
  * Session sharing across the machine group — the same channel as cluster
@@ -64,6 +66,21 @@ export interface SharedSessionsFile {
   queue?: number;
   /** its switched-on ACP agents, by id and name only (lib/acpAgents.ts) */
   acpAgents?: AcpAgentInfo[];
+  /**
+   * The local model it runs for the others' "local" jobs (project-run routine tasks), when one is
+   * running and not switched off ("local": false in its data/worker-models.json). Name only. Missing =
+   * none, or a version that doesn't take "local" jobs, so runs never send it one.
+   */
+  localModel?: SharedLocalModel;
+}
+
+/** A machine's local model as others see it: name, size, and whether it can be loaded there now. */
+export interface SharedLocalModel {
+  model: string;
+  /** size in GB (Ollama's figure), when known */
+  gb?: number;
+  /** false = that machine hasn't the free memory to load it right now (lib/localModel.ts localModelFits) */
+  fits?: boolean;
 }
 
 /** Version of "send when free": a reply with whenFree waits on the target instead of running as a new branch. */
@@ -87,10 +104,21 @@ export interface RemoteMachine {
   updatesAllowed?: boolean;
   queue?: number;
   acpAgents?: AcpAgentInfo[];
+  localModel?: SharedLocalModel;
 }
 
 /** What this machine can do for the others beyond its version: hold messages, and its ACP agents (names only). */
-const capabilityFields = async () => ({ queue: QUEUE, acpAgents: await acpAgentInfos().catch(() => [] as AcpAgentInfo[]) });
+const capabilityFields = async () => ({ queue: QUEUE, acpAgents: await acpAgentInfos().catch(() => [] as AcpAgentInfo[]), localModel: await sharedLocalModel().catch(() => undefined) });
+
+/** The local model this machine runs for other machines' "local" jobs: its preferred one, if running. */
+async function sharedLocalModel(): Promise<SharedLocalModel | undefined> {
+  const pref = (await readWorkerModelSettings()).local;
+  if (pref === false) return undefined;
+  const lm = await servedLocalModel(typeof pref === "string" ? pref : undefined);
+  if (!lm) return undefined;
+  const f = await localModelFits(lm);
+  return { model: lm.model, gb: f.gb, fits: f.ok };
+}
 
 const PUBLISH_EVERY_MS = 5 * 60_000;
 
@@ -380,6 +408,7 @@ export async function mergeRemoteSessions(local: SessionSummary[]): Promise<Merg
       acpAgents: Array.isArray(f.acpAgents)
         ? f.acpAgents.filter((a) => a && typeof a.id === "string" && ACP_AGENT_RE.test(a.id) && typeof a.label === "string").map((a) => ({ id: a.id, label: a.label.slice(0, 40) })).slice(0, 20)
         : undefined,
+      localModel: f.localModel && typeof f.localModel.model === "string" && /^[\w.:/@-]{1,120}$/.test(f.localModel.model) ? { model: f.localModel.model, gb: typeof f.localModel.gb === "number" ? f.localModel.gb : undefined, fits: typeof f.localModel.fits === "boolean" ? f.localModel.fits : undefined } : undefined,
     });
     for (const raw of f.sessions) {
       const s: SessionSummary = { ...raw, host: f.host };

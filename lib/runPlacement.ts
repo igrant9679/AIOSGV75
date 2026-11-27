@@ -49,6 +49,12 @@ export interface PlacementMachine {
   folder?: string;
   /** memory pressure, % (Windows commit charge, else RAM); undefined = not known */
   memory?: number;
+  /** the local model it shares for "local" jobs (name only), when one is running there */
+  localModel?: string;
+  /** local-model jobs in flight there, including ones placed earlier in this pass */
+  localBusy?: number;
+  /** false = it said it hasn't the free memory to load its local model now */
+  localFits?: boolean;
 }
 
 export interface PlacementTask {
@@ -124,4 +130,23 @@ export function placeTask(machines: PlacementMachine[], task: PlacementTask): Pl
     return { tool, host: best.host, label: best.label, folder: best.folder ?? "~", home: best.home, why, skipped };
   }
   return null;
+}
+
+/**
+ * Another machine's local model for a routine, text-only task, when the machine driving the run has
+ * none it may use (lib/runs.ts asks only for spreading runs; such a task needs no folder). A machine
+ * qualifies when it is online, is not the one deciding, accepts work from the others, advertises a
+ * local model that is running (`localModel`, shared only by versions that take "local" jobs), was not
+ * skipped for this task before, says it has the free memory to load that model now (`localFits`:
+ * loading takes ~1.4x the model's size in commit even on a GPU), has memory below MEM_WARN (a local model loads gigabytes:
+ * inkling-2-mini is 18 GB; unknown memory is allowed, rule 31), and has no local task already in
+ * flight (Ollama answers one at a time; a second would wait with its time limit running).
+ * Best: on the LAN, then the least memory used, then the least busy.
+ */
+export function pickLocalMachine(machines: PlacementMachine[], avoid: string[] = []): PlacementMachine | null {
+  const ok = machines.filter(
+    (m) => m.via !== "self" && m.online && m.accepts !== "off" && !!m.localModel && m.localFits !== false && !avoid.includes(m.host) && (m.memory ?? 0) < MEM_WARN && (m.localBusy ?? 0) === 0,
+  );
+  const mem = (m: PlacementMachine) => m.memory ?? MEM_WARN - 5;
+  return ok.sort((a, b) => Number(a.via === "vault") - Number(b.via === "vault") || mem(a) - mem(b) || a.busy - b.busy)[0] ?? null;
 }

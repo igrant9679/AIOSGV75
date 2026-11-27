@@ -74,6 +74,7 @@ export function describeJob(j: { mode: string; title?: string; project?: string;
   if (j.mode === "setup") return `${j.setupAction ?? "change"} ${j.setupTarget ?? ""}`.trim();
   if (j.mode === "check") return `check ${j.check ?? ""}${j.project ? ` in ${j.project}` : ""}`;
   if (j.mode === "update") return "update Mission Control";
+  if (j.mode === "local") return `local model task${j.project ? ` for ${j.project}` : ""}`;
   const where = j.title || j.project || (j.cwd && j.cwd !== "~" ? path.basename(j.cwd) : j.cwd === "~" ? "home folder" : "");
   const said = j.mode === "reply" || j.mode === "new" ? clip(j.prompt, 70) : "";
   return [where, said && `"${said}"`].filter(Boolean).join(" — ");

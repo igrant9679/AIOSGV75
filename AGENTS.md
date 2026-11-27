@@ -72,6 +72,8 @@ manual is `/guide` (source: `lib/guideContent.ts`).
   `acpAgents.ts` / `acpPresets.ts` / `acpClient.ts` / `acpPolicy.ts` / `acpStore.ts` (Agent Client
   Protocol agents as session tool "acp": per-machine commands, the JSON-RPC client, what they may do,
   and Mission Control's own record of their threads), `localModel.ts` (the local model that is running),
+  `runPlacement.ts` `pickLocalMachine` + job mode "local" (another machine's local model for a run's
+  routine text task; rule 42),
   `team.ts` + `teamParse.ts` (Command -> Team: named teammates in their own sessions, @mentions and
   "@Name: task" hand-offs, settled by the scheduler's `teamTick`),
   `sessionTools.ts` (the registry of session tools) + `sessions.ts` /
@@ -347,6 +349,19 @@ pm: it works in Claude Code's
     death ends the server too (tested). Stop it with `procdump64 -cancel <server pid>`, or
     MC_NO_PROCDUMP=1. Editing server.cmd while it runs: cmd.exe reads a batch file live, so restart the
     server after changing it (once it ran the new line by itself).
+
+42. **A local model is loaded only where it fits, and lent only by id-less request.** On Windows Ollama
+    commits ~1.4x a model's size even with every layer on the GPU (gpt-oss:20b: 69% -> 94% commit on
+    Raider18, 2026-11-27); inkling-2-mini (18.3 GB) would have crashed it. `localModelFits`
+    (lib/localModel.ts) allows a load only if commit stays below MEM_FULL afterwards (or the model is
+    loaded already), and EVERY place that loads one checks it: a run's own local worker, a "local" job
+    (on acceptance and again before loading), the fallback's local step. Another machine's model is used
+    through job mode "local": answer only, the target's OWN model choice (the request names none), no
+    tools or memory (rule 23), one at a time per machine, held by the fleet pause. A machine advertises
+    `localModel` {model, gb, fits} in its summary (that field is the capability: older versions don't
+    send it); `pickLocalMachine` (lib/runPlacement.ts, tested) takes LAN first, then most free memory,
+    never one at MEM_WARN, busy with a local task, saying it doesn't fit, or avoided. Spreading runs only.
+    Chats and Auto that pick a local model don't check this yet.
 
 ## Dev cycle (production server auto-starts at login)
 

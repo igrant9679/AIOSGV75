@@ -13,10 +13,10 @@ import { readTasks, writeTasks, newTaskId } from "./tasks";
 import { pickHermesModel, readWorkerModelSettings } from "./nousModels";
 import { cliAvailable } from "./cliAvailable";
 import { toolLabel, workerLabel, type SessionTool, type WorkerTool } from "./sessionTools";
-import { servedLocalModel } from "./localModel";
+import { localModelFits, servedLocalModel } from "./localModel";
 import { productName } from "./netSettings";
 import { readChecks } from "./projectChecks";
-import { placeTask, type PlacementMachine } from "./runPlacement";
+import { pickLocalMachine, placeTask, type PlacementMachine } from "./runPlacement";
 import { withAccountLimits } from "./accountUsage";
 import { memoryByHost } from "./machineLoad";
 import { isPaused } from "./fleetPause";
@@ -145,8 +145,8 @@ export interface RunTask {
   history?: AttemptNote[];
   /** edit tasks on a run with a branch: what changed on disk, as git saw it when the task went to review */
   diff?: string;
-  /** the job in flight; written before the job is started */
-  job?: { id: string; mode: "new" | "reply"; at: number };
+  /** the job in flight; written before the job is started ("local" = another machine's local model) */
+  job?: { id: string; mode: "new" | "reply" | "local"; at: number };
   jobIds: string[];
   /** names of this folder's check commands the task must pass (only for tasks that edit files) */
   checks?: string[];
@@ -731,7 +731,9 @@ async function localWorker(run: Run): Promise<LocalModel | null> {
   if (run.host !== me() && !run.spread) return null;
   const pref = (await readWorkerModelSettings()).local;
   if (pref === false) return null;
-  return servedLocalModel(pref || undefined);
+  const lm = await servedLocalModel(pref || undefined);
+  // loading it must not run this machine out of memory (lib/localModel.ts); if not, another machine's may do
+  return lm && (await localModelFits(lm)).ok ? lm : null;
 }
 
 /** One request at a time to the local model, across every run: a second would only queue inside Ollama with its time limit already running. */
@@ -756,6 +758,12 @@ function inLocalTurn<T>(work: () => Promise<T>): Promise<T> {
 async function chooseWorker(run: Run, t: RunTask, machines: PlacementMachine[], local: LocalModel | null): Promise<Worker> {
   if (local && fitsLocal(run, t)) {
     return { tool: "local", agent: local.id, model: local.model, host: me(), hostLabel: run.driverLabel, folder: "~", why: `routine text-only task → the local model on ${run.driverLabel} (${local.model}: free, uses no subscription, nothing leaves the PC)` };
+  }
+  // No local model here (or it is switched off): another machine's, on a spreading run. The task needs
+  // no folder, so it can go anywhere; the other machine runs it on its own local model (a "local" job).
+  if (run.spread && fitsLocal(run, t)) {
+    const lm = pickLocalMachine(machines, t.avoid);
+    if (lm) return { tool: "local", model: lm.localModel, host: lm.host, hostLabel: lm.label, folder: "~", why: `routine text-only task → the local model on ${lm.label} (${lm.localModel}: free, uses no subscription)` };
   }
   // Hermes answer-only cannot read files (its file toolset also writes), so a task that must read the folder skips it
   const hermesBlind = t.access === "answer" && !!t.readsFolder;
@@ -782,7 +790,7 @@ async function chooseWorker(run: Run, t: RunTask, machines: PlacementMachine[], 
 }
 
 type SessionLite = { host: string; status: string; project?: string; folder?: string; cwd: string; updatedAt: number };
-type RemoteLite = { host: string; label: string; stale: boolean; via: "lan" | "vault"; acceptsReplies: "off" | "answer" | "edit"; runWorker?: number; subscriptions: SubscriptionMeter[] };
+type RemoteLite = { host: string; label: string; stale: boolean; via: "lan" | "vault"; acceptsReplies: "off" | "answer" | "edit"; runWorker?: number; subscriptions: SubscriptionMeter[]; localModel?: { model: string; fits?: boolean } };
 
 /**
  * The facts placement needs about every machine, from data the step has already read.
@@ -818,6 +826,9 @@ function placementMachines(run: Run, mySubs: SubscriptionMeter[], sessions: Sess
         busy: busyOn(m.host),
         folder: folderOn(m.host),
         memory: memoryOf(m.host),
+        localModel: m.localModel?.model,
+        localFits: m.localModel?.fits,
+        localBusy: jobs.filter((j) => j.host === m.host && j.mode === "local" && (j.status === "queued" || j.status === "sent" || j.status === "running")).length,
       }),
     ),
   ]);
@@ -1232,15 +1243,16 @@ async function step(id: string): Promise<void> {
     const w = await chooseWorker(run0, t, machines, local ?? null);
     picks.set(t.id, w);
     // the next ready task in this pass sees that machine one busier, so two tasks don't pile onto one idle machine
-    const m = w.tool === "local" ? undefined : machines.find((x) => x.host === w.host);
-    if (m) m.busy++;
+    const m = w.tool === "local" && w.host === me() ? undefined : machines.find((x) => x.host === w.host);
+    if (m && w.tool === "local") m.localBusy = (m.localBusy ?? 0) + 1;
+    else if (m) m.busy++;
   }
 
   const lines: string[] = [];
   const overdue: string[] = [];
   const abandoned: string[] = [];
   const checksToStart: { taskId: string; jobId: string; name: string }[] = [];
-  const toStart: { task: RunTask; mode: "new" | "reply"; prompt: string }[] = [];
+  const toStart: { task: RunTask; mode: "new" | "reply" | "local"; prompt: string }[] = [];
   const settled: RunTask[] = [];
   const state = await withRun(id, (run) => {
     if (run.status !== "running") return null;
@@ -1252,7 +1264,7 @@ async function step(id: string): Promise<void> {
         const job: SessionJob | undefined = jobs.find((j) => j.id === t.job!.id);
         if (!job) {
           // the id was recorded but the job never got created (a crash in between): start it again under the same id
-          if (Date.now() - t.job.at > 90_000) toStart.push({ task: t, mode: t.job.mode, prompt: t.job.mode === "reply" ? (t.continueNext ? continuePrompt(t, Math.round(budget(t.workTier) / 60_000)) : reworkPrompt(t)) : workPrompt(run, t) });
+          if (Date.now() - t.job.at > 90_000) toStart.push({ task: t, mode: t.job.mode, prompt: t.job.mode === "reply" ? (t.continueNext ? continuePrompt(t, Math.round(budget(t.workTier) / 60_000)) : reworkPrompt(t)) : workPrompt(run, t, { local: t.job.mode === "local" }) });
           continue;
         }
         // A job sent to another machine that has not started there in time: that machine is off,
@@ -1386,6 +1398,17 @@ async function step(id: string): Promise<void> {
         t.host = w.host;
         t.hostLabel = w.hostLabel;
         t.folder = w.folder;
+        if (w.tool === "local" && w.host !== me()) {
+          // another machine's local model: a "local" job, picked up like any other worker's job
+          t.triedLocal = true;
+          t.job = { id: newJobId(), mode: "local", at: Date.now() };
+          t.jobIds.push(t.job.id);
+          t.status = "running";
+          t.startedAt ??= Date.now();
+          toStart.push({ task: { ...t }, mode: "local", prompt: workPrompt(run, t, { local: true }) });
+          lines.push(`${t.id} started: ${t.why}.`);
+          continue;
+        }
         if (w.tool === "local") {
           // no job: the call is made after this is written, and made again if the server restarts meanwhile
           t.triedLocal = true;
@@ -1442,12 +1465,14 @@ async function step(id: string): Promise<void> {
 
   for (const s of toStart) {
     const t = s.task;
-    if (!t.job || t.tool === "local") continue; // the local model is not started as a job (see localWork)
+    if (!t.job) continue; // this machine's local model is not started as a job (see localWork)
     try {
       const job = await startJob(
-        s.mode === "reply"
+        s.mode === "local"
+          ? { mode: "local", id: t.job.id, host: t.host ?? state.host, prompt: s.prompt, project: state.project, isolated: true, dispatch: `run ${state.title.slice(0, 60)} · ${t.id}` }
+          : s.mode === "reply"
           ? { mode: "reply", id: t.job.id, key: t.sessionKey, host: t.host ?? state.host, folder: t.folder ?? state.folder, prompt: s.prompt, access: t.access, model: t.tool === "hermes" ? t.model : undefined, web: t.tool === "hermes" ? t.needsWeb : undefined, maxTurns: t.tool === "hermes" ? HERMES_TURNS[t.workTier] : undefined, isolated: true }
-          : { mode: "new", id: t.job.id, host: t.host ?? state.host, folder: t.folder ?? state.folder, tool: t.tool, project: state.project, prompt: s.prompt, access: t.access, model: t.model, web: t.tool === "hermes" ? t.needsWeb : undefined, maxTurns: t.tool === "hermes" ? HERMES_TURNS[t.workTier] : undefined, isolated: true, dispatch: `run ${state.title.slice(0, 60)} · ${t.id}` },
+          : { mode: "new", id: t.job.id, host: t.host ?? state.host, folder: t.folder ?? state.folder, tool: t.tool === "local" ? undefined : t.tool, project: state.project, prompt: s.prompt, access: t.access, model: t.model, web: t.tool === "hermes" ? t.needsWeb : undefined, maxTurns: t.tool === "hermes" ? HERMES_TURNS[t.workTier] : undefined, isolated: true, dispatch: `run ${state.title.slice(0, 60)} · ${t.id}` },
       );
       // a refusal comes back as an error job, picked up on the next pass like any other failure
       void job;

@@ -27,7 +27,7 @@ import { readAcpSession, writeAcpSession, forgetAcpListing, type AcpSessionRecor
 import { splitAcpId } from "./sessionTools";
 import { handoffPrompt, isLimitError, nextSteps, type CarryEntry } from "./fallbackPlan";
 import { readFallback, stepLabels, stepReady } from "./fallback";
-import { servedLocalModel } from "./localModel";
+import { localModelFits, servedLocalModel } from "./localModel";
 import { readWorkerModelSettings } from "./nousModels";
 import { runAgentText } from "./runners";
 import { QUEUE } from "./sessionShare";
@@ -64,7 +64,7 @@ import { QUEUE } from "./sessionShare";
  * data/session-jobs.json is the source of truth (re-read on every call).
  */
 
-export type JobMode = "reply" | "new" | "thread" | "stop" | "import" | "export" | "check" | "update" | "setup";
+export type JobMode = "reply" | "new" | "thread" | "stop" | "import" | "export" | "check" | "update" | "setup" | "local";
 export type JobAccess = "answer" | "edit";
 export type JobStatus = "queued" | "sent" | "running" | "done" | "error" | "expired";
 
@@ -176,6 +176,8 @@ const MAX_RUNNING = 2;
 const RUN_TIMEOUT_MS = 20 * 60_000;
 const REMOTE_EXPIRE_MS = 30 * 60_000;
 const MAX_PROMPT = 20_000;
+/** a "local" job's prompt: project runs keep theirs under 6,000 characters (LOCAL_PROMPT_MAX in lib/runs.ts) */
+const LOCAL_JOB_MAX = 8_000;
 /** a "send when free" message gives up after this long */
 const WAIT_MAX_MS = 24 * 60 * 60_000;
 /** what a fallback may hand on to a session tool / to the local model (rule 23: keep it short) */
@@ -525,6 +527,15 @@ export async function startJob(input: StartInput): Promise<SessionJob> {
       job = { ...base, access: "edit", mode: "setup", tool: "claude", host, hostLabel: labelOf(host), cwd: "", title: `${input.setupAction} ${input.setupTarget}`, setupAction: input.setupAction, setupTarget: input.setupTarget, replace: input.replace === true ? true : undefined };
       break;
     }
+    case "local": {
+      // A project run's routine text task for another machine's local model (lib/runs.ts): text in,
+      // text out, answer only. The target uses ITS OWN choice of local model; nothing here names one.
+      const host = input.host || me();
+      if (host !== me() && !remote.find((r) => r.host === host)?.localModel) throw new Error(`${labelOf(host)} doesn't share a local model.`);
+      if (prompt.length > LOCAL_JOB_MAX) throw new Error("Too long for a local model.");
+      job = { ...base, access: "answer", mode: "local", tool: "claude", host, hostLabel: labelOf(host), cwd: "", project: input.project, title: "local model task" };
+      break;
+    }
     case "update": {
       // Pull, build and restart Mission Control there once nothing runs (lib/selfUpdate.ts).
       const host = input.host || me();
@@ -753,6 +764,19 @@ async function acceptRequestInner(r: SessionJob, via: "lan" | "vault", content?:
       if (!r.setupAction || !SETUP_ACTIONS.includes(r.setupAction) || typeof r.setupTarget !== "string" || !SETUP_NAME_RE.test(r.setupTarget)) throw new Error("bad setup change");
       if (r.setupAction === "skill-install" && (!r.skillPackage || r.skillPackage.name !== r.setupTarget)) throw new Error("bad skill copy");
       Object.assign(job, { setupAction: r.setupAction, setupTarget: r.setupTarget, title: `${r.setupAction} ${r.setupTarget}`, replace: r.replace === true ? true : undefined });
+      break;
+    }
+    case "local": {
+      // answer only, whatever was asked; this machine's own local model choice (rule 23: no tools, no memory)
+      if (!job.prompt.trim()) throw new Error("Empty message.");
+      if (job.prompt.length > LOCAL_JOB_MAX) throw new Error("Too long for a local model.");
+      const pref = (await readWorkerModelSettings()).local;
+      if (pref === false) throw new Error(`${myLabel} doesn't lend its local model ("local": false).`);
+      const lm = await servedLocalModel(typeof pref === "string" ? pref : undefined);
+      if (!lm) throw new Error(`No local model is running on ${myLabel}.`);
+      const fit = await localModelFits(lm);
+      if (!fit.ok) throw new Error(`${myLabel} can't take it: ${fit.why}.`);
+      Object.assign(job, { access: "answer", title: "local model task" });
       break;
     }
     case "update": {
@@ -1020,6 +1044,11 @@ async function fallBack(job: SessionJob, first: Partial<SessionJob>): Promise<Pa
         skipped.push(`${toLabel} (stopped running)`);
         continue;
       }
+      const fit = await localModelFits(lm);
+      if (!fit.ok) {
+        skipped.push(`${toLabel} (${fit.why})`);
+        continue;
+      }
       const prompt = handoffPrompt({ fromLabel, reason, entries, message: job.prompt, max: CARRY_LOCAL_MAX });
       const out = await runAgentText(lm.id, prompt, { injectMemory: false });
       if (out.error || !out.text.trim()) {
@@ -1048,6 +1077,20 @@ const MAX_CARRY_PROMPT = CARRY_MAX + 4_000;
 
 async function runTool(job: SessionJob, maxPrompt = MAX_PROMPT): Promise<Partial<SessionJob>> {
   const done = (p: Partial<SessionJob>) => ({ finishedAt: Date.now(), pid: undefined, ...p });
+  if (job.mode === "local") {
+    // One plain completion on this machine's local model: no folder, no tools, no shared memory (rule 23)
+    const pref = (await readWorkerModelSettings()).local;
+    const lm = pref === false ? null : await servedLocalModel(typeof pref === "string" ? pref : undefined);
+    if (!lm) return done({ status: "error", error: `No local model is running on ${job.hostLabel} any more.` });
+    // checked again at the moment of loading: memory may have filled up since the request was accepted
+    const fit = await localModelFits(lm);
+    if (!fit.ok) return done({ status: "error", error: `${job.hostLabel}: ${fit.why}.` });
+    const out = await runAgentText(lm.id, job.prompt, { injectMemory: false });
+    const cur = (await listJobs()).find((x) => x.id === job.id);
+    if (cur && !isActive(cur)) return {};
+    if (out.error) return done({ status: "error", error: `${lm.model}: ${out.error.slice(0, 600)}` });
+    return done({ status: "done", reply: (out.text ?? "").trim(), model: undefined, dispatch: job.dispatch ? `${job.dispatch} · ${lm.model}` : lm.model });
+  }
   const cwd = homeOr(job.cwd);
   const st = await fsp.stat(cwd).catch(() => null);
   if (!st?.isDirectory()) return done({ status: "error", error: `The folder ${cwd} doesn't exist on ${job.hostLabel} any more.` });
@@ -1265,8 +1308,10 @@ async function pump(minAgeMs = 0): Promise<void> {
         if (running >= MAX_RUNNING) return undefined;
         // Fleet → Pause holds project-run work (workers are isolated; checks are run checks). What
         // someone started by hand - a reply, a new session, Run somewhere - still runs.
-        const held = (x: SessionJob) => paused && (x.isolated === true || x.mode === "check");
-        const j = [...jobs].reverse().find((x) => x.host === me() && x.status === "queued" && (x.mode === "reply" || x.mode === "new" || x.mode === "check") && !held(x) && !waits.has(x.id) && Date.now() - x.createdAt >= minAgeMs);
+        const held = (x: SessionJob) => paused && (x.isolated === true || x.mode === "check" || x.mode === "local");
+        // the local model answers one request at a time (a second would wait inside Ollama with its time limit running)
+        const localBusy = jobs.some((x) => x.host === me() && x.mode === "local" && x.status === "running");
+        const j = [...jobs].reverse().find((x) => x.host === me() && x.status === "queued" && (x.mode === "reply" || x.mode === "new" || x.mode === "check" || (x.mode === "local" && !localBusy)) && !held(x) && !waits.has(x.id) && Date.now() - x.createdAt >= minAgeMs);
         if (!j) return undefined;
         // the next "send when free" message to the same session waits for this one
         for (const x of jobs) if (x.whenFree && x.status === "queued" && x.id !== j.id && x.key && x.key === j.key) waits.set(x.id, "an earlier message to this session to finish");
