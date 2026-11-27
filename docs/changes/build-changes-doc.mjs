@@ -37,7 +37,7 @@ const META = {
   period: "24–27 November 2026",
   since: "2026-11-20", // git log --since (the last 7 days when first written)
   updated: "27 November 2026",
-  version: "1.0",
+  version: "1.1",
 };
 
 const SUMMARY = [
@@ -94,6 +94,13 @@ const SECTIONS = [
     ],
   },
   {
+    title: "GitHub dashboard",
+    intro: "One page for every repository on both GitHub accounts (igrant9679 and sgrant5724).",
+    items: [
+      { name: "GitHub page (sidebar → GitHub)", date: "27 Nov", what: "For the last 7, 14 or 30 days: every repository's commits, pull requests, issues, releases, checks and security alerts, each project's own status documents (“this week”, changes, status, handoff), and your GitHub activity. Claude writes a short report per active repository and an overview with your priorities, with every tool switched off so nothing in a repository can make it act. **Waiting on you** gathers reviews, failing checks, assigned issues, replies owed and the documents' “waiting on you” items in one list. Refreshes daily; private details stay on the computer." },
+    ],
+  },
+  {
     title: "Help, networking and installers",
     items: [
       { name: "Help on every page", date: "25 Nov", what: "A Help button (or F1) opens a panel: what this page is for, step-by-step instructions, a “which page do I use?” guide, ~30 searchable how-tos, a glossary, and Ask (answers from the manual)." },
@@ -115,6 +122,7 @@ const FINDINGS = [
 
 // What the owner needs to do or decide. status: "to do" | "decision" | "optional" | "done"
 const WAITING = [
+  { item: "Sign the GitHub CLI in to both accounts", status: "to do", why: "The GitHub page can only see public repositories (11) until the GitHub CLI is signed in to igrant9679 and sgrant5724.", how: "In a normal PowerShell window (not inside the Claude app): gh auth login --hostname github.com --git-protocol https --web, approve in the browser; run it again as the other account. Then GitHub → Refresh." },
   { item: "Update the other five machines", status: "to do", why: "They run an older version: Accounts, Remote actions checks, send-when-free, Team, ACP agents and the crash fix only work across machines once they're current.", how: "On each machine run update.cmd in its Mission Control folder once (Idris-2-16gb when it's next on). After that: Fleet → Versions → Update all." },
   { item: "Gemini CLI: reinstall and sign in", status: "to do", why: "It is installed inside the Claude app on Raider18 and isn't signed in, so no Gemini session can run yet.", how: "In a normal PowerShell: npm install -g @google/gemini-cli, then run gemini and choose Log in with Google. Then Fleet → Agents & fallback → Test." },
   { item: "Kimi CLI (if you want Kimi as a tool)", status: "optional", why: "Kimi is one of your subscriptions; its CLI isn't installed on any machine yet.", how: "Install Kimi CLI and sign in, then add it in Fleet → Agents & fallback." },
@@ -130,7 +138,10 @@ const WAITING = [
 ];
 
 // Changes to this document itself.
-const HISTORY = [{ date: "27 Nov 2026", change: "First version: changes from 24–27 November, findings, and what's waiting on you." }];
+const HISTORY = [
+  { date: "27 Nov 2026", change: "First version: changes from 24–27 November, findings, and what's waiting on you." },
+  { date: "27 Nov 2026", change: "1.1: the GitHub dashboard; new waiting item: sign the GitHub CLI in to both accounts." },
+];
 
 // ─────────────────────────────── LAYOUT ───────────────────────────────
 

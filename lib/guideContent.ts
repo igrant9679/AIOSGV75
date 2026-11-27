@@ -632,6 +632,25 @@ The token is stored in the vault, so any machine that takes over as master can s
 **Overview upgrades** — Host Vitals reports **disk usage** and **data-store size** alongside CPU/RAM/uptime (your VPS/Local Computer at a glance). **Ops Pulse** shows the mission queue (live pulse dots while work runs), today's runs with a 2-hour sparkline, today's errors, and fleet integrity as a **ring gauge** (lime/amber/rose by how many responders are up). **Needs Attention** shows a pulse-ring "ALL SYSTEMS NOMINAL" check when nothing is blocked on you. **Fleet Activity** charts 7 days of per-agent runs with success rates from the usage ledger.`,
   },
   {
+    id: "github-dashboard",
+    title: "GitHub — every repository, what changed, what's waiting on you",
+    keywords: "github repos repositories dashboard commits pull requests prs issues releases checks ci security alerts waiting on you this week status documents gh auth login igrant9679 sgrant5724 activity report",
+    body: `**GitHub (/github)** — every repository your GitHub accounts own or belong to (owner, organisation member or collaborator), in one dashboard, with reports in plain language.
+
+**Sign in first** — Mission Control uses the official GitHub CLI's sign-ins, one per account. In a **normal PowerShell window** (not a terminal inside the Claude app, whose settings Mission Control can't see) run \`gh auth login --hostname github.com --git-protocol https --web\` and approve in the browser; run it again signed in to the browser as your other account. Mission Control asks the CLI for each account's sign-in while it collects and keeps it in memory only: it is never stored, shown or sent anywhere but GitHub. Without a sign-in the page lists public repositories only.
+
+**What it collects** (Refresh, or by itself once a day on a computer whose GitHub CLI is signed in; not while the fleet is paused) for the chosen period, 7, 14 or 30 days:
+- per repository: commits on the main branch (who, what, lines changed, per day), pull requests opened, merged and closed, issues opened and closed, releases, the main branch's checks, recent branches and open security alerts
+- each repository's **status documents** — files whose names say "this week", weekly, changes, status, handoff, next session, to-do or waiting (Markdown, text or Word .docx, in the top folder or docs/, doc/, notes/) — and the items under their **Waiting on you / For you to do / Next steps / Action items** headings (bullets, numbered items, unticked boxes and table rows; rows marked done are left out)
+- your accounts' own GitHub activity (pushes, pull requests, reviews, comments, releases)
+
+**Waiting on you** — one list across every repository, most urgent first: reviews asked of you; your pull requests with changes requested or failing checks (do soon), approved and ready to merge, or idle for two weeks; pull requests from others to your repositories; issues assigned to you or where someone else spoke last; a main branch failing its checks; security alerts; and the status documents' waiting items. Reviews and assignments in repositories you don't own are found by a GitHub search and shown too.
+
+**The reports** — for every repository with something in the period, Claude Haiku writes what happened (features and outcomes, not hashes), what is waiting on you and its health, and marks it active, quiet or needing attention; Claude Sonnet then writes the overview with your priorities. They run with **every tool switched off** and in an empty folder: commit messages and documents are written by others and may contain instructions, so the writer can only read the data it is given and write words. Your Claude subscription pays (Haiku is light); nothing it writes is acted on.
+
+**Where it lives** — data/github-report.json on this computer only; private repositories' details never go to the vault. Each computer makes its own report if its GitHub CLI is signed in.`,
+  },
+  {
     id: "studio-suite",
     title: "Mastermind, Builds, Goal Mode & Watcher",
     keywords: "mastermind group chat room agents mention builds games apps shelf play goal mode hermes autonomous long horizon walk away youtube watcher trends signals titles angles command palette ctrl k",

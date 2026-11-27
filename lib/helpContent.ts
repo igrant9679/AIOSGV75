@@ -211,6 +211,16 @@ export const PAGE_HELP: Record<string, PageHelp> = {
     tips: ["For work in a project folder, with file edits, tests and approval of the plan first, use **Runs** instead."],
     guide: ["orchestrator-attention"],
   },
+  "/github": {
+    what: "Every repository on your GitHub accounts in one place: what changed, what is waiting on you, and a written report for each, plus an overview with priorities.",
+    useFor: ["Seeing what happened across all your projects this week", "Finding reviews, failing checks, issues and to-dos that need you", "Reading each project's own status documents' “waiting on you” items in one list"],
+    steps: [
+      { title: "First time", items: ["In a normal PowerShell window (not one inside the Claude app) run `gh auth login --hostname github.com --git-protocol https --web` and approve in the browser.", "Run it again signed in to the browser as your other account.", "Come back here and press **Refresh**: a few minutes later the report appears."] },
+      { title: "Read it", items: ["**This period in your repositories**: the overview and your priorities.", "**Waiting on you**: everything that needs you, most urgent first; filter by kind.", "**Repositories**: one card each with its report; **details** shows commits, pull requests, issues and its status documents.", "**Your activity**: what your accounts did on GitHub."] },
+    ],
+    tips: ["Choose 7, 14 or 30 days and press Refresh.", "It refreshes by itself once a day on a computer where the GitHub CLI is signed in.", "The reports are written by Claude with every tool switched off; private repository details stay on this computer."],
+    guide: ["github-dashboard"],
+  },
   "/runs": {
     what: "Hand over a project: it is planned into tasks, done by real AI sessions, checked, retried and delivered.",
     useFor: ["Anything bigger than one chat answer", "Work in a project folder, optionally with file edits", "Getting cheap/free models to do the easy parts and Claude the hard ones"],

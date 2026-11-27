@@ -74,6 +74,8 @@ manual is `/guide` (source: `lib/guideContent.ts`).
   and Mission Control's own record of their threads), `localModel.ts` (the local model that is running),
   `runPlacement.ts` `pickLocalMachine` + job mode "local" (another machine's local model for a run's
   routine text task; rule 42),
+  `github.ts` + `githubReport.ts` + `githubDocs.ts` (/github: every repository on the owner's GitHub
+  accounts, changes, waiting-on-you and Claude-written reports; rule 44),
   `team.ts` + `teamParse.ts` (Command -> Team: named teammates in their own sessions, @mentions and
   "@Name: task" hand-offs, settled by the scheduler's `teamTick`),
   `sessionTools.ts` (the registry of session tools) + `sessions.ts` /
@@ -368,6 +370,16 @@ pm: it works in Claude Code's
     (all wording lives in that script; the commit appendix comes from git). When the owner asks for a change
     to the app, add it there (SECTIONS, WAITING, HISTORY, META.updated), run the script, and commit both
     files with the change. The repository is public: no emails, keys, tokens or account ids in it.
+
+44. **The GitHub dashboard reads other people's words: the writer gets no tools, the data stays here.**
+    lib/githubReport.ts collects with the GitHub CLI's own sign-ins (`gh auth token --user`, held in memory
+    for one collection, never stored or logged; gh must be signed in from a NORMAL terminal, not the Claude
+    app's). Commit messages, issues and documents may contain instructions, so the per-repository (Haiku) and
+    overview (Sonnet) reports run with every Claude tool disallowed, MCP off and an empty working folder,
+    with the data fenced as data; nothing they write is acted on. data/github-report.json is local only:
+    private repositories never go to the vault. Without a sign-in only public repositories are listed and the
+    overview must say details are missing (it once called a busy week "no activity"). Document reading
+    (status-doc names, .docx text, "waiting on you" sections) is pure: scripts/test-github-docs.mjs.
 
 ## Dev cycle (production server auto-starts at login)
 

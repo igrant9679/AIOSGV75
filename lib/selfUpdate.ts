@@ -237,6 +237,8 @@ export async function updateBlockers(exceptJobId?: string): Promise<string[]> {
   const { runStepsInFlight } = await import("./runs");
   const steps = runStepsInFlight();
   if (steps) out.push(plural(steps, "project-run step"));
+  const { readGithubProgress } = await import("./githubReport");
+  if (readGithubProgress()?.running) out.push("the GitHub report");
   const kids = await agentChildren().catch(() => 0);
   if (kids && !jobs.length && !missions && !orch && !goals && !chats && !steps) out.push(plural(kids, "agent process", "agent processes"));
   return out;
