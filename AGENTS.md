@@ -395,6 +395,11 @@ pm: it works in Claude Code's
     is an ordinary session job or Team message (answer only unless set otherwise and allowed there);
     `workTick` (scheduler instance only) follows it to Review. Auto-start is off by default, one at a time,
     two running at most, held by the fleet pause. Local data only (private repository text).
+    Fresh code before work: Raider18's usip folder was 636 commits behind GitHub and a task answered from it.
+    `freshenFolder` (lib/gitFresh.ts, tested on throwaway repos: scripts/test-git-fresh.mjs) fetches and
+    fast-forwards a folder on this machine before Start, ONLY when nothing local can be lost (no uncommitted
+    tracked changes, no local-only commits); otherwise an edit task is refused and an answer task is told its
+    copy may be old. Folders on other machines can't be checked from here: their prompt says to compare first.
     Git note: after `gh auth login` for two accounts, Git Credential Manager kept only the last one, so this
     repository has a local credential helper (`gh auth token --user igrant9679`) in .git/config.
 

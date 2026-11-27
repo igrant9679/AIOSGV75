@@ -14,6 +14,7 @@ import { acpAgentInfos } from "./acpAgents";
 import { isPaused } from "./fleetPause";
 import { cliAvailable } from "./cliAvailable";
 import type { SessionTool } from "./sessionTools";
+import { freshenFolder } from "./gitFresh";
 
 /**
  * Work (/work): the tasks the owner's repositories mention, tracked in one place and handed to the fleet.
@@ -439,12 +440,13 @@ export async function updateTask(id: string, patch: { assignee?: Assignee; statu
 
 // ─── starting work ───
 
-function taskPrompt(t: RepoTask): string {
+function taskPrompt(t: RepoTask, stale?: string): string {
   return [
     `A task from the ${t.repo} repository, tracked in Mission Control's Work page.`,
     `Task: ${t.title}`,
     `Where it comes from: ${t.source.label}${t.source.url ? ` (${t.source.url})` : ""}.`,
     t.notes ? `The owner's notes: ${t.notes}` : "",
+    stale ? `Note: this folder may not have the latest code (${stale}). Say if that limits your answer.` : "",
     t.access === "edit" ? "You may change files in this folder to do it. Keep changes focused on this task." : "Investigate and answer only: don't change any files. Say what you found and what you'd change.",
     "Finish with a short summary of what you did, and anything left for the owner to do or decide.",
   ]
@@ -458,6 +460,7 @@ export async function startTask(id: string): Promise<RepoTask> {
   if (!t) throw new Error("That task isn't in the list any more.");
   if (t.status === "doing") throw new Error("It's already being worked on.");
   let job: RepoTask["job"];
+  let freshness: string | undefined;
   if (t.assignee.kind === "teammate") {
     const team = await readTeam();
     const m = team.members.find((x) => x.id === (t.assignee as { id: string }).id);
@@ -468,7 +471,17 @@ export async function startTask(id: string): Promise<RepoTask> {
     job = { id: sys.jobId, via: "team", startedAt: Date.now() };
   } else if (t.assignee.kind === "machine") {
     const a = t.assignee;
-    const j = await startJob({ mode: "new", host: a.host, folder: a.folder, tool: a.tool, agent: a.agent, prompt: taskPrompt(t), access: t.access, project: t.repo.split("/")[1], dispatch: `Work · ${t.repo}` });
+    let stale: string | undefined;
+    if (a.host === me()) {
+      const fr = freshenFolder(a.folder);
+      if (fr.note) freshness = fr.note;
+      if (fr.behind && !fr.updated) {
+        // an edit made on old code would collide with what's on GitHub; an answer can still be useful if it knows
+        if (t.access === "edit") throw new Error(`Not started: ${a.folder} ${fr.note}. Update it (or let it be answer only) first.`);
+        stale = fr.note;
+      }
+    } else stale = `on ${a.hostLabel}, which Mission Control can't check from here: compare it with GitHub (git fetch) before relying on it`;
+    const j = await startJob({ mode: "new", host: a.host, folder: a.folder, tool: a.tool, agent: a.agent, prompt: taskPrompt(t, stale), access: t.access, project: t.repo.split("/")[1], dispatch: `Work · ${t.repo}` });
     if (j.status === "error") throw new Error(j.error ?? "It couldn't be started.");
     job = { id: j.id, via: "job", startedAt: Date.now() };
   } else throw new Error(t.assignee.kind === "me" ? "This one is yours: mark it done when it is." : "Assign it first.");
@@ -477,6 +490,7 @@ export async function startTask(id: string): Promise<RepoTask> {
     x.job = job;
     x.status = "doing";
     x.result = undefined;
+    if (freshness) note(x, `folder: ${freshness}`);
     note(x, `started with ${assigneeLabel(x.assignee)}${x.access === "edit" ? " (may edit files)" : " (answer only)"}`);
     return { ...x };
   });
