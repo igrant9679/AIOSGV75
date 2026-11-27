@@ -37,7 +37,7 @@ const META = {
   period: "24–27 November 2026",
   since: "2026-11-20", // git log --since (the last 7 days when first written)
   updated: "27 November 2026",
-  version: "1.5",
+  version: "1.6",
 };
 
 const SUMMARY = [
@@ -90,6 +90,7 @@ const SECTIONS = [
       { name: "Agent rules in one note", date: "24 Nov", what: "Agentic OS/Rules.md is given to every agent on every call: changing how all agents behave is an edit to one note, with no rebuild." },
       { name: "Weekly roll-up and archive", date: "24 Nov", what: "A weekly note per finished week (memory, journal, missions, machines), and logs older than 30 days move to Archive once their week is summarised." },
       { name: "Local models load only where they fit", date: "27 Nov", what: "On Windows a local model takes about 1.4 times its size in memory even when it runs on the graphics card (gpt-oss:20b took Raider18 from 69% to 94%). Every place that loads one now checks first that memory will stay under 93%." },
+      { name: "Is the Telegram gateway really working?", date: "27 Nov", what: "Each machine's health check now asks its OpenClaw gateway which chat channels are connected, and shares the answer: the primary shows whether Talos is running and connected to Telegram (or why not), and any other machine with a Telegram gateway is flagged, since two machines polling one bot take each other's messages. Raider18's own gateway has no Telegram channel, so it doesn't compete with Legion7." },
       { name: "Silent server crashes investigated", date: "27 Nov", what: "Raider18's server had died six times (code 0xC0000409) with nothing logged. Cause still unknown, but: Node.js updated 24.15 → 24.22.3 on Raider18, the server now starts without npm (whose exit could take it down), and Microsoft ProcDump is attached so the next crash leaves a dump. The server has run cleanly since." },
     ],
   },
@@ -144,6 +145,7 @@ const WAITING = [
 const HISTORY = [
   { date: "27 Nov 2026", change: "First version: changes from 24–27 November, findings, and what's waiting on you." },
   { date: "27 Nov 2026", change: "1.1: the GitHub dashboard; new waiting item: sign the GitHub CLI in to both accounts." },
+  { date: "27 Nov 2026", change: "1.6: the Telegram gateway check in each machine's health." },
   { date: "27 Nov 2026", change: "1.5: all six machines updated to the latest version (done)." },
   { date: "27 Nov 2026", change: "1.4: Git Credential Manager fixed (done); Work brings a folder up to date with GitHub before starting a task." },
   { date: "27 Nov 2026", change: "1.3: Work, the repository task tracker with fleet assignment; new waiting item: Git Credential Manager." },

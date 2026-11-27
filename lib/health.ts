@@ -573,18 +573,36 @@ async function checkCompanions(): Promise<HealthCheck[]> {
   const probe = await run("openclaw", ["--version"], 15_000);
   const installed = !probe.missing && probe.code === 0;
   if (installed) {
-    out.push(
-      isPrimary
-        ? { id: "openclaw", label: "OpenClaw (companion)", level: "ok", detail: "Installed - this machine runs the Telegram gateway." }
-        : {
-            id: "openclaw",
-            label: "OpenClaw (companion)",
-            level: "info",
-            detail: "Installed on a machine that isn't the primary. Only one machine may run the Telegram gateway.",
-            fix: "Keep the gateway off here: `openclaw gateway stop`.",
-            links: OPENCLAW_LINKS,
-          },
-    );
+    // Installed is not running: ask the gateway itself which chat channels it has connected. Shared with the
+    // other machines like every health result, so "is Legion7's gateway talking to Telegram?" can be answered
+    // from any of them (before this, nothing could tell; asked on 2026-11-27).
+    const st = await run("openclaw", ["channels", "status"], 45_000);
+    const lines = st.out
+      .replace(/\x1b\[[0-9;]*[A-Za-z]/g, "")
+      .split(/\r?\n/)
+      .map((l) => l.trim().replace(/(token|secret|key)\s*[:=]\s*\S+/gi, "$1=<hidden>"))
+      .filter((l) => l && !/^(checking channel status|tip:)/i.test(l));
+    const reachable = lines.some((l) => /gateway reachable/i.test(l)) && !lines.some((l) => /not reachable|unreachable/i.test(l));
+    const telegram = lines.filter((l) => /telegram/i.test(l));
+    const troubled = telegram.some((l) => /error|fail|disconnect|stopped|not (running|connected|linked)|offline|unauthori[sz]ed|\b40[19]\b|conflict|logged out/i.test(l));
+    const said = telegram.length ? ` Telegram: ${telegram.join(" · ").slice(0, 240)}` : "";
+    if (isPrimary) {
+      out.push(
+        !reachable
+          ? { id: "openclaw", label: "OpenClaw gateway (Telegram)", level: "fail", detail: `OpenClaw is installed, but its gateway isn't running here, so Talos isn't answering Telegram (chats and approvals).${lines.length ? ` It said: ${lines.slice(0, 2).join(" · ").slice(0, 200)}` : ""}`, fix: "Start it: `openclaw gateway start` (or its \"OpenClaw Gateway\" scheduled task), then press Re-check.", links: OPENCLAW_LINKS }
+          : !telegram.length
+            ? { id: "openclaw", label: "OpenClaw gateway (Telegram)", level: "warn", detail: "The gateway is running here, but it has no Telegram channel connected, so Talos can't be reached from Telegram.", fix: "Connect it: `openclaw channels add` (Telegram), then press Re-check.", links: OPENCLAW_LINKS }
+            : troubled
+              ? { id: "openclaw", label: "OpenClaw gateway (Telegram)", level: "warn", detail: `The gateway is running, but its Telegram channel reports a problem.${said}`, fix: "See `openclaw channels logs`; a 409 conflict means another machine is polling the same bot.", links: OPENCLAW_LINKS }
+              : { id: "openclaw", label: "OpenClaw gateway (Telegram)", level: "ok", detail: `Running here and connected to Telegram: Talos answers chats and approvals.${said}` },
+      );
+    } else {
+      out.push(
+        reachable && telegram.length
+          ? { id: "openclaw", label: "OpenClaw gateway (Telegram)", level: "warn", detail: `A gateway with Telegram also runs on this machine, which isn't the primary. Two machines polling the same bot take each other's messages.${said}`, fix: "Keep the Telegram gateway on the primary only: `openclaw gateway stop` here, or remove its Telegram channel.", links: OPENCLAW_LINKS }
+          : { id: "openclaw", label: "OpenClaw (companion)", level: "info", detail: `Installed on a machine that isn't the primary${reachable ? "; its gateway runs here without Telegram, which is fine" : ""}. Only the primary runs the Telegram gateway.` },
+      );
+    }
   } else if (isPrimary) {
     out.push({
       id: "openclaw",
