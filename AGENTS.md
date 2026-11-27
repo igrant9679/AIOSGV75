@@ -339,9 +339,14 @@ pm: it works in Claude Code's
     npm's death killed the server too. server.cmd therefore runs `node node_modules\next\dist\bin\next
     start` directly. Raider18's server died six times (2026-11-14..26) with 0xC0000409 (fail-fast),
     nothing logged, no Node report, memory fine, not tied to jobs or the watchdog; Node was 24.15.0
-    (libuv 1.51.0), now 24.22.3 (libuv 1.52.1). To capture the next one a debugger must be attached
-    (e.g. Sysinternals ProcDump `-e`): nothing else sees it. Editing server.cmd while it runs: cmd.exe
-    reads a batch file live, so restart the server after changing it (once it ran the new line by itself).
+    (libuv 1.51.0), now 24.22.3 (libuv 1.52.1). A debugger is the only thing that sees such a crash, so
+    when Sysinternals ProcDump is installed (%LOCALAPPDATA%\Programs\Sysinternals\procdump64.exe;
+    Raider18 since 2026-11-27, licence accepted by the owner) `startCrashMonitor` in lib/serverLog.ts
+    attaches it to the server at start (`-e -ma -n 1`, detached; dumps in %LOCALAPPDATA%\CrashDumps\node,
+    newest 3 kept; the watchdog logs a fresh one). NEVER force-kill procdump64.exe: as a debugger, its
+    death ends the server too (tested). Stop it with `procdump64 -cancel <server pid>`, or
+    MC_NO_PROCDUMP=1. Editing server.cmd while it runs: cmd.exe reads a batch file live, so restart the
+    server after changing it (once it ran the new line by itself).
 
 ## Dev cycle (production server auto-starts at login)
 

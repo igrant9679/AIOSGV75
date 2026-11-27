@@ -181,6 +181,11 @@ came with libuv 1.52.1 in 24.16.0). Cause still unknown. Done, with the user's O
    are still on whatever Node they have. The OpenClaw gateway on Raider18 was stopped for the install and
    restarted (it runs here via the "OpenClaw Gateway" task); Claude's claudebin MCP server was stopped too.
 Watch data/server.log for "server ended, exit code" lines.
+Later 2026-11-27: Sysinternals ProcDump 12.02 installed (signature checked, licence accepted by the user) and
+attached to the server at every start (lib/serverLog.ts `startCrashMonitor`). The next crash leaves a full
+dump in %LOCALAPPDATA%\CrashDumps
+ode and a "crash dump:" line in data/watchdog.log. Never force-kill
+procdump64.exe (it takes the server with it); `procdump64 -cancel <server pid>` stops it.
 
 ## ✅ DONE 2026-11-26 (Raider18) — fallback on limit, send when free, ACP agents, Team (ideas from openbot.run)
 

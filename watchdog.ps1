@@ -174,6 +174,12 @@ function Write-StopClues {
       $new = Get-ChildItem $rep -Filter '*.json' -ErrorAction SilentlyContinue | Where-Object { $_.LastWriteTime -gt (Get-Date).AddMinutes(-15) } | Select-Object -First 1
       if ($new) { Write-Log ("  crash report: " + $new.FullName) }
     }
+    # a native crash leaves nothing else: ProcDump (attached by lib/serverLog.ts) writes a dump here
+    $dumps = Join-Path $env:LOCALAPPDATA 'CrashDumps\node'
+    if (Test-Path $dumps) {
+      $dmp = Get-ChildItem $dumps -Filter '*.dmp' -ErrorAction SilentlyContinue | Where-Object { $_.LastWriteTime -gt (Get-Date).AddMinutes(-15) } | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+      if ($dmp) { Write-Log ("  crash dump: " + $dmp.FullName + " (" + [math]::Round($dmp.Length / 1MB) + " MB)") }
+    }
   } catch { }
 }
 

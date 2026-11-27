@@ -1,4 +1,6 @@
+import { spawn } from "child_process";
 import fs from "fs";
+import os from "os";
 import path from "path";
 
 /**
@@ -80,4 +82,46 @@ export function startServerLog(): void {
 
   // a memory reading every 10 minutes shows a leak building up before an out-of-memory crash
   setInterval(() => serverEvent(`alive ${uptime()} - ${mem()}`), 10 * 60_000).unref();
+
+  startCrashMonitor();
+}
+
+/**
+ * A native crash in Node on Windows leaves nothing behind: libuv calls SetErrorMode
+ * (SEM_NOGPFAULTERRORBOX) in every Node process, so Windows Error Reporting is never invoked, and
+ * the process ends without an "exit" event or a Node report (AGENTS.md rule 41: six such deaths with
+ * 0xC0000409 on Raider18). Only an attached debugger sees it. When Sysinternals ProcDump is installed
+ * (%LOCALAPPDATA%\Programs\Sysinternals\procdump64.exe, or MC_PROCDUMP), it is attached to this
+ * server at start: one full dump on an unhandled exception or fail-fast, newest 3 kept, in
+ * %LOCALAPPDATA%\CrashDumps\node (local disk, never the synced vault). The owner accepted the
+ * Sysinternals licence (-accepteula) on 2026-11-27.
+ *
+ * ProcDump attaches as a DEBUGGER: if it is force-killed, Windows ends this server with it (tested).
+ * It is started detached (outside the server's process tree and job), exits by itself when the server
+ * does, and nothing here kills it. MC_NO_PROCDUMP=1 turns it off.
+ */
+function startCrashMonitor(): void {
+  if (process.platform !== "win32" || process.env.MC_NO_PROCDUMP === "1") return;
+  try {
+    const local = process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local");
+    const exe = process.env.MC_PROCDUMP || path.join(local, "Programs", "Sysinternals", "procdump64.exe");
+    if (!fs.existsSync(exe)) return;
+    const dir = path.join(local, "CrashDumps", "node");
+    fs.mkdirSync(dir, { recursive: true });
+    // keep the newest 3 dumps (a full dump of the server is a few hundred MB)
+    const dumps = fs
+      .readdirSync(dir)
+      .filter((n) => n.toLowerCase().endsWith(".dmp"))
+      .map((n) => ({ n, t: fs.statSync(path.join(dir, n)).mtimeMs }))
+      .sort((a, b) => b.t - a.t);
+    for (const d of dumps.slice(3)) fs.rmSync(path.join(dir, d.n), { force: true });
+    const out = fs.openSync(path.join(DATA, "procdump.log"), "w");
+    const child = spawn(exe, ["-accepteula", "-e", "-ma", "-n", "1", String(process.pid), dir], { detached: true, stdio: ["ignore", out, out], windowsHide: true });
+    child.on("error", (e) => serverEvent(`crash monitor: ProcDump didn't start: ${e.message}`));
+    child.unref();
+    fs.closeSync(out);
+    serverEvent(`crash monitor: ProcDump (pid ${child.pid}) watching this server; a crash leaves a dump in ${dir}`);
+  } catch (e) {
+    serverEvent(`crash monitor: not started: ${(e as Error).message}`);
+  }
 }
