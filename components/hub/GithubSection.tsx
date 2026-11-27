@@ -121,7 +121,7 @@ export default function GithubSection() {
           {!rep && view && !running && <p className="text-[11px] text-ink-faint">No report yet. Press Refresh to make the first one{signedIn ? "" : " (public repositories only until you sign in)"}.</p>}
           {rep && (
             <p className="text-[10px] leading-4 text-ink-faint">
-              {rep.repos.length} repositories · collected in {Math.round(rep.tookMs / 1000)}s · reports written by Claude with no tools (it only reads the data shown here) · stored on this machine only
+              {rep.repos.length} repositories ({rep.repos.filter((r) => r.private).length} private, {rep.repos.filter((r) => !r.private).length} public) · {rep.repos.filter((r) => r.summary).length} with a written report · collected in {Math.round(rep.tookMs / 1000)}s · reports written by Claude with no tools (it only reads the data shown here) · stored on this machine only
               {rep.errors.length ? ` · ${rep.errors.length} problem${rep.errors.length === 1 ? "" : "s"} (see the end of the page)` : ""}
             </p>
           )}
@@ -374,7 +374,7 @@ function RepoCard({ r, days, status }: { r: RepoReport; days: number; status: st
         <span className="flex-1" />
         <span className="font-mono text-[10px] text-ink-faint">{r.pushedAt ? `pushed ${ago(ts(r.pushedAt))} ago` : ""}</span>
       </div>
-      {r.description && <p className="text-[11px] text-ink-faint">{r.description}</p>}
+      {r.summary?.about ? <p className="text-[11px] italic text-ink-faint">{r.summary.about}</p> : r.description ? <p className="text-[11px] text-ink-faint">{r.description}</p> : null}
       {r.summary ? (
         <p className="text-[12.5px] leading-5 text-ink">{r.summary.week}</p>
       ) : (
@@ -456,6 +456,13 @@ function RepoDetails({ r }: { r: RepoReport }) {
             .join(", ")}
         </p>
       )}
+      {!r.commits.items.length && r.latest?.items.length ? (
+        <Section title={`Latest commits (${r.latest.total} on ${r.defaultBranch ?? "main"} in all)`}>
+          {r.latest.items.map((c, i) => (
+            <Line key={i} text={c.message} meta={`${c.author} · ${c.date.slice(0, 10)}`} />
+          ))}
+        </Section>
+      ) : null}
       {r.commits.items.length > 0 && (
         <Section title={`Commits (${r.commits.total})`}>
           {r.commits.items.slice(0, 25).map((c) => (

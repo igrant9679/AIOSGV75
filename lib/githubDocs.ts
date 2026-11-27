@@ -109,10 +109,15 @@ export function docxText(buf: Buffer): string {
 const WAITING_RE =
   /waiting on (you|me|idris|sabine|the owner|us)|for you(?: to do)?\b|needs? (you|your)|action items?|\bto.?do\b|next steps?|decisions? (needed|for you)|blocked on (you|me)|your (move|turn)|open questions|what i need from you|follow.?ups?/i;
 
+/** A section that names the owner ("waiting on you", "for you", "decisions needed"), not just a to-do list. */
+const DIRECT_RE = /waiting on (you|me|idris|sabine|the owner)|for you\b|needs? (you|your)|decisions?|blocked on (you|me)|your (move|turn)|what i need from you|open questions/i;
+
 export interface WaitingItem {
   text: string;
   /** the heading it was found under */
   section: string;
+  /** true when the section is addressed to the owner; false for a generic to-do / next-steps list */
+  direct: boolean;
 }
 
 /**
@@ -125,13 +130,22 @@ export function extractWaiting(text: string, max = 25): WaitingItem[] {
   const out: WaitingItem[] = [];
   let section: { title: string; level: number } | null = null;
   let tableHeader = true;
+  // the item a hard-wrapped bullet's indented next line belongs to ("1. **Checkpoints.** Approve …\n   delivery …")
+  let lastItem: WaitingItem | null = null;
   for (const raw of lines) {
     const line = raw.trim();
+    if (!line) lastItem = null;
+    else if (lastItem && /^(\s{2,}|\t)/.test(raw) && !/^([-*•]\s|\d+[.)]\s|\||#)/.test(line)) {
+      const joined = `${lastItem.text} ${line.replace(/\*\*/g, "")}`.replace(/\s+/g, " ");
+      lastItem.text = joined.length > 300 ? `${joined.slice(0, 297)}…` : joined;
+      continue;
+    }
     const h = line.match(/^(#{1,6})\s+(.*)$/);
     const pseudo = h ? null : line.match(/^\*\*([^*]{3,80}?):?\*\*:?$/);
     if (h || pseudo) {
       const level = h ? h[1].length : 6;
       const title = (h ? h[2] : (pseudo as RegExpMatchArray)[1]).replace(/[*_`]/g, "").trim();
+      lastItem = null;
       if (section && level > section.level && !WAITING_RE.test(title)) continue; // a sub-heading inside the section
       section = WAITING_RE.test(title) ? { title, level } : null;
       tableHeader = true;
@@ -153,7 +167,8 @@ export function extractWaiting(text: string, max = 25): WaitingItem[] {
     else continue; // prose under the heading: not an item
     item = item.replace(/\*\*/g, "").replace(/\s+/g, " ").trim();
     if (item.length < 3) continue;
-    out.push({ text: item.length > 300 ? `${item.slice(0, 297)}…` : item, section: section.title });
+    lastItem = { text: item.length > 300 ? `${item.slice(0, 297)}…` : item, section: section.title, direct: DIRECT_RE.test(section.title) };
+    out.push(lastItem);
     if (out.length >= max) break;
   }
   return out;

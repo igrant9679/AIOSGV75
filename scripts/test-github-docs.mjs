@@ -42,6 +42,15 @@ t("markdown: items under waiting-style headings only", () => {
   const w = extractWaiting(md);
   assert.deepEqual(w.map((x) => x.text), ["Run update.cmd on Legion7", "Sign in to Gemini", "Decide on WanGP", "Node on the other machines"]);
   assert.equal(w[0].section, "Waiting on you");
+  assert.equal(w[0].direct, true, "a section addressed to the owner");
+  const todo = extractWaiting("# TODO\n- refactor the parser\n## Next steps\n- add tests");
+  assert.deepEqual(todo.map((x) => x.direct), [false, false], "a generic to-do / next-steps list is not addressed to the owner");
+});
+
+t("a hard-wrapped bullet keeps its continuation lines", () => {
+  const md = ["## 5. Decisions needed before building", "", "1. **Checkpoints.** Approve the plan only (proposed default), or also approve the", "   delivery before anything is merged or sent?", "2. **Commands.** May a run execute checks, or should", "   phase 2 stop at file edits?", "", "Prose after a blank line is not joined."].join("\n");
+  assert.deepEqual(extractWaiting(md).map((x) => x.text), ["Checkpoints. Approve the plan only (proposed default), or also approve the delivery before anything is merged or sent?", "Commands. May a run execute checks, or should phase 2 stop at file edits?"]);
+  assert.ok(extractWaiting(md).every((x) => x.direct), "'Decisions needed' is addressed to the owner");
 });
 
 t("bold pseudo-headings and tables (header and done rows skipped)", () => {
