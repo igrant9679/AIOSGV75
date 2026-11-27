@@ -16,6 +16,7 @@ import { sessionJobsTick } from "./sessionActions";
 import { teamTick } from "./team";
 import { githubDailyTick } from "./githubReport";
 import { workTick } from "./repoTasks";
+import { levelupTick } from "./levelup";
 import { startPeerServer } from "./peer";
 import { alertsTick, drainSpool, maintainHooks } from "./sessionEvents";
 import { publishLive } from "./fleetLive";
@@ -69,6 +70,8 @@ export function startScheduler(): void {
   setInterval(() => void sessionJobsTick().catch(() => {}), 15_000);
   // Work: follow tasks handed to the fleet (and start the next one if "start automatically" is on)
   setInterval(() => void workTick().catch((e: Error) => console.error(`[mission-control] work: ${e.message}`)), 30_000);
+  // LevelUp hand-offs (rule 46): this machine calls LevelUp when it holds a connection (data/levelup.json)
+  setInterval(() => void levelupTick().catch((e: Error) => console.error(`[mission-control] levelup: ${e.message}`)), 60_000);
   // GitHub dashboard: a fresh report once a day where the GitHub CLI is signed in (held by the fleet pause)
   setInterval(() => void (isPaused() ? Promise.resolve() : githubDailyTick()).catch(() => {}), 30 * 60_000);
   // Command -> Team: settle teammates' replies and send their hand-offs (only this instance does, rule 1)

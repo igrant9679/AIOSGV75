@@ -78,6 +78,8 @@ manual is `/guide` (source: `lib/guideContent.ts`).
   accounts, changes, waiting-on-you and Claude-written reports; rule 44),
   `repoTasks.ts` + `repoTaskRules.ts` (/work: the tasks the repositories mention, assigned to the owner or
   the fleet and started from there; rule 45),
+  `levelup.ts` + `levelupRules.ts` (LevelUp hand-offs: the owner's planning app hands tasks and projects to
+  the fleet, approved before they run, filed by client / personal area; rule 46),
   `team.ts` + `teamParse.ts` (Command -> Team: named teammates in their own sessions, @mentions and
   "@Name: task" hand-offs, settled by the scheduler's `teamTick`),
   `sessionTools.ts` (the registry of session tools) + `sessions.ts` /
@@ -402,6 +404,23 @@ pm: it works in Claude Code's
     copy may be old. Folders on other machines can't be checked from here: their prompt says to compare first.
     Git note: after `gh auth login` for two accounts, Git Credential Manager kept only the last one, so this
     repository has a local credential helper (`gh auth token --user igrant9679`) in .git/config.
+
+46. **LevelUp hands work in; Mission Control calls out, and runs nothing the owner hasn't approved.** LevelUp
+    (the owner's planning app, a cloud service; repo igrant9679/levelup-second-brain, its side in
+    server/_core/fleet.ts) keeps each hand-off with a state. Mission Control stays on 127.0.0.1: the
+    scheduler's `levelupTick` (lib/levelup.ts, every minute, only where data/levelup.json holds a key — a
+    credential: never shared, logged or put in the vault) CALLS LevelUp's /api/fleet/v1 and moves items on
+    with the pure rules in lib/levelupRules.ts (scripts/test-levelup.mjs): propose a plan → wait for approval
+    (in LevelUp, or Work → Approve) → start it as a Work task (origin "levelup"; `startTask` refuses one
+    without `approval: "approved"`; Start-all and auto-start skip them) → report the result → mirror accept /
+    cancel / send back. Placement: a repository the task names (its best place), else the area's work folder
+    (data/areas.json, chosen from folders the fleet already uses), else this machine's HOME FOLDER, ANSWER
+    ONLY: with no folder chosen nothing may change files anywhere. Only the machine that claimed an item moves
+    it on (LevelUp enforces it too). The fleet pause holds starts (a hand-off may be planned for a day nobody
+    watches). Each pass also sends LevelUp the owner's Work items (to do / to review, with their area) for
+    its Fleet panel: that is private repository text going to the owner's own LevelUp account, by design.
+    Areas: LSI Media, CommunityForce, MeYouSocial (+ more in data/areas.json) and Personal; repositories get
+    theirs from data/areas.json, else an obvious name match (`areaOfRepo`).
 
 ## Dev cycle (production server auto-starts at login)
 

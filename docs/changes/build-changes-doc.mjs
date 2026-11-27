@@ -37,7 +37,7 @@ const META = {
   period: "24–27 November 2026",
   since: "2026-11-20", // git log --since (the last 7 days when first written)
   updated: "27 November 2026",
-  version: "1.6",
+  version: "1.7",
 };
 
 const SUMMARY = [
@@ -98,6 +98,7 @@ const SECTIONS = [
     title: "GitHub dashboard",
     intro: "One page for every repository on both GitHub accounts (igrant9679 and sgrant5724).",
     items: [
+      { name: "LevelUp → the fleet: plan there, approve, the fleet does it (Work → LevelUp)", date: "27 Nov", what: "Hand tasks and projects to the fleet from LevelUp, your planning app, as you plan your day, week or month. Every hand-off has an area: a client (LSI Media, CommunityForce, MeYouSocial) or Personal with the goal it serves. Mission Control checks LevelUp every minute (it never accepts connections), proposes which machine and tool does it and where, and starts it only after you approve, in LevelUp or in Work, on the day you chose. The result comes back to LevelUp to accept or send back. LevelUp's Fleet panel also lists what is waiting on you in Mission Control. Areas: a work folder per area and an area per repository; with no folder chosen a hand-off is answered in writing only. LevelUp's part is built on a branch and not live yet (it goes live to LevelUp's customers when merged, though only you see the Fleet). Tested end to end with a local copy of LevelUp: hand off, propose, cancel, approve, a real run on Raider18, result, accept." },
       { name: "Work: every repository task, assigned to you or the fleet (sidebar → Work)", date: "27 Nov", what: "All the to-dos, next steps, action items and “waiting on you” lines in your repositories' documents, open issues and GitHub's own signals, on one board (Inbox → To do → In progress → Review → Done) or **by project**. Assign each to yourself, a Team teammate, or a machine and tool that has the project's folder, or let Mission Control do it (**Assign for me**; **Smart assign** asks Claude about unclear ones). **Start** hands a task to its AI with its context and follows it to Review with the result. First sync: 153 tasks across 8 projects (42 yours, 32 for the fleet, 79 in projects no machine has). Before a task starts, its folder on this PC is brought up to date with GitHub when nothing local can be lost (Raider18's usip folder was 636 commits behind). Verified with a real task: Claude Code found a usip to-do item already done in today's code (fixed 20 September)." },
       { name: "GitHub page (sidebar → GitHub)", date: "27 Nov", what: "Covers all 23 repositories (12 private, 11 public) with a written report for every one, active or quiet. For the last 7, 14 or 30 days: every repository's commits, pull requests, issues, releases, checks and security alerts, each project's own status documents (“this week”, changes, status, handoff), and your GitHub activity. Claude writes a short report per active repository and an overview with your priorities, with every tool switched off so nothing in a repository can make it act. **Waiting on you** gathers reviews, failing checks, assigned issues, replies owed and the documents' “waiting on you” items in one list. Refreshes daily; private details stay on the computer." },
     ],
@@ -124,6 +125,9 @@ const FINDINGS = [
 
 // What the owner needs to do or decide. status: "to do" | "decision" | "optional" | "done"
 const WAITING = [
+  { item: "LevelUp's Fleet: OK it going live", status: "decision", why: "LevelUp's part is on the branch fleet-integration. Merging it to main deploys it to levelupnow.tools, where only you (the owner of your workspace) will see the Fleet.", how: "Say go and it will be merged (after LevelUp's full checks), or look at the branch first." },
+  { item: "Connect Mission Control to LevelUp", status: "to do", why: "Once LevelUp's part is live.", how: "LevelUp → Fleet → Make a key for Mission Control; then Mission Control → Work → LevelUp → paste the address and key → Connect (on Raider18, where Work lives)." },
+  { item: "Set areas", status: "optional", why: "Hand-offs that name no repository need a work folder for their area to change files; repositories need an area for the area filter and for LevelUp's list.", how: "Work → LevelUp → Areas: a work folder for LSI Media, CommunityForce, MeYouSocial and Personal, and an area per repository."  },
   { item: "Add igrant9679 back to Git Credential Manager", status: "done", why: "After the two GitHub sign-ins, git on Raider18 only has sgrant5724 saved, so pushes to igrant9679's repositories from any other folder or Claude session are refused (Mission Control's own repository was given a local fix).", how: "In a normal PowerShell window: git credential-manager github login, and sign in as igrant9679." },
   { item: "Look at Work and start some tasks", status: "optional", why: "153 tasks came in from your repositories; 32 are assigned to the fleet and ready to start, 42 are yours.", how: "Sidebar → Work: check the assignments, then Start (or Start all assigned)." },
   { item: "Sign the GitHub CLI in to both accounts", status: "done", why: "The GitHub page can only see public repositories (11) until the GitHub CLI is signed in to igrant9679 and sgrant5724.", how: "In a normal PowerShell window (not inside the Claude app): gh auth login --hostname github.com --git-protocol https --web, approve in the browser; run it again as the other account. Then GitHub → Refresh." },
@@ -144,6 +148,7 @@ const WAITING = [
 // Changes to this document itself.
 const HISTORY = [
   { date: "27 Nov 2026", change: "First version: changes from 24–27 November, findings, and what's waiting on you." },
+  { date: "27 Nov 2026", change: "1.7: LevelUp hand-offs to the fleet, with client / personal areas; three new waiting items." },
   { date: "27 Nov 2026", change: "1.1: the GitHub dashboard; new waiting item: sign the GitHub CLI in to both accounts." },
   { date: "27 Nov 2026", change: "1.6: the Telegram gateway check in each machine's health." },
   { date: "27 Nov 2026", change: "1.5: all six machines updated to the latest version (done)." },

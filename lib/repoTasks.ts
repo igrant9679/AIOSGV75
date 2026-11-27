@@ -51,13 +51,13 @@ export interface RepoTask {
   id: string;
   repo: string;
   title: string;
-  source: { kind: "doc" | "github" | "issue"; label: string; url?: string; path?: string; section?: string; number?: number };
+  source: { kind: "doc" | "github" | "issue" | "levelup"; label: string; url?: string; path?: string; section?: string; number?: number };
   /** the source addressed it to the owner */
   owner: boolean;
   priority: 1 | 2 | 3;
   status: TaskStatus;
   assignee: Assignee;
-  assignedBy?: "you" | "auto" | "smart";
+  assignedBy?: "you" | "auto" | "smart" | "levelup";
   assignReason?: string;
   access: "answer" | "edit";
   job?: { id: string; via: "job" | "team"; startedAt: number };
@@ -68,6 +68,17 @@ export interface RepoTask {
   updatedAt: number;
   /** no longer in its document (it may have been done or removed there) */
   goneFromSource?: boolean;
+  /** a hand-off from LevelUp (lib/levelup.ts): never started before the owner approves */
+  origin?: { kind: "levelup"; id: number };
+  /** client or personal area (LevelUp hand-offs; repository tasks get theirs from data/areas.json) */
+  area?: string | null;
+  /** LevelUp: don't start before this day (YYYY-MM-DD) */
+  when?: string | null;
+  approval?: "waiting" | "approved";
+  /** LevelUp: the full prompt for the worker (the owner's words, built by lib/levelupRules.ts luPrompt) */
+  brief?: string;
+  /** LevelUp: who was proposed, so a change made here before approval is proposed again */
+  luProposed?: string;
   history: { at: number; what: string }[];
 }
 
@@ -125,6 +136,10 @@ function mutate<T>(fn: (tasks: RepoTask[]) => T | Promise<T>): Promise<T> {
   chain = run.catch(() => {});
   return run;
 }
+
+/** For lib/levelup.ts: the same one-at-a-time read-modify-write. */
+export const mutateTasks = <T,>(fn: (tasks: RepoTask[]) => T | Promise<T>): Promise<T> => mutate(fn);
+export const noteTask = (t: RepoTask, what: string) => note(t, what);
 
 const note = (t: RepoTask, what: string) => {
   t.history = [...(t.history ?? []), { at: Date.now(), what }].slice(-MAX_HISTORY);
@@ -441,6 +456,7 @@ export async function updateTask(id: string, patch: { assignee?: Assignee; statu
 // ─── starting work ───
 
 function taskPrompt(t: RepoTask, stale?: string): string {
+  if (t.origin?.kind === "levelup" && t.brief) return [t.brief, stale && t.repo !== "levelup" ? `Note: this folder may not have the latest code (${stale}). Say if that limits your answer.` : ""].filter(Boolean).join("\n\n");
   return [
     `A task from the ${t.repo} repository, tracked in Mission Control's Work page.`,
     `Task: ${t.title}`,
@@ -459,6 +475,7 @@ export async function startTask(id: string): Promise<RepoTask> {
   const t = (await readTasks()).find((x) => x.id === id);
   if (!t) throw new Error("That task isn't in the list any more.");
   if (t.status === "doing") throw new Error("It's already being worked on.");
+  if (t.origin?.kind === "levelup" && t.approval !== "approved") throw new Error("This LevelUp hand-off waits for your approval (Approve here or in LevelUp).");
   let job: RepoTask["job"];
   let freshness: string | undefined;
   if (t.assignee.kind === "teammate") {
@@ -472,7 +489,7 @@ export async function startTask(id: string): Promise<RepoTask> {
   } else if (t.assignee.kind === "machine") {
     const a = t.assignee;
     let stale: string | undefined;
-    if (a.host === me()) {
+    if (a.host === me() && a.folder !== "~") {
       const fr = freshenFolder(a.folder);
       if (fr.note) freshness = fr.note;
       if (fr.behind && !fr.updated) {
@@ -480,8 +497,9 @@ export async function startTask(id: string): Promise<RepoTask> {
         if (t.access === "edit") throw new Error(`Not started: ${a.folder} ${fr.note}. Update it (or let it be answer only) first.`);
         stale = fr.note;
       }
-    } else stale = `on ${a.hostLabel}, which Mission Control can't check from here: compare it with GitHub (git fetch) before relying on it`;
-    const j = await startJob({ mode: "new", host: a.host, folder: a.folder, tool: a.tool, agent: a.agent, prompt: taskPrompt(t, stale), access: t.access, project: t.repo.split("/")[1], dispatch: `Work · ${t.repo}` });
+    } else if (a.host !== me()) stale = `on ${a.hostLabel}, which Mission Control can't check from here: compare it with GitHub (git fetch) before relying on it`;
+    const fromLu = t.origin?.kind === "levelup";
+    const j = await startJob({ mode: "new", host: a.host, folder: a.folder, tool: a.tool, agent: a.agent, prompt: taskPrompt(t, stale), access: t.access, project: fromLu ? (t.area ?? "LevelUp") : t.repo.split("/")[1], dispatch: fromLu ? `LevelUp · ${t.area ?? "Fleet"}` : `Work · ${t.repo}` });
     if (j.status === "error") throw new Error(j.error ?? "It couldn't be started.");
     job = { id: j.id, via: "job", startedAt: Date.now() };
   } else throw new Error(t.assignee.kind === "me" ? "This one is yours: mark it done when it is." : "Assign it first.");
@@ -498,7 +516,8 @@ export async function startTask(id: string): Promise<RepoTask> {
 
 /** Start every open task that is assigned to the fleet (not to you) and not yet started. */
 export async function startAllAssigned(): Promise<{ started: number; failed: string[] }> {
-  const ready = (await readTasks()).filter((t) => t.status === "todo" && (t.assignee.kind === "machine" || t.assignee.kind === "teammate"));
+  // LevelUp hand-offs start when the owner approves them (lib/levelup.ts), not from here
+  const ready = (await readTasks()).filter((t) => t.status === "todo" && !t.origin && (t.assignee.kind === "machine" || t.assignee.kind === "teammate"));
   const failed: string[] = [];
   let started = 0;
   for (const t of ready) {
@@ -548,8 +567,8 @@ export async function workTick(): Promise<void> {
   }
   const settings = await readWorkSettings();
   if (settings.autoStart && !isPaused()) {
-    const next = (await readTasks()).find((t) => t.status === "todo" && t.assignedBy !== undefined && (t.assignee.kind === "machine" || t.assignee.kind === "teammate") && t.priority <= 3);
-    const running = (await readTasks()).filter((t) => t.status === "doing").length;
+    const next = (await readTasks()).find((t) => t.status === "todo" && !t.origin && t.assignedBy !== undefined && (t.assignee.kind === "machine" || t.assignee.kind === "teammate") && t.priority <= 3);
+    const running = (await readTasks()).filter((t) => t.status === "doing" && !t.origin).length;
     if (next && running < 2) await startTask(next.id).catch(() => {});
   }
 }

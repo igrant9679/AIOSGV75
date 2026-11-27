@@ -13,6 +13,14 @@ interface View {
   settings: WorkSettings;
   places: Record<string, Place[]>;
   teammates: { id: string; name: string; host: string; folder: string }[];
+  levelup?: {
+    connected: boolean;
+    url: string | null;
+    connectedAt: number | null;
+    status: { ok: boolean; at: number; error?: string; items?: number; open?: number; outboxAt?: number; outboxCount?: number } | null;
+    areas: { names: string[]; clients: string[]; repos: Record<string, string>; folders: Record<string, { host: string; hostLabel: string; folder: string; tool: string; agent?: string; agentLabel?: string }> };
+    repoAreas: Record<string, string | null>;
+  };
   error?: string;
 }
 
@@ -56,6 +64,7 @@ export default function WorkSection() {
   const [source, setSource] = useState("");
   const [q, setQ] = useState("");
   const [showClosed, setShowClosed] = useState(false);
+  const [area, setArea] = useState("");
 
   const load = useCallback(() => {
     fetch("/api/work")
@@ -81,6 +90,15 @@ export default function WorkSection() {
 
   const tasks = view?.tasks ?? [];
   const repos = useMemo(() => [...new Set(tasks.map((t) => t.repo))].sort(), [tasks]);
+  const repoAreas = view?.levelup?.repoAreas;
+  const areaOf = useCallback((t: RepoTask) => (t.area ?? repoAreas?.[t.repo] ?? "").replace(/ · .*$/, ""), [repoAreas]);
+  const areas = useMemo(() => [...new Set(tasks.map(areaOf).filter(Boolean))].sort(), [tasks, areaOf]);
+  const allPlaces = useMemo(() => {
+    const m = new Map<string, Place>();
+    for (const list of Object.values(view?.places ?? {})) for (const p of list) if (!m.has(p.key)) m.set(p.key, p);
+    return [...m.values()];
+  }, [view]);
+  const placesFor = (t: RepoTask) => (t.origin ? allPlaces : (view?.places[t.repo.toLowerCase()] ?? []));
   const shown = tasks.filter((t) => {
     if (!showClosed && t.status === "dismissed") return false;
     if (repo && t.repo !== repo) return false;
@@ -88,6 +106,7 @@ export default function WorkSection() {
     if (who === "fleet" && t.assignee.kind !== "machine" && t.assignee.kind !== "teammate") return false;
     if (who === "none" && t.assignee.kind !== "none") return false;
     if (source && t.source.kind !== source) return false;
+    if (area && areaOf(t) !== area) return false;
     if (q && !`${t.title} ${t.repo} ${t.source.label} ${t.notes ?? ""}`.toLowerCase().includes(q.toLowerCase())) return false;
     return true;
   });
@@ -167,11 +186,21 @@ export default function WorkSection() {
                 {w === "" ? "anyone" : w === "me" ? "mine" : w === "fleet" ? "the fleet's" : "unassigned"}
               </Chip>
             ))}
-            {(["", "doc", "issue", "github"] as const).map((s) => (
+            {(["", "doc", "issue", "github", "levelup"] as const).map((s) => (
               <Chip key={s || "any"} active={source === s} onClick={() => setSource(s)}>
-                {s === "" ? "any source" : s === "doc" ? "documents" : s === "issue" ? "issues" : "GitHub signals"}
+                {s === "" ? "any source" : s === "doc" ? "documents" : s === "issue" ? "issues" : s === "github" ? "GitHub signals" : "LevelUp"}
               </Chip>
             ))}
+            {areas.length > 0 && (
+              <select value={area} onChange={(e) => setArea(e.target.value)} aria-label="Area" className="rounded-md border border-line bg-transparent px-1.5 py-1 font-mono text-[10px] text-ink">
+                <option value="" style={{ background: "var(--color-panel)" }}>every area</option>
+                {areas.map((a) => (
+                  <option key={a} value={a} style={{ background: "var(--color-panel)" }}>
+                    {a}
+                  </option>
+                ))}
+              </select>
+            )}
             <label className="flex cursor-pointer items-center gap-1 font-mono text-[10px] text-ink-dim">
               <input type="checkbox" checked={showClosed} onChange={(e) => setShowClosed(e.target.checked)} /> show dismissed
             </label>
@@ -180,6 +209,8 @@ export default function WorkSection() {
           {view && !tasks.length && <p className="text-[12px] text-ink-faint">No tasks yet. Make a GitHub report (GitHub → Refresh); its tasks come in here, or press Sync from GitHub.</p>}
         </div>
       </Panel>
+
+      {view?.levelup && <LevelupPanel lu={view.levelup} places={view.places} act={act} busy={busy} />}
 
       {view && mode === "board" && (
         <div className="grid gap-3 lg:grid-cols-2 2xl:grid-cols-5">
@@ -190,7 +221,7 @@ export default function WorkSection() {
                 <div className="flex max-h-[75vh] flex-col gap-2 overflow-y-auto p-3">
                   {c.hint && <p className="font-mono text-[9px] text-ink-faint">{c.hint}</p>}
                   {list.slice(0, 150).map((t) => (
-                    <TaskCard key={t.id} t={t} places={view.places[t.repo.toLowerCase()] ?? []} act={act} busy={busy} />
+                    <TaskCard key={t.id} t={t} places={placesFor(t)} act={act} busy={busy} area={areaOf(t)} />
                   ))}
                   {list.length > 150 && <p className="font-mono text-[10px] text-ink-faint">+ {list.length - 150} more: narrow it with the filters</p>}
                 </div>
@@ -200,14 +231,14 @@ export default function WorkSection() {
         </div>
       )}
 
-      {view && mode === "projects" && <ByProject tasks={shown} places={view.places} act={act} busy={busy} />}
+      {view && mode === "projects" && <ByProject tasks={shown} places={view.places} allPlaces={allPlaces} act={act} busy={busy} />}
     </div>
   );
 }
 
 type Act = (name: string, body: object, done: (r: Record<string, unknown>) => string) => Promise<void>;
 
-function ByProject({ tasks, places, act, busy }: { tasks: RepoTask[]; places: Record<string, Place[]>; act: Act; busy: string | null }) {
+function ByProject({ tasks, places, allPlaces, act, busy }: { tasks: RepoTask[]; places: Record<string, Place[]>; allPlaces: Place[]; act: Act; busy: string | null }) {
   const [open, setOpen] = useState<string | null>(null);
   const groups = [...new Set(tasks.map((t) => t.repo))].map((repo) => ({ repo, list: tasks.filter((t) => t.repo === repo) }));
   groups.sort((a, b) => b.list.filter((t) => !["done", "dismissed"].includes(t.status)).length - a.list.filter((t) => !["done", "dismissed"].includes(t.status)).length);
@@ -232,7 +263,7 @@ function ByProject({ tasks, places, act, busy }: { tasks: RepoTask[]; places: Re
                   {list
                     .sort((a, b) => COLUMNS.findIndex((c) => c.status === a.status) - COLUMNS.findIndex((c) => c.status === b.status) || a.priority - b.priority)
                     .map((t) => (
-                      <TaskCard key={t.id} t={t} places={where} act={act} busy={busy} showStatus />
+                      <TaskCard key={t.id} t={t} places={t.origin ? allPlaces : where} act={act} busy={busy} showStatus area={t.area ?? undefined} />
                     ))}
                 </div>
               )}
@@ -244,7 +275,9 @@ function ByProject({ tasks, places, act, busy }: { tasks: RepoTask[]; places: Re
   );
 }
 
-function TaskCard({ t, places, act, busy, showStatus }: { t: RepoTask; places: Place[]; act: Act; busy: string | null; showStatus?: boolean }) {
+function TaskCard({ t, places, act, busy, showStatus, area }: { t: RepoTask; places: Place[]; act: Act; busy: string | null; showStatus?: boolean; area?: string }) {
+  const lu = t.origin?.kind === "levelup";
+  const waiting = lu && t.approval !== "approved" && ["inbox", "todo"].includes(t.status);
   const [more, setMore] = useState(false);
   const [notes, setNotes] = useState(t.notes ?? "");
   const fleet = t.assignee.kind === "machine" || t.assignee.kind === "teammate";
@@ -268,7 +301,12 @@ function TaskCard({ t, places, act, busy, showStatus }: { t: RepoTask; places: P
         <p className="min-w-0 flex-1 text-[12px] leading-5 text-ink">{t.title}</p>
       </div>
       <p className="font-mono text-[10px] leading-4 text-ink-faint">
-        <span style={{ color: ACCENTS.violet.base }}>{t.repo.replace(/^igrant9679\//, "")}</span> ·{" "}
+        {area && <span style={{ color: ACCENTS.cyan.base }}>{t.area ?? area} · </span>}
+        {!lu && (
+          <>
+            <span style={{ color: ACCENTS.violet.base }}>{t.repo.replace(/^igrant9679\//, "")}</span> ·{" "}
+          </>
+        )}
         {t.source.url ? (
           <a href={t.source.url} target="_blank" rel="noreferrer" className="hover:underline">
             {t.source.label}
@@ -278,7 +316,18 @@ function TaskCard({ t, places, act, busy, showStatus }: { t: RepoTask; places: P
         )}
         {showStatus ? ` · ${COLUMNS.find((c) => c.status === t.status)?.label ?? t.status}` : ""}
         {t.goneFromSource && <span style={{ color: ACCENTS.amber.base }}> · no longer in its source: done there?</span>}
+        {lu && t.when && t.status === "todo" && <span> · starts {t.when}</span>}
       </p>
+      {waiting && (
+        <div className="flex flex-wrap items-center gap-2 rounded-md px-2 py-1.5" style={{ background: "color-mix(in srgb, var(--ac-amber) 8%, transparent)" }}>
+          <span className="flex-1 text-[11px]" style={{ color: ACCENTS.amber.base }}>
+            Waiting for your approval (here or in LevelUp){t.luProposed ? `: ${t.luProposed}${t.assignee.kind === "machine" && t.assignee.folder === "~" ? " in the home folder" : ""}, ${t.access === "edit" ? "may change files" : "answer only"}` : ""}. Change who does it below before approving if you like.
+          </span>
+          <SmallButton accent onClick={() => void act(`ap-${t.id}`, { action: "approve", id: t.id }, () => "Approved: it starts within a minute (or on its day).")} disabled={busy === `ap-${t.id}`}>
+            Approve
+          </SmallButton>
+        </div>
+      )}
       <div className="flex flex-wrap items-center gap-1.5">
         <select value={value} onChange={(e) => setAssignee(e.target.value)} disabled={t.status === "doing"} aria-label="Who does it" className="max-w-[230px] rounded-md border border-line bg-transparent px-1.5 py-0.5 font-mono text-[10px] text-ink">
           <option value="none" style={{ background: "var(--color-panel)" }}>Nobody yet</option>
@@ -300,7 +349,7 @@ function TaskCard({ t, places, act, busy, showStatus }: { t: RepoTask; places: P
         )}
         {t.assignedBy && t.assignedBy !== "you" && <span className="font-mono text-[9px] text-ink-faint" title={t.assignReason}>{t.assignedBy === "smart" ? "Claude's pick" : "auto"}</span>}
         <span className="flex-1" />
-        {fleet && ["inbox", "todo", "review"].includes(t.status) && (
+        {fleet && !lu && ["inbox", "todo", "review"].includes(t.status) && (
           <SmallButton accent onClick={() => void act(`st-${t.id}`, { action: "start", id: t.id }, () => `Started with ${assigneeText(t.assignee)}.`)} disabled={busy === `st-${t.id}`} title={`Send it to ${assigneeText(t.assignee)} with its context`}>
             {t.status === "review" ? "Again" : "Start"}
           </SmallButton>
@@ -315,7 +364,7 @@ function TaskCard({ t, places, act, busy, showStatus }: { t: RepoTask; places: P
             Done
           </SmallButton>
         )}
-        {t.status === "done" || t.status === "dismissed" ? (
+        {lu ? null : t.status === "done" || t.status === "dismissed" ? (
           <SmallButton onClick={() => status("todo", "Back in To do.")} title="Reopen">
             Reopen
           </SmallButton>
@@ -368,5 +417,129 @@ function TaskCard({ t, places, act, busy, showStatus }: { t: RepoTask; places: P
         </div>
       )}
     </div>
+  );
+}
+
+type LuView = NonNullable<View["levelup"]>;
+type FolderPlace = { host: string; hostLabel: string; folder: string; tool: string; agent?: string; agentLabel?: string };
+
+/** LevelUp (rule 46): the connection, and the areas (client / personal) work is filed under. */
+function LevelupPanel({ lu, places, act, busy }: { lu: LuView; places: Record<string, Place[]>; act: Act; busy: string | null }) {
+  const [url, setUrl] = useState(lu.url ?? "https://levelupnow.tools");
+  const [key, setKey] = useState("");
+  const [open, setOpen] = useState(!lu.connected);
+  const [clients, setClients] = useState(lu.areas.clients.join(", "));
+  const st = lu.status;
+  const machines = useMemo(() => {
+    const m = new Map<string, Place>();
+    for (const list of Object.values(places)) for (const p of list) if (p.kind === "machine" && !m.has(p.key)) m.set(p.key, p);
+    return [...m.values()].sort((a, b) => a.label.localeCompare(b.label) || a.folder.localeCompare(b.folder));
+  }, [places]);
+  const folderValue = (f?: FolderPlace) => (f ? (machines.find((p) => p.host === f.host && p.folder === f.folder && (p.tool ?? "") === f.tool && (p.agent ?? "") === (f.agent ?? ""))?.key ?? "custom") : "");
+  const repos = Object.keys(lu.repoAreas).sort();
+  return (
+    <Panel title="LevelUp" right={<span className="font-mono text-[10px]" style={{ color: lu.connected ? (st?.ok === false ? ACCENTS.rose.base : ACCENTS.lime.base) : "var(--color-ink-faint)" }}>{lu.connected ? (st?.ok === false ? "can't reach LevelUp" : "connected") : "not connected"}</span>}>
+      <div className="flex flex-col gap-3 p-4">
+        <p className="text-[11px] leading-4 text-ink-faint">
+          Hand tasks and projects to the fleet from LevelUp, your planning app. Mission Control checks LevelUp every minute (it never accepts connections), proposes who does each one and where, and starts it only after you approve, in LevelUp or here. What is waiting on you here is listed in LevelUp&apos;s Fleet panel.
+        </p>
+        {lu.connected ? (
+          <div className="flex flex-wrap items-center gap-2 font-mono text-[10px] text-ink-dim">
+            <span>{lu.url}</span>
+            {st && (
+              <span style={{ color: st.ok ? undefined : ACCENTS.rose.base }}>
+                {st.ok ? `checked ${ago(st.at)} ago · ${st.open ?? 0} open hand-off${st.open === 1 ? "" : "s"}${st.outboxCount != null ? ` · told LevelUp about ${st.outboxCount} waiting on you` : ""}` : `last try ${ago(st.at)} ago: ${st.error}`}
+              </span>
+            )}
+            <span className="flex-1" />
+            <SmallButton onClick={() => void act("lu-sync", { action: "levelup-sync" }, () => "Checked LevelUp.")} disabled={!!busy}>
+              {busy === "lu-sync" ? "Checking…" : "Check now"}
+            </SmallButton>
+            <SmallButton onClick={() => setOpen(!open)}>{open ? "Hide areas" : "Areas"}</SmallButton>
+            <SmallButton onClick={() => void act("lu-off", { action: "levelup-disconnect" }, () => "Disconnected from LevelUp. Make a new key there to connect again.")} disabled={!!busy} title="Forget the key on this machine">
+              Disconnect
+            </SmallButton>
+          </div>
+        ) : (
+          <div className="flex flex-wrap items-end gap-2">
+            <label className="flex flex-col gap-0.5 font-mono text-[10px] text-ink-dim">
+              LevelUp address
+              <input value={url} onChange={(e) => setUrl(e.target.value)} className="w-64 rounded-md border border-line bg-transparent px-2 py-1 text-[11px] text-ink outline-none" />
+            </label>
+            <label className="flex flex-col gap-0.5 font-mono text-[10px] text-ink-dim">
+              Key (LevelUp → Fleet → Make a key)
+              <input type="password" value={key} onChange={(e) => setKey(e.target.value)} autoComplete="off" placeholder="luf_…" className="w-72 rounded-md border border-line bg-transparent px-2 py-1 text-[11px] text-ink outline-none" />
+            </label>
+            <SmallButton accent onClick={() => void act("lu-on", { action: "levelup-connect", url, key }, () => "Connected to LevelUp.").then(() => setKey(""))} disabled={!!busy || !key}>
+              {busy === "lu-on" ? "Connecting…" : "Connect"}
+            </SmallButton>
+            <span className="font-mono text-[9px] text-ink-faint">Connect on the machine whose Work page you use; the key stays on this machine.</span>
+          </div>
+        )}
+        {open && (
+          <div className="flex flex-col gap-3 rounded-lg border border-line p-3">
+            <div>
+              <p className="text-[12px] font-semibold text-ink">Areas</p>
+              <p className="text-[11px] text-ink-faint">Client work (LSI Media, CommunityForce, MeYouSocial, and any you add) and Personal. LevelUp hand-offs carry their area; repositories get one here.</p>
+            </div>
+            <label className="flex flex-wrap items-center gap-2 font-mono text-[10px] text-ink-dim">
+              more clients
+              <input value={clients} onChange={(e) => setClients(e.target.value)} onBlur={() => clients !== lu.areas.clients.join(", ") && void act("lu-cl", { action: "area-clients", clients: clients.split(",") }, () => "Saved.")} placeholder="comma separated" className="w-72 rounded-md border border-line bg-transparent px-2 py-1 text-[11px] text-ink outline-none" />
+            </label>
+            <div className="flex flex-col gap-1">
+              <p className="font-mono text-[10px] text-ink-dim">Work folder per area: where a hand-off that names no repository runs, and may change files once approved. Without one it answers in writing only.</p>
+              {lu.areas.names.map((n) => (
+                <label key={n} className="flex flex-wrap items-center gap-2 font-mono text-[10px] text-ink">
+                  <span className="w-32">{n}</span>
+                  <select
+                    value={folderValue(lu.areas.folders[n])}
+                    onChange={(e) => {
+                      const p = machines.find((x) => x.key === e.target.value);
+                      void act(`lu-f-${n}`, { action: "area-folder", area: n, place: p ? { host: p.host, hostLabel: p.hostLabel, folder: p.folder, tool: p.tool, agent: p.agent, agentLabel: p.agentLabel } : null }, () => (p ? `${n}: ${p.label} in ${p.folder}.` : `${n}: no work folder (answers only).`));
+                    }}
+                    aria-label={`Work folder for ${n}`}
+                    className="max-w-[420px] rounded-md border border-line bg-transparent px-1.5 py-0.5 font-mono text-[10px] text-ink"
+                  >
+                    <option value="" style={{ background: "var(--color-panel)" }}>none: answer in writing</option>
+                    {folderValue(lu.areas.folders[n]) === "custom" && (
+                      <option value="custom" style={{ background: "var(--color-panel)" }}>
+                        {lu.areas.folders[n].hostLabel} · {lu.areas.folders[n].folder}
+                      </option>
+                    )}
+                    {machines.map((p) => (
+                      <option key={p.key} value={p.key} style={{ background: "var(--color-panel)" }}>
+                        {p.label} · {p.folder}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ))}
+            </div>
+            {repos.length > 0 && (
+              <details>
+                <summary className="cursor-pointer font-mono text-[10px] text-ink-dim">
+                  Repositories by area ({repos.filter((r) => lu.repoAreas[r]).length} of {repos.length} have one)
+                </summary>
+                <div className="mt-2 grid gap-1 md:grid-cols-2">
+                  {repos.map((r) => (
+                    <label key={r} className="flex items-center gap-2 font-mono text-[10px] text-ink">
+                      <span className="min-w-0 flex-1 truncate">{r}</span>
+                      <select value={lu.repoAreas[r] ?? ""} onChange={(e) => void act(`lu-r-${r}`, { action: "area-repo", repo: r, area: e.target.value || null }, () => `${r}: ${e.target.value || "no area"}.`)} aria-label={`Area for ${r}`} className="rounded-md border border-line bg-transparent px-1.5 py-0.5 font-mono text-[10px] text-ink">
+                        <option value="" style={{ background: "var(--color-panel)" }}>no area</option>
+                        {lu.areas.names.map((n) => (
+                          <option key={n} value={n} style={{ background: "var(--color-panel)" }}>
+                            {n}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  ))}
+                </div>
+              </details>
+            )}
+          </div>
+        )}
+      </div>
+    </Panel>
   );
 }

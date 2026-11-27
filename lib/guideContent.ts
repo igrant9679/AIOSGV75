@@ -651,6 +651,22 @@ The token is stored in the vault, so any machine that takes over as master can s
 **Where it lives** — data/github-report.json on this computer only; private repositories' details never go to the vault. Each computer makes its own report if its GitHub CLI is signed in.`,
   },
   {
+    id: "levelup-fleet",
+    title: "LevelUp — hand tasks and projects to the fleet from your planning app",
+    keywords: "levelup level up planning planner day week month delegate hand off fleet approve approval client personal goal area lsi media communityforce meyousocial key connect outbox waiting on you",
+    body: `**LevelUp** is your planning app. From it you can hand tasks and projects to the fleet, and see in LevelUp what is waiting on you here.
+
+**How it works:** Mission Control never accepts connections, so it checks LevelUp every minute. For each new hand-off it **proposes** who does it and where. Nothing starts until you **approve**, either in LevelUp (Fleet panel) or here (Work → the card's **Approve**). Then it runs on the day you chose and the result goes back to LevelUp, where you **Accept** it or **Send back** what should change. Cancelling in LevelUp stops it here.
+
+**Where it runs:** if the task names one of your repositories, it goes to the best machine that has that repository. Otherwise it goes to the **work folder** set for its area. Otherwise it is answered in writing only, in this machine's home folder: with no folder chosen it never changes files anywhere.
+
+**Areas:** every hand-off is client work (LSI Media, CommunityForce, MeYouSocial, or any you add) or Personal (with the goal it serves). Work → LevelUp → **Areas**: set a work folder per area and an area per repository. The area filter on the board then shows one client or Personal at a time.
+
+**Connect:** in LevelUp open **Fleet → Make a key for Mission Control**, then paste the address and key into Work → LevelUp → **Connect**, on the machine whose Work page you use. The key stays on that machine. **Disconnect** forgets it. A new key made in LevelUp stops the old one.
+
+**What LevelUp sees from here:** your Work items marked yours and the fleet's results waiting for review here, with their area, listed in LevelUp's Fleet panel under "Mission Control: waiting on you".`,
+  },
+  {
     id: "work-tasks",
     title: "Work — the tasks your repositories mention, assigned to you or the fleet",
     keywords: "work tasks todo to-do next steps action items waiting on you issues assign assignee fleet teammate machine tool start review done dismissed board by project auto assign smart assign automatically repo tasks",

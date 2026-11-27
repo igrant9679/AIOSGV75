@@ -68,7 +68,9 @@ t("a real .docx: Mission Control's own changes document", () => {
   assert.match(text, /^# Waiting on you$/m);
   const w = extractWaiting(text);
   assert.ok(w.length >= 8, `found ${w.length} waiting items`);
-  assert.ok(w.some((x) => /Update the other five machines/.test(x.text)), "a known row of the table is among the items");
+  // a row that is still open (done rows are skipped on purpose; "Update the other five machines" became done in 1.5)
+  assert.ok(w.some((x) => /Next build to choose|Gemini CLI|First real Mac install/.test(x.text)), "a known open row of the table is among the items");
+  assert.ok(!w.some((x) => /Update the other five machines/.test(x.text)), "a done row is left out");
   assert.ok(w.every((x) => x.section === "Waiting on you"));
 });
 
