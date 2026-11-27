@@ -79,10 +79,11 @@ Pick roles before you start:
   The installer checks and leaves it unticked on anything smaller. A small model
   such as `llama3.2` (3B, 2 GB) runs on 8–16 GB RAM without a GPU but fails
   ordinary tasks often; it is not installed by default any more.
-- Routine-work model (Windows installer): `inkling-2-mini` (18 GB). Pre-ticked only with
-  a 24 GB+ NVIDIA GPU and 96 GB+ RAM: loading it commits about 1.4x its size even on the
-  GPU, and Mission Control only loads it while memory stays under 93%. On a 64 GB PC it
-  runs only when the PC is mostly idle. The installer adds it as its own agent and sets
+- Routine-work model (both installers): `inkling-2-mini` (18 GB). Pre-ticked only with
+  a 24 GB+ NVIDIA GPU and 96 GB+ RAM on Windows, or Apple Silicon with 64 GB+ on a Mac:
+  loading it takes about 1.4x its size in memory even on the GPU, and Mission Control only
+  loads it while memory stays under 93%. On a 64 GB PC (or a 36-48 GB Mac) it runs only
+  when the machine is mostly idle. The installer adds it as its own agent and sets
   `"local": "inkling-2-mini"` in data/worker-models.json, so routine run tasks (this
   machine's and the other machines') use it.
 - ~10 GB free disk covers Node, the app and the search model; add 14 GB for the

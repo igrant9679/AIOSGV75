@@ -75,7 +75,9 @@ export async function localModelFits(lm: LocalModel): Promise<{ ok: boolean; why
   if (f.loaded) return { ok: true, gb: f.gb };
   const load = readLoad();
   const used = load?.commitUsed ?? load?.memUsed;
-  const limit = load?.commitLimitGb;
+  // Windows: the commit limit (RAM + page file). A Mac or Linux has no commit charge; there the
+  // physical memory is what a model fills (on Apple Silicon the GPU shares it, too).
+  const limit = load?.commitLimitGb ?? load?.memTotalGb;
   if (typeof used !== "number") return { ok: true, gb: f.gb }; // no reading: unknown is not "full" (rule 31)
   if (typeof f.gb === "number" && typeof limit === "number") {
     const free = Math.round((limit * (100 - used)) / 10) / 10;

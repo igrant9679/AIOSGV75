@@ -17,11 +17,15 @@
 #
 # Flags: --mode install|update|modify|reinstall|uninstall  --dry-run  --yes
 #        --repo-dir <path>  --vault <path>  --label <name>  --role primary|backup|workstation
-#        --components ollama,models,chatmodel,codex,hermes,openclaw   (or none) - skip the checklist
+#        --components ollama,models,chatmodel,inkling,codex,hermes,openclaw   (or none) - skip the checklist
 #        --skip-models  --skip-ollama  --install-ollama  --install-codex  --no-codex
 #        --install-chat-model  --skip-chat-model   the local chat model (gpt-oss:20b, 14 GB).
 #          Offered everywhere; pre-ticked only where it will run well (Apple Silicon with
 #          24 GB+ memory, or an NVIDIA GPU with 16 GB+).
+#        --install-inkling  --skip-inkling   the routine-work model (inkling-2-mini, 18 GB): the model
+#          this machine uses for routine work and lends to your other machines' project runs.
+#          Offered everywhere; pre-ticked only on Apple Silicon with 64 GB+ memory (or a 24 GB+
+#          NVIDIA GPU with 96 GB+ RAM).
 #        --install-hermes  --install-openclaw  --no-hermes  --no-openclaw  --no-companions
 #        --no-login  --no-start  --repair-only
 #
@@ -33,6 +37,7 @@
 MODE=""; REPO_DIR="$HOME/Documents/mission-control"; REPO_URL="https://github.com/igrant9679/AIOSGV75.git"; BRANCH="main"
 VAULT=""; LABEL=""; ROLE=""; DRY=0; YES=0; SKIP_MODELS=0; SKIP_OLLAMA=0; INSTALL_CODEX=0; NO_CODEX=0
 SKIP_CHAT=0; INSTALL_CHAT=0; CHAT_DECIDED=0; SKIP_ALL_MODELS=0
+SKIP_INKLING=0; INSTALL_INKLING=0; INKLING_DECIDED=0
 INSTALL_HERMES=0; INSTALL_OPENCLAW=0; NO_COMPANIONS=0; INSTALL_OLLAMA=0; NO_HERMES=0; NO_OPENCLAW=0; COMPONENTS=""; NO_LOGIN=0; NO_START=0; REPAIR_ONLY=0; REPO_DIR_SET=0
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -46,6 +51,8 @@ while [ $# -gt 0 ]; do
     --skip-models) SKIP_MODELS=1; SKIP_ALL_MODELS=1 ;;
     --skip-chat-model) SKIP_CHAT=1 ;;
     --install-chat-model) INSTALL_CHAT=1 ;;
+    --skip-inkling) SKIP_INKLING=1 ;;
+    --install-inkling) INSTALL_INKLING=1 ;;
     --skip-ollama) SKIP_OLLAMA=1 ;;
     --install-ollama) INSTALL_OLLAMA=1 ;;
     --components) COMPONENTS="$2"; shift ;;
@@ -184,6 +191,39 @@ else
   else CHAT_NOTE="this machine: no NVIDIA GPU found, it would be very slow - leave off"; fi
 fi
 chat_default() { [ $CHAT_FITS = 1 ] && echo y || echo n; }
+# inkling-2-mini: the model for routine work (project runs give it their smallest text tasks, and other
+# machines in the group can send it theirs). 18 GB on disk. Loading a model takes about 1.4x its size in
+# memory (measured on Windows), and Mission Control loads it only while memory stays under 93%, so it
+# is pre-ticked only where that leaves room: Apple Silicon with 64 GB+ (its GPU shares that memory),
+# or elsewhere a 24 GB+ NVIDIA GPU with 96 GB+ of RAM.
+INKLING_MODEL="inkling-2-mini"; INKLING_GB=18; INKLING_FITS=0
+if [ "$(uname -s)" = "Darwin" ]; then
+  if [ "$(uname -m)" != "arm64" ]; then INKLING_NOTE="this Mac: Intel, it would be very slow - leave off"
+  elif [ "$mem_gb" -ge 64 ]; then INKLING_FITS=1; INKLING_NOTE="this Mac: ${mem_gb} GB memory, a good fit"
+  elif [ "$mem_gb" -ge 36 ]; then INKLING_NOTE="this Mac: ${mem_gb} GB memory - it loads only when the Mac is mostly idle (Mission Control checks first)"
+  else INKLING_NOTE="this Mac: ${mem_gb} GB memory, too little to load it - leave off"; fi
+else
+  ram_gb=$(( $(awk '/MemTotal/ {print $2}' /proc/meminfo 2>/dev/null || echo 0) / 1048576 ))
+  if [ "$gpu_gb" -ge 24 ] && [ "$ram_gb" -ge 90 ]; then INKLING_FITS=1; INKLING_NOTE="this machine: ${gpu_gb} GB GPU, ${ram_gb} GB RAM - a good fit"
+  elif [ "$gpu_gb" -lt 24 ]; then INKLING_NOTE="this machine: ${gpu_gb} GB GPU - it needs 24 GB to run well; leave off"
+  else INKLING_NOTE="this machine: ${ram_gb} GB RAM - it loads only when the machine is mostly idle"; fi
+fi
+inkling_default() { [ $INKLING_FITS = 1 ] && echo y || echo n; }
+# Its own agent (never replacing the chat model: --add), and the model this machine uses for routine
+# work and lends to the others ("local" in data/worker-models.json: --prefer).
+register_inkling() {
+  manual="to use $INKLING_MODEL in Mission Control, add it in Settings -> LLM Connections (base URL http://localhost:11434/v1, model $INKLING_MODEL, no key) and put {\"local\": \"$INKLING_MODEL\"} in data/worker-models.json"
+  script="$REPO_DIR/scripts/register-local-model.mjs"
+  if [ ! -f "$script" ] || ! have node; then
+    if [ $DRY = 1 ]; then warn "would add $INKLING_MODEL to Mission Control as the routine-work model"; else todo "$manual"; fi
+    return 0
+  fi
+  if [ $DRY = 1 ]; then out="$(node "$script" "$INKLING_MODEL" --add --prefer --dry-run)"; rc=$?; else out="$(node "$script" "$INKLING_MODEL" --add --prefer)"; rc=$?; fi
+  if [ $rc -ne 0 ]; then todo "$INKLING_MODEL is pulled but was not added to Mission Control ($out) - $manual"
+  elif [ $DRY = 1 ]; then warn "$INKLING_MODEL - $out"
+  else ok "$INKLING_MODEL - $out"; fi
+  return 0
+}
 # Adds the local chat model to this machine's app as an agent (scripts/register-local-model.mjs,
 # the same script the Windows installer calls). data/registry.json holds API keys, so it is parsed
 # and re-written whole by Node, never patched as text. Safe to run again.
@@ -205,17 +245,19 @@ register_chat_model() {
 # Install / update / reinstall: choose the optional parts up front (one checklist),
 # so the steps below don't ask about each one. Already-installed items are kept.
 if { [ "$MODE" = "install" ] || [ "$MODE" = "reinstall" ]; } && [ $REPAIR_ONLY = 0 ]; then
-  KEYS="ollama models chatmodel codex hermes openclaw"
+  KEYS="ollama models chatmodel inkling codex hermes openclaw"
   hermes_here() { have hermes || [ -x "$HOME/.hermes/hermes-agent/venv/bin/hermes" ] || [ -x "$HOME/.local/bin/hermes" ]; }
-  C_ollama=0; C_models=0; C_chatmodel=0; C_codex=0; C_hermes=0; C_openclaw=0
-  H_ollama=0; H_codex=0; H_hermes=0; H_openclaw=0
-  have ollama && { H_ollama=1; C_models=1; C_chatmodel=$CHAT_FITS; }
+  C_ollama=0; C_models=0; C_chatmodel=0; C_inkling=0; C_codex=0; C_hermes=0; C_openclaw=0
+  H_ollama=0; H_models=0; H_chatmodel=0; H_inkling=0; H_codex=0; H_hermes=0; H_openclaw=0
+  have ollama && { H_ollama=1; C_models=1; C_chatmodel=$CHAT_FITS; C_inkling=$INKLING_FITS; }
   have codex && H_codex=1
   hermes_here && H_hermes=1
   have openclaw && H_openclaw=1
-  [ $INSTALL_OLLAMA = 1 ] && { C_ollama=1; C_models=1; C_chatmodel=$CHAT_FITS; }
-  [ $SKIP_OLLAMA = 1 ] && { C_ollama=0; C_models=0; C_chatmodel=0; }
-  [ $SKIP_MODELS = 1 ] && { C_models=0; C_chatmodel=0; }
+  [ $INSTALL_OLLAMA = 1 ] && { C_ollama=1; C_models=1; C_chatmodel=$CHAT_FITS; C_inkling=$INKLING_FITS; }
+  [ $SKIP_OLLAMA = 1 ] && { C_ollama=0; C_models=0; C_chatmodel=0; C_inkling=0; }
+  [ $SKIP_MODELS = 1 ] && { C_models=0; C_chatmodel=0; C_inkling=0; }
+  [ $SKIP_INKLING = 1 ] && C_inkling=0
+  [ $INSTALL_INKLING = 1 ] && { C_inkling=1; C_models=1; [ $H_ollama = 1 ] || C_ollama=1; }
   [ $SKIP_CHAT = 1 ] && C_chatmodel=0
   [ $INSTALL_CHAT = 1 ] && { C_chatmodel=1; C_models=1; [ $H_ollama = 1 ] || C_ollama=1; }
   [ $INSTALL_CODEX = 1 ] && C_codex=1
@@ -225,6 +267,7 @@ if { [ "$MODE" = "install" ] || [ "$MODE" = "reinstall" ]; } && [ $REPAIR_ONLY =
     ollama) echo "Ollama - free local AI models + smarter vault search (~2.3 GB; best on the primary machine)" ;;
     models) echo "Search model for Ollama (nomic-embed-text, 0.3 GB) - smarter vault search" ;;
     chatmodel) echo "Local chat model ($CHAT_MODEL, ${CHAT_MODEL_GB} GB download) - a free worker that runs on this machine ($CHAT_NOTE)" ;;
+    inkling) echo "Routine-work model ($INKLING_MODEL, ${INKLING_GB} GB download) - does low-complexity tasks for free, here and for your other machines ($INKLING_NOTE)" ;;
     codex) echo "Codex CLI - ChatGPT/Codex jobs on this machine (your ChatGPT subscription)" ;;
     hermes) echo "Hermes - goal mode + Control Room (~5-10 min)" ;;
     openclaw) echo "OpenClaw - Telegram gateway + approvals (primary machine only)" ;;
@@ -234,7 +277,7 @@ if { [ "$MODE" = "install" ] || [ "$MODE" = "reinstall" ]; } && [ $REPAIR_ONLY =
   if [ -n "$COMPONENTS" ]; then
     for k in $KEYS; do setv C "$k" 0; done
     for c in $(echo "$COMPONENTS" | tr 'A-Z,' 'a-z '); do
-      case " $KEYS none " in *" $c "*) [ "$c" != none ] && setv C "$c" 1 ;; *) warn "--components: unknown item '$c' (use ollama, models, chatmodel, codex, hermes, openclaw)" ;; esac
+      case " $KEYS none " in *" $c "*) [ "$c" != none ] && setv C "$c" 1 ;; *) warn "--components: unknown item '$c' (use ollama, models, chatmodel, inkling, codex, hermes, openclaw)" ;; esac
     done
   elif [ $YES = 0 ] && [ $DRY = 0 ]; then
     while :; do
@@ -243,7 +286,7 @@ if { [ "$MODE" = "install" ] || [ "$MODE" = "reinstall" ]; } && [ $REPAIR_ONLY =
       i=0
       for k in $KEYS; do
         i=$((i + 1))
-        if [ "$k" != models ] && [ "$k" != chatmodel ] && [ "$(getv H "$k")" = 1 ]; then echo "   [*] $i  $(label_of "$k")  (already installed - kept)"; continue; fi
+        if [ "$k" != models ] && [ "$k" != chatmodel ] && [ "$k" != inkling ] && [ "$(getv H "$k")" = 1 ]; then echo "   [*] $i  $(label_of "$k")  (already installed - kept)"; continue; fi
         if [ "$(getv C "$k")" = 1 ]; then box="[x]"; else box="[ ]"; fi
         echo "   $box $i  $(label_of "$k")"
       done
@@ -253,11 +296,13 @@ if { [ "$MODE" = "install" ] || [ "$MODE" = "reinstall" ]; } && [ $REPAIR_ONLY =
         i=0
         for k in $KEYS; do
           i=$((i + 1)); [ "$i" = "$n" ] || continue
-          [ "$k" != models ] && [ "$k" != chatmodel ] && [ "$(getv H "$k")" = 1 ] && continue
+          [ "$k" != models ] && [ "$k" != chatmodel ] && [ "$k" != inkling ] && [ "$(getv H "$k")" = 1 ] && continue
           if [ "$(getv C "$k")" = 1 ]; then setv C "$k" 0
           else
             setv C "$k" 1
-            [ "$k" = ollama ] && { C_models=1; C_chatmodel=$CHAT_FITS; }
+            [ "$k" = ollama ] && { C_models=1; C_chatmodel=$CHAT_FITS; C_inkling=$INKLING_FITS; }
+            # the routine-work model needs Ollama too
+            [ "$k" = inkling ] && { C_models=1; [ $H_ollama = 1 ] || C_ollama=1; }
             # the chat model needs Ollama: ticking it brings Ollama along
             [ "$k" = chatmodel ] && { C_models=1; [ $H_ollama = 1 ] || C_ollama=1; }
           fi
@@ -269,6 +314,7 @@ if { [ "$MODE" = "install" ] || [ "$MODE" = "reinstall" ]; } && [ $REPAIR_ONLY =
   if [ $C_ollama = 1 ] || [ $H_ollama = 1 ]; then SKIP_OLLAMA=0; else SKIP_OLLAMA=1; fi; INSTALL_OLLAMA=$C_ollama
   [ $C_models = 1 ] && SKIP_MODELS=0 || SKIP_MODELS=1
   [ $C_chatmodel = 1 ] && SKIP_CHAT=0 || SKIP_CHAT=1; CHAT_DECIDED=1
+  [ $C_inkling = 1 ] && SKIP_INKLING=0 || SKIP_INKLING=1; INKLING_DECIDED=1
   if [ $C_codex = 1 ] || [ $H_codex = 1 ]; then NO_CODEX=0; else NO_CODEX=1; fi; INSTALL_CODEX=$C_codex
   NO_HERMES=$((1 - C_hermes)); INSTALL_HERMES=$C_hermes
   NO_OPENCLAW=$((1 - C_openclaw)); INSTALL_OPENCLAW=$C_openclaw
@@ -408,7 +454,7 @@ if should app; then
 fi
 
 if should tools; then
-  section "Local models (search model + optional chat model)"
+  section "Local models (search model + optional chat and routine-work models)"
   if [ $USE_OLLAMA = 0 ] || ! have ollama; then info "skipped"
   else
     # The chat model: a big download that wants capable hardware. The checklist decides it on an
@@ -425,6 +471,23 @@ if should tools; then
         info "pulling $CHAT_MODEL (${CHAT_MODEL_GB} GB - this takes a while)..."
         if ollama pull "$CHAT_MODEL"; then ok "pulled $CHAT_MODEL"; register_chat_model; else todo "couldn't pull $CHAT_MODEL - run 'ollama pull $CHAT_MODEL' later, then run the installer again (Modify) to add it to Mission Control"; fi
       else info "local chat model not installed ($CHAT_NOTE) - add it any time with 'ollama pull $CHAT_MODEL'"; fi
+    fi
+    # The routine-work model: inkling-2-mini, 18 GB. Decided by the checklist on an install; asked here
+    # in Modify. Already pulled but left unticked on an install: this machine's setting is not touched.
+    if ollama list 2>/dev/null | grep -q "^$INKLING_MODEL"; then
+      if [ $SKIP_INKLING = 1 ]; then ok "$INKLING_MODEL already pulled (not set as the routine-work model: not ticked)"
+      else ok "$INKLING_MODEL already pulled"; register_inkling; fi
+    else
+      want=0
+      if [ $INSTALL_INKLING = 1 ]; then want=1
+      elif [ $SKIP_INKLING = 1 ] || { [ $SKIP_ALL_MODELS = 1 ] && [ $INKLING_DECIDED = 0 ]; }; then want=0
+      elif [ $INKLING_DECIDED = 1 ]; then want=1
+      elif yesno "Pull the routine-work model $INKLING_MODEL? ${INKLING_GB} GB download ($INKLING_NOTE)." "$(inkling_default)"; then want=1; fi
+      if [ $want = 1 ] && [ $DRY = 1 ]; then warn "would pull $INKLING_MODEL (${INKLING_GB} GB) and make it the model for routine work"
+      elif [ $want = 1 ]; then
+        info "pulling $INKLING_MODEL (${INKLING_GB} GB - this takes a while)..."
+        if ollama pull "$INKLING_MODEL"; then ok "pulled $INKLING_MODEL"; register_inkling; else todo "couldn't pull $INKLING_MODEL - run 'ollama pull $INKLING_MODEL' later, then run the installer again (Modify)"; fi
+      else info "routine-work model not installed ($INKLING_NOTE) - add it any time with 'ollama pull $INKLING_MODEL', then the installer's Modify"; fi
     fi
     # The search model: small, and what makes vault search understand meaning.
     for m in nomic-embed-text; do
