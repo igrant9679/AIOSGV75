@@ -1,6 +1,6 @@
 <#
   Mission Control - Windows installer, updater, modifier and uninstaller.
-  MC-INSTALLER-VERSION: 2026.11.24.2   (bump on every change; setup.exe runs the newer of its bundled copy and GitHub's)
+  MC-INSTALLER-VERSION: 2026.11.27.1   (bump on every change; setup.exe runs the newer of its bundled copy and GitHub's)
 
   Run it any time. On a machine without Mission Control it installs everything;
   on a machine that has it, it asks what you want:
@@ -41,13 +41,17 @@
     -Label <name>    display name in the machine group (default: computer name)
     -Role <primary|backup|workstation>   default: workstation
     -Components <list>  optional items to install, skipping the checklist, e.g.
-                     -Components ollama,models,chatmodel,codex,hermes,openclaw,firewall
+                     -Components ollama,models,chatmodel,inkling,codex,hermes,openclaw,firewall
                      (-Components none = only the required parts)
     -SkipModels / -SkipOllama            no local models / no Ollama
     -InstallChatModel / -SkipChatModel   the local chat model (gpt-oss:20b, a 14 GB
                                          download) without asking / never. By default it
                                          is offered, and pre-ticked only on a PC whose
                                          GPU has 16 GB of memory or more.
+    -InstallInkling / -SkipInkling       inkling-2-mini (an 18 GB download): the model for this
+                                         machine's routine work, which it also lends to your other
+                                         machines' project runs. Offered on every PC, pre-ticked
+                                         only with a GPU of 24 GB+ and 96 GB+ of RAM.
     -InstallOllama                       Ollama without asking
     -InstallCodex / -NoCodex             Codex CLI without asking / never
     -InstallHermes / -InstallOpenClaw    run those official installers without asking
@@ -82,6 +86,8 @@ param(
   [switch]$SkipModels,
   [switch]$SkipChatModel,
   [switch]$InstallChatModel,
+  [switch]$SkipInkling,
+  [switch]$InstallInkling,
   [switch]$SkipOllama,
   [switch]$InstallOllama,
   [string]$Components = "",
@@ -199,6 +205,22 @@ function Register-ChatModel {
   if ($out -match '^already') { Ok "$ChatModel - $out" }
   elseif ($DryRun) { Warn "$ChatModel - $out" }
   else { Done "$ChatModel - $out" }
+}
+# inkling-2-mini: its own entry (never replaces the chat model: --add), and the model this machine
+# uses for routine work and lends to the others ("local" in data\worker-models.json: --prefer).
+function Register-Inkling {
+  $manual = "to use $InklingModel in $ProductName, add it in Settings -> LLM Connections (base URL http://localhost:11434/v1, model $InklingModel, no key) and put { `"local`": `"$InklingModel`" } in data\worker-models.json"
+  $script = Join-Path $RepoDir "scripts\register-local-model.mjs"
+  if (-not (Test-Path $script) -or -not (Have node)) {
+    if ($DryRun) { Warn "would add $InklingModel to $ProductName as the routine-work model" } else { Todo $manual }
+    return
+  }
+  $a = @($script, $InklingModel, "--add", "--prefer"); if ($DryRun) { $a += "--dry-run" }
+  $out = (& node @a | Out-String).Trim()
+  if ($LASTEXITCODE -ne 0) { Todo "$InklingModel is pulled but was not added to $ProductName ($out) - $manual"; return }
+  if ($out -match '^already.*already') { Ok "$InklingModel - $out" }
+  elseif ($DryRun) { Warn "$InklingModel - $out" }
+  else { Done "$InklingModel - $out" }
 }
 function Winget-Install($id, $name) {
   if ($DryRun) { Warn "would install $name ($id) via winget"; return }
@@ -366,6 +388,19 @@ function Get-GpuMemoryGB {
 $GpuGB = Get-GpuMemoryGB
 $ChatModelFits = $GpuGB -ge $ChatModelNeedsGpuGB
 $ChatModelNote = if ($ChatModelFits) { "this PC: $GpuGB GB GPU, a good fit" } elseif ($GpuGB -gt 0) { "this PC: $GpuGB GB GPU, too small to run it well - leave off" } else { "this PC: no NVIDIA GPU found, it would be very slow - leave off" }
+# inkling-2-mini: the model for routine work (project runs give it their smallest text tasks, and
+# other machines in the group can send it theirs). 18 GB on disk. It must fit on the GPU to be quick,
+# and loading it takes about 1.4x its size in memory even then (measured with gpt-oss:20b on a PC
+# with a 24 GB GPU: commit went from 69% to 94%), which the app checks before every load. So it is
+# offered everywhere and pre-ticked only on a big machine: 24 GB+ GPU and 96 GB+ of RAM. (A "64 GB"
+# PC reports about 63 here, and Raider18, one of those, could not load it while busy.)
+$InklingModel = 'inkling-2-mini'
+$InklingGB = 18
+$RamGB = 0
+try { $RamGB = [int][math]::Round((Get-CimInstance Win32_ComputerSystem -ErrorAction Stop).TotalPhysicalMemory / 1GB) } catch { }
+$InklingFits = ($GpuGB -ge 24) -and ($RamGB -ge 90)
+$InklingNote = if ($InklingFits) { "this PC: $GpuGB GB GPU, $RamGB GB RAM - a good fit" } elseif ($GpuGB -lt 24) { "this PC: " + $(if ($GpuGB) { "$GpuGB GB GPU" } else { "no NVIDIA GPU" }) + " - it needs 24 GB to run well; leave off" } elseif ($RamGB -ge 60) { "this PC: $GpuGB GB GPU, $RamGB GB RAM - it loads only when about 31 GB is free (the app checks first), so only if this PC is mostly idle" } else { "this PC: $RamGB GB RAM - too little to load it; leave off" }
+$script:inklingDecided = $false
 $script:chatModelDecided = $false          # true once the checklist below has settled it
 $script:skipAllModels = [bool]$SkipModels  # -SkipModels on the command line means "no local models at all"
 
@@ -374,16 +409,19 @@ if ($Mode -in @("install", "reinstall") -and -not $RepairOnly) {
     ollama   = @{ label = "Ollama - free local AI models + smarter vault search (~2.3 GB; best on the primary machine)"; have = [bool](Have ollama); on = $false }
     models   = @{ label = "Search model for Ollama (nomic-embed-text, 0.3 GB) - smarter vault search"; have = $false; on = $false }
     chatmodel = @{ label = "Local chat model ($ChatModel, $ChatModelGB GB download) - a free worker that runs on this PC ($ChatModelNote)"; have = $false; on = $false }
+    inkling  = @{ label = "Routine-work model ($InklingModel, $InklingGB GB download) - does low-complexity tasks for free, here and for your other machines ($InklingNote)"; have = $false; on = $false }
     codex    = @{ label = "Codex CLI - ChatGPT/Codex jobs on this machine (your ChatGPT subscription)"; have = [bool](Have codex); on = $false }
     hermes   = @{ label = "Hermes - goal mode + Control Room (~5-10 min, downloads Python)"; have = [bool](Test-Path (Join-Path $env:LOCALAPPDATA "hermes\hermes-agent\venv\Scripts\hermes.exe")) -or [bool](Get-Command hermes -ErrorAction SilentlyContinue); on = $false }
     openclaw = @{ label = "OpenClaw - Telegram gateway + approvals (primary machine only)"; have = [bool](Have openclaw); on = $false }
     firewall = @{ label = "LAN link - let your other machines reach this one (firewall rule, port 3101)"; have = [bool](Get-NetFirewallRule -DisplayName $PeerRule -ErrorAction SilentlyContinue); on = $true }
   }
-  if ($items.ollama.have) { $items.models.on = $true; $items.chatmodel.on = $ChatModelFits }
+  if ($items.ollama.have) { $items.models.on = $true; $items.chatmodel.on = $ChatModelFits; $items.inkling.on = $InklingFits }
   # flags given on the command line win over the defaults
-  if ($InstallOllama) { $items.ollama.on = $true; $items.models.on = $true; $items.chatmodel.on = $ChatModelFits }
-  if ($SkipOllama) { $items.ollama.on = $false; $items.models.on = $false; $items.chatmodel.on = $false }
-  if ($SkipModels) { $items.models.on = $false; $items.chatmodel.on = $false }
+  if ($InstallOllama) { $items.ollama.on = $true; $items.models.on = $true; $items.chatmodel.on = $ChatModelFits; $items.inkling.on = $InklingFits }
+  if ($SkipOllama) { $items.ollama.on = $false; $items.models.on = $false; $items.chatmodel.on = $false; $items.inkling.on = $false }
+  if ($SkipModels) { $items.models.on = $false; $items.chatmodel.on = $false; $items.inkling.on = $false }
+  if ($SkipInkling) { $items.inkling.on = $false }
+  if ($InstallInkling) { $items.inkling.on = $true; if (-not $items.ollama.have) { $items.ollama.on = $true }; $items.models.on = $true }
   if ($SkipChatModel) { $items.chatmodel.on = $false }
   if ($InstallChatModel) { $items.chatmodel.on = $true; if (-not $items.ollama.have) { $items.ollama.on = $true }; $items.models.on = $true }
   if ($InstallCodex) { $items.codex.on = $true }
@@ -393,7 +431,7 @@ if ($Mode -in @("install", "reinstall") -and -not $RepairOnly) {
   if ($Components) {
     foreach ($k in @($items.Keys)) { $items[$k].on = $false }
     foreach ($c in ($Components.ToLower() -split '[,\s]+' | Where-Object { $_ -and $_ -ne "none" })) {
-      if ($items.Contains($c)) { $items[$c].on = $true } else { Warn "-Components: unknown item '$c' (use ollama, models, chatmodel, codex, hermes, openclaw, firewall)" }
+      if ($items.Contains($c)) { $items[$c].on = $true } else { Warn "-Components: unknown item '$c' (use ollama, models, chatmodel, inkling, codex, hermes, openclaw, firewall)" }
     }
   } elseif (-not ($Yes -or $DryRun)) {
     $keys = @($items.Keys)
@@ -403,7 +441,7 @@ if ($Mode -in @("install", "reinstall") -and -not $RepairOnly) {
       Write-Host "  Always installed: Git, Node.js, the $ProductName app, Claude Code CLI, auto-start" -ForegroundColor DarkGray
       for ($i = 0; $i -lt $keys.Count; $i++) {
         $it = $items[$keys[$i]]
-        if ($it.have -and $keys[$i] -notin @("models", "chatmodel")) { Write-Host ("   [*] {0}  {1}  (already installed - kept)" -f ($i + 1), $it.label) -ForegroundColor DarkGray; continue }
+        if ($it.have -and $keys[$i] -notin @("models", "chatmodel", "inkling")) { Write-Host ("   [*] {0}  {1}  (already installed - kept)" -f ($i + 1), $it.label) -ForegroundColor DarkGray; continue }
         $box = if ($it.on) { "[x]" } else { "[ ]" }
         Write-Host ("   {0} {1}  {2}" -f $box, ($i + 1), $it.label) -ForegroundColor $(if ($it.on) { "Green" } else { "Gray" })
       }
@@ -413,9 +451,11 @@ if ($Mode -in @("install", "reinstall") -and -not $RepairOnly) {
         $i = [int]$n - 1
         if ($i -lt 0 -or $i -ge $keys.Count) { continue }
         $k = $keys[$i]
-        if ($items[$k].have -and $k -notin @("models", "chatmodel")) { continue }
+        if ($items[$k].have -and $k -notin @("models", "chatmodel", "inkling")) { continue }
         $items[$k].on = -not $items[$k].on
-        if ($k -eq "ollama" -and $items.ollama.on) { $items.models.on = $true; $items.chatmodel.on = $ChatModelFits }
+        if ($k -eq "ollama" -and $items.ollama.on) { $items.models.on = $true; $items.chatmodel.on = $ChatModelFits; $items.inkling.on = $InklingFits }
+        # the routine-work model needs Ollama too
+        if ($k -eq "inkling" -and $items.inkling.on -and -not $items.ollama.have) { $items.ollama.on = $true; $items.models.on = $true }
         # the chat model needs Ollama: ticking it brings Ollama along
         if ($k -eq "chatmodel" -and $items.chatmodel.on -and -not $items.ollama.have) { $items.ollama.on = $true; $items.models.on = $true }
       }
@@ -426,11 +466,12 @@ if ($Mode -in @("install", "reinstall") -and -not $RepairOnly) {
   $useOllama = -not $SkipOllama
   $SkipModels = -not $items.models.on
   $SkipChatModel = -not $items.chatmodel.on; $script:chatModelDecided = $true
+  $SkipInkling = -not $items.inkling.on; $script:inklingDecided = $true
   $NoCodex = -not ($items.codex.on -or $items.codex.have); $InstallCodex = $items.codex.on
   $NoHermes = -not $items.hermes.on; $InstallHermes = $items.hermes.on
   $NoOpenClaw = -not $items.openclaw.on; $InstallOpenClaw = $items.openclaw.on
   $NoFirewall = -not $items.firewall.on; $script:firewallChosen = $items.firewall.on
-  $picked = @($items.Keys | Where-Object { $items[$_].on -and -not ($items[$_].have -and $_ -notin @("models", "chatmodel")) })
+  $picked = @($items.Keys | Where-Object { $items[$_].on -and -not ($items[$_].have -and $_ -notin @("models", "chatmodel", "inkling")) })
   Info ("optional items: " + $(if ($picked.Count) { $picked -join ", " } else { "none" }) + " (re-run the installer -> Modify to add more later)")
 }
 
@@ -668,7 +709,7 @@ elseif (Test-Path (Join-Path $RepoDir "package.json")) {
 
 # ---- 7. Local models ------------------------------------------------------
 do { if (-not (Should "tools")) { break }
-Section "Local models (search model + optional chat model)"
+Section "Local models (search model + optional chat and routine-work models)"
 if (-not $useOllama) { Info "skipped" }
 elseif (Have ollama) {
   $have = (& ollama list 2>$null) | Out-String
@@ -687,6 +728,28 @@ elseif (Have ollama) {
       if ($LASTEXITCODE -eq 0) { Done "pulled $ChatModel"; Register-ChatModel } else { Todo "couldn't pull $ChatModel - run 'ollama pull $ChatModel' later, then run the installer again (Modify -> tools) to add it to $ProductName" }
     }
     else { Info "local chat model not installed ($ChatModelNote) - add it any time with 'ollama pull $ChatModel'" }
+  }
+  # The routine-work model: inkling-2-mini, 18 GB. Decided by the checklist on an install; asked here
+  # in Modify, pre-answered by what this PC can run. Pulled, added as its own agent, and made the
+  # model for routine work (lent to the other machines' project runs while memory allows).
+  # already pulled: set up only if it was chosen (or in Modify, where nothing was un-ticked); left unticked
+  # on an install, this machine's routine-work setting is not touched
+  if ($have -match [regex]::Escape($InklingModel)) {
+    if ($SkipInkling) { Ok "$InklingModel already pulled (not set as the routine-work model: not ticked)" }
+    else { Ok "$InklingModel already pulled"; Register-Inkling }
+  }
+  else {
+    $wantI = $false
+    if ($InstallInkling) { $wantI = $true }
+    elseif ($SkipInkling -or ($script:skipAllModels -and -not $script:inklingDecided)) { $wantI = $false }
+    elseif ($script:inklingDecided) { $wantI = $true }
+    else { $wantI = YesNo "Pull the routine-work model $InklingModel? $InklingGB GB download ($InklingNote)." $InklingFits }
+    if ($wantI -and $DryRun) { Warn "would pull $InklingModel ($InklingGB GB) and make it the model for routine work" }
+    elseif ($wantI) {
+      Info "pulling $InklingModel ($InklingGB GB - this takes a while)..."; & ollama pull $InklingModel | Out-Host
+      if ($LASTEXITCODE -eq 0) { Done "pulled $InklingModel"; Register-Inkling } else { Todo "couldn't pull $InklingModel - run 'ollama pull $InklingModel' later, then run the installer again (Modify -> tools)" }
+    }
+    else { Info "routine-work model not installed ($InklingNote) - add it any time with 'ollama pull $InklingModel', then the installer's Modify -> tools" }
   }
   # The search model: small, and what makes vault search understand meaning.
   foreach ($m in @('nomic-embed-text')) {

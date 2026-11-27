@@ -3,7 +3,12 @@
  * Add a local (Ollama) chat model to this machine's Mission Control, so a model
  * the installer just pulled shows up as an agent without a trip to Settings.
  *
- *   node scripts/register-local-model.mjs <model> [--dry-run] [--file <registry.json>]
+ *   node scripts/register-local-model.mjs <model> [--add] [--prefer] [--dry-run] [--file <registry.json>]
+ *
+ *   --add     always a separate entry: never repoint the old llama3.2 one (used for a second model,
+ *             e.g. inkling-2-mini next to the chat model)
+ *   --prefer  also make it this machine's model for routine work: "local": "<model>" in
+ *             data/worker-models.json (other settings there are kept; a file that won't parse is left alone)
  *
  * Called by install.ps1 and install.sh after the model is pulled. Written in
  * Node rather than in each shell on purpose: data/registry.json is the file that
@@ -12,7 +17,7 @@
  *
  * What it does, in order:
  *   - an entry for this model on a local address already exists → nothing
- *   - a local entry still points at the old default (llama3.2)   → repoint it
+ *   - a local entry still points at the old default (llama3.2)   → repoint it (not with --add)
  *   - otherwise                                                   → add one
  * It never touches a keyed entry, and if registry.json exists but cannot be
  * parsed it stops and changes nothing rather than replace a file full of keys.
@@ -25,6 +30,8 @@ import { fileURLToPath } from "node:url";
 
 const args = process.argv.slice(2);
 const dry = args.includes("--dry-run");
+const addOnly = args.includes("--add");
+const prefer = args.includes("--prefer");
 const fileFlag = args.indexOf("--file");
 const model = args.find((a, i) => !a.startsWith("--") && (fileFlag < 0 || i !== fileFlag + 1)) ?? "";
 const file = fileFlag >= 0 ? args[fileFlag + 1] : path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "data", "registry.json");
@@ -59,7 +66,7 @@ let outcome;
 if (reg.llms.some((l) => isLocal(l.baseUrl) && sameModel(l.model, model))) {
   outcome = `already in Mission Control as a local model (${model})`;
 } else {
-  const old = reg.llms.find((l) => isLocal(l.baseUrl) && !l.apiKey && sameModel(l.model, OLD_DEFAULT));
+  const old = addOnly ? undefined : reg.llms.find((l) => isLocal(l.baseUrl) && !l.apiKey && sameModel(l.model, OLD_DEFAULT));
   if (old) {
     old.model = model;
     // only rename the name the app itself used to give it; a name someone chose stays
@@ -77,6 +84,31 @@ if (reg.llms.some((l) => isLocal(l.baseUrl) && sameModel(l.model, model))) {
     const tmp = `${file}.${process.pid}.tmp`;
     fs.writeFileSync(tmp, JSON.stringify(reg, null, 2), "utf8");
     fs.renameSync(tmp, file);
+  }
+}
+
+// --prefer: the model runs and other machines' "local" jobs use this one (lib/runs.ts, lib/sessionActions.ts)
+if (prefer) {
+  const wm = path.join(path.dirname(file), "worker-models.json");
+  let cur = {};
+  let readable = true;
+  if (fs.existsSync(wm)) {
+    try {
+      cur = JSON.parse(fs.readFileSync(wm, "utf8").replace(/^\uFEFF/, "")) ?? {};
+    } catch {
+      readable = false;
+    }
+  }
+  const name = model.replace(/:latest$/, "");
+  if (!readable) outcome += `; ${path.basename(wm)} could not be read, so routine work was not pointed at ${name}`;
+  else if (cur.local === name) outcome += `; already the model for routine work`;
+  else {
+    if (!dry) {
+      const tmp = `${wm}.${process.pid}.tmp`;
+      fs.writeFileSync(tmp, JSON.stringify({ ...cur, local: name }, null, 2), "utf8");
+      fs.renameSync(tmp, wm);
+    }
+    outcome += `; ${dry ? "would make" : "made"} it the model for routine work`;
   }
 }
 
