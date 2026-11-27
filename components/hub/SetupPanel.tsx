@@ -30,6 +30,8 @@ interface Machine {
   clis: { name: string; version?: string }[];
   mcp: SetupMcp[];
   skills: string[];
+  skillHashes?: Record<string, string>;
+  ollamaModels?: { name: string; gb: number }[];
   plugins: SetupPlugin[];
   hooks: Record<string, number>;
   claudeMd?: { bytes: number; hash: string };
@@ -53,7 +55,9 @@ interface SetupView {
   error?: string;
 }
 
-type Pending = { host: string; label: string; change: "mcp-off" | "mcp-on" | "plugin-off" | "plugin-on"; target: string; what: string };
+type Pending =
+  | { kind: "change"; host: string; label: string; change: "mcp-off" | "mcp-on" | "plugin-off" | "plugin-on"; target: string; what: string }
+  | { kind: "copy"; from: string; fromLabel: string; to: string; label: string; name: string; replace: boolean; what: string };
 
 const short = (id: string) => id.split("@")[0];
 
@@ -125,9 +129,16 @@ export default function SetupPanel() {
 
   if (!view) return null;
 
-  const ask = (m: Machine, change: Pending["change"], target: string, what: string) => {
+  const ask = (m: Machine, change: Extract<Pending, { kind: "change" }>["change"], target: string, what: string) => {
     if (!m.self && m.acceptsReplies !== "edit") return;
-    setPending({ host: m.host, label: m.label, change, target, what });
+    setPending({ kind: "change", host: m.host, label: m.label, change, target, what });
+  };
+  // a skill comes from this machine when it has it, else from the first machine that does
+  const sourceFor = (name: string, not: string) => view.machines.find((o) => o.self && o.skills.includes(name) && o.host !== not) ?? view.machines.find((o) => o.host !== not && o.skills.includes(name));
+  const askCopy = (to: Machine, name: string, replace: boolean, from?: Machine) => {
+    const src = from ?? sourceFor(name, to.host);
+    if (!src || (!to.self && to.acceptsReplies !== "edit")) return;
+    setPending({ kind: "copy", from: src.host, fromLabel: src.label, to: to.host, label: to.label, name, replace, what: replace ? `Replace the skill ${name} with ${src.label}'s copy` : `Copy the skill ${name} from ${src.label}` });
   };
 
   return (
@@ -151,7 +162,9 @@ export default function SetupPanel() {
         {pending && (
           <div className="flex flex-wrap items-center gap-2 rounded-xl border px-3 py-2" style={{ borderColor: ACCENTS.amber.border }}>
             <span className="min-w-0 flex-1 text-xs text-ink">
-              {pending.what} on <b>{pending.label}</b>? New Claude sessions there get the change; sessions already open keep what they started with.
+              {pending.what} {pending.kind === "copy" ? "to" : "on"} <b>{pending.label}</b>? New Claude sessions there get the change; sessions already open keep what they started with.
+              {pending.kind === "copy" && " A skill can include scripts Claude may run, so copy only skills you trust."}
+              {pending.kind === "copy" && pending.replace && " The copy it replaces is kept in ~/.claude/skills-replaced there."}
             </span>
             <button
               type="button"
@@ -159,12 +172,13 @@ export default function SetupPanel() {
               onClick={async () => {
                 const p = pending;
                 setPending(null);
-                await post({ action: "change", host: p.host, change: p.change, target: p.target });
+                if (p.kind === "copy") await post({ action: "copy-skill", from: p.from, to: p.to, name: p.name, replace: p.replace });
+                else await post({ action: "change", host: p.host, change: p.change, target: p.target });
               }}
               className="cursor-pointer rounded-md px-2.5 py-1 text-[11px] font-bold text-black disabled:opacity-50"
               style={{ background: ACCENTS.amber.base }}
             >
-              {pending.change.endsWith("-off") ? "Turn off" : "Turn on"}
+              {pending.kind === "copy" ? (pending.replace ? "Replace" : "Copy") : pending.change.endsWith("-off") ? "Turn off" : "Turn on"}
             </button>
             <button type="button" onClick={() => setPending(null)} className="cursor-pointer rounded-md border border-line px-2.5 py-1 text-[11px] text-ink-dim hover:bg-white/[0.06]">
               Cancel
@@ -176,6 +190,9 @@ export default function SetupPanel() {
           const missing = [...fleet.allSkills].filter((s) => !m.skills.includes(s)).sort();
           const only = m.skills.filter((s) => view.machines.every((o) => o.host === m.host || !o.skills.includes(s)));
           const mdDiffers = m.claudeMd && fleet.usualMd && m.claudeMd.hash !== fleet.usualMd && view.machines.length > 1;
+          // skills this machine has in a different version from this one (when both report fingerprints)
+          const here = view.machines.find((o) => o.self);
+          const differs = m.self || !here?.skillHashes || !m.skillHashes ? [] : m.skills.filter((s) => here.skillHashes![s] && m.skillHashes![s] && here.skillHashes![s] !== m.skillHashes![s]);
           const lockTitle = canChange ? undefined : `${m.label} allows answers only from other machines. To change its setup from here, set its Replies from my other machines to "Answers + file edits" (Fleet → Sharing on that machine).`;
           return (
             <div key={m.host} className="flex flex-col gap-1.5 rounded-xl border border-line px-3 py-2">
@@ -239,16 +256,49 @@ export default function SetupPanel() {
                 <span className="w-16 shrink-0 text-ink-faint">Skills</span>
                 <span className="font-mono text-ink-dim">{m.skills.length}</span>
                 {missing.length > 0 && (
-                  <span className="font-mono" style={{ color: ACCENTS.amber.base }} title={missing.join(", ")}>
-                    · missing {missing.length} the others have: {missing.slice(0, 6).join(", ")}
-                    {missing.length > 6 ? "…" : ""}
-                  </span>
+                  <>
+                    <span className="font-mono" style={{ color: ACCENTS.amber.base }} title={missing.join(", ")}>
+                      · missing {missing.length} the others have{canChange ? " (click one to copy it here):" : ":"}
+                    </span>
+                    {missing.slice(0, 14).map((s) => (
+                      <Chip key={s} accent="amber" title={canChange ? `Copy ${s} here from ${sourceFor(s, m.host)?.label ?? "another machine"}` : lockTitle} onClick={canChange ? () => askCopy(m, s, false) : undefined}>
+                        + {s}
+                      </Chip>
+                    ))}
+                    {missing.length > 14 && <span className="font-mono text-ink-faint">+{missing.length - 14} more</span>}
+                  </>
+                )}
+                {differs.length > 0 && (
+                  <>
+                    <span className="font-mono" style={{ color: ACCENTS.amber.base }}>
+                      · {differs.length} differ from this machine&apos;s:
+                    </span>
+                    {differs.slice(0, 10).map((s) => (
+                      <Chip key={s} title={canChange ? `${m.label}'s ${s} isn't the same as this machine's. Click to replace it with this machine's copy (theirs is kept).` : lockTitle} onClick={canChange && here ? () => askCopy(m, s, true, here) : undefined}>
+                        ≠ {s}
+                      </Chip>
+                    ))}
+                  </>
                 )}
                 {only.length > 0 && view.machines.length > 1 && (
                   <span className="font-mono text-ink-faint" title={only.join(", ")}>
                     · only here: {only.slice(0, 6).join(", ")}
                     {only.length > 6 ? "…" : ""}
                   </span>
+                )}
+              </div>
+              <div className="flex flex-wrap items-center gap-1 text-[10px] leading-4">
+                <span className="w-16 shrink-0 text-ink-faint">Local AI</span>
+                {m.ollamaModels === undefined ? (
+                  <span className="font-mono text-ink-faint">Ollama not running{m.self ? "" : " (or an older version)"}</span>
+                ) : m.ollamaModels.length === 0 ? (
+                  <span className="font-mono text-ink-faint">Ollama running, no models</span>
+                ) : (
+                  m.ollamaModels.map((o) => (
+                    <Chip key={o.name} title={`${o.name} · ${o.gb} GB on disk · in this machine's Ollama`}>
+                      {o.name} {o.gb ? `${o.gb} GB` : ""}
+                    </Chip>
+                  ))
                 )}
               </div>
               <div className="flex flex-wrap items-baseline gap-1 font-mono text-[10px] leading-4 text-ink-faint">
@@ -289,7 +339,8 @@ export default function SetupPanel() {
         )}
         <p className="text-[10px] leading-4 text-ink-faint">
           Each machine shares names and versions only, every 15 minutes (never an MCP server&apos;s settings or keys). A machine on an older version
-          isn&apos;t listed until it is updated. Turning off one of your own MCP servers keeps its settings on that machine, so turning it back on restores it
+          isn&apos;t listed until it is updated. Copying a skill sends its folder directly over the LAN, and the receiving machine must allow
+          &quot;Answers + file edits&quot;. Turning off one of your own MCP servers keeps its settings on that machine, so turning it back on restores it
           exactly; a server that comes with a plugin is turned off with its plugin.
         </p>
       </div>

@@ -11,6 +11,7 @@ import { readConfig } from "./cluster";
 import { vaultAvailable, vaultInfo } from "./vault";
 import { readThread, type Thread } from "./sessionThread";
 import { PeerUnavailable, peerFetch } from "./peer";
+import { describeJob, logRemote } from "./remoteLog";
 import { exportSession, importSession, type HandoffPackage } from "./handoff";
 import { setHidden } from "./sessionNaming";
 import { SESSION_KEY_RE, SESSION_TOOLS, asSessionTool, hermesToolsets, toolLabel, toolOfKey } from "./sessionTools";
@@ -18,7 +19,8 @@ import { isModelId } from "./nousModels";
 import { findCheck } from "./projectChecks";
 import { buildInfo, isSchedulerInstance, launchUpdate, readUpdateStatus, updateBlockers } from "./selfUpdate";
 import { isPaused } from "./fleetPause";
-import { applySetupAction, SETUP_ACTIONS, SETUP_NAME_RE, type SetupAction } from "./machineSetup";
+import { applySetupAction, publishSetup, SETUP_ACTIONS, SETUP_NAME_RE, type SetupAction } from "./machineSetup";
+import { installSkill, type SkillPackage } from "./skillCopy";
 
 /**
  * Acting on sessions - from the Projects page, the live view and the
@@ -113,6 +115,10 @@ export interface SessionJob {
   /** mode "setup": the change, and the MCP server or plugin it applies to (checked on the target) */
   setupAction?: SetupAction;
   setupTarget?: string;
+  /** setup "skill-install": a different skill of that name there may be swapped out (the old one is kept) */
+  replace?: boolean;
+  /** setup "skill-install", IN TRANSIT ONLY: the packed skill (lib/skillCopy.ts). Never kept in the job store. */
+  skillPackage?: SkillPackage;
   /** set on the TARGET machine for a job another machine asked for */
   requestedBy?: string;
   requestedByLabel?: string;
@@ -292,6 +298,9 @@ export interface StartInput {
   /** setup: what to change, and the MCP server / plugin name */
   setupAction?: SetupAction;
   setupTarget?: string;
+  /** setup "skill-install": the packed skill, and whether a different one of that name may be replaced */
+  skillPackage?: SkillPackage;
+  replace?: boolean;
   /**
    * A job id chosen by the caller. A project run writes the id into its own
    * state BEFORE starting the job, so a crash between the two is recovered by
@@ -452,7 +461,8 @@ export async function startJob(input: StartInput): Promise<SessionJob> {
       // change to a machine's configuration: from elsewhere it needs "Answers + file edits".
       const host = input.host || me();
       if (!input.setupAction || !SETUP_ACTIONS.includes(input.setupAction) || !input.setupTarget || !SETUP_NAME_RE.test(input.setupTarget)) throw new Error("Pick what to change.");
-      job = { ...base, access: "edit", mode: "setup", tool: "claude", host, hostLabel: labelOf(host), cwd: "", title: `${input.setupAction} ${input.setupTarget}`, setupAction: input.setupAction, setupTarget: input.setupTarget };
+      if (input.setupAction === "skill-install" && input.skillPackage?.name !== input.setupTarget) throw new Error("Pick a skill to copy.");
+      job = { ...base, access: "edit", mode: "setup", tool: "claude", host, hostLabel: labelOf(host), cwd: "", title: `${input.setupAction} ${input.setupTarget}`, setupAction: input.setupAction, setupTarget: input.setupTarget, replace: input.replace === true ? true : undefined };
       break;
     }
     case "update": {
@@ -476,7 +486,7 @@ export async function startJob(input: StartInput): Promise<SessionJob> {
   if (job.host === me()) {
     await mutate((jobs) => void jobs.unshift(job));
     if (job.mode === "stop") return finishInline(job, () => stopLocal(job));
-    if (job.mode === "setup") return finishInline(job, async () => ({ status: "done", reply: await applySetupAction(job.setupAction!, job.setupTarget!) }));
+    if (job.mode === "setup") return finishInline(job, async () => ({ status: "done", reply: await applySetup(job, input.skillPackage) }));
     void pump();
     return job;
   }
@@ -486,7 +496,13 @@ export async function startJob(input: StartInput): Promise<SessionJob> {
   const level: RemoteReplies = m?.acceptsReplies ?? "off";
   if (level === "off") throw new Error(`${job.hostLabel} doesn't accept requests from other machines. Turn it on there: Fleet → Sharing → Replies from my other machines.`);
   if (job.access === "edit" && level !== "edit") throw new Error(`${job.hostLabel} only allows answers (no file edits) from other machines.`);
-  const request = { ...job, requestedBy: me(), requestedByLabel: myLabel };
+  // a copied skill rides along with the request only; it is never kept in this machine's job store
+  const request = { ...job, requestedBy: me(), requestedByLabel: myLabel, ...(input.skillPackage && job.mode === "setup" ? { skillPackage: input.skillPackage } : {}) };
+  // the remote-action log (lib/remoteLog.ts): reads of a conversation aren't actions, everything else is
+  const logOut = (outcome: "sent" | "refused" | "accepted", via: "lan" | "vault", reason?: string) =>
+    job.mode === "thread"
+      ? Promise.resolve()
+      : logRemote({ id: job.id, dir: "out", host: job.host, hostLabel: job.hostLabel, from: me(), fromLabel: myLabel, kind: job.mode, via, what: describeJob(job), access: job.access, outcome, reason });
 
   // 1) the LAN
   try {
@@ -498,18 +514,23 @@ export async function startJob(input: StartInput): Promise<SessionJob> {
       return job;
     }
     if (job.mode === "export") {
-      const pkg = await peerFetch<HandoffPackage>(job.host, `/peer/export?key=${encodeURIComponent(job.key!)}`, { timeoutMs: 60_000 });
+      const pkg = await peerFetch<HandoffPackage>(job.host, `/peer/export?key=${encodeURIComponent(job.key!)}&job=${encodeURIComponent(job.id)}`, { timeoutMs: 60_000 });
       job.via = "lan";
+      await logOut("accepted", "lan");
       await mutate((jobs) => void jobs.unshift(job));
       return finishInline(job, () => receiveHandoff(job, pkg));
     }
     const r = await peerFetch<{ job: SessionJob }>(job.host, "/peer/request", { body: { job: request, content }, timeoutMs: job.mode === "import" ? 60_000 : 10_000 });
     Object.assign(job, resultOf({ ...job, ...r.job }), { via: "lan", status: r.job.status === "queued" ? "sent" : r.job.status });
+    await logOut("sent", "lan");
     if (job.mode === "import" && job.status === "done" && job.handoff?.hideSource) await setHidden([job.key!], true).catch(() => {});
     await mutate((jobs) => void jobs.unshift(job));
     return job;
   } catch (e) {
-    if (!(e instanceof PeerUnavailable)) throw e; // it answered with a refusal
+    if (!(e instanceof PeerUnavailable)) {
+      await logOut("refused", "lan", (e as Error).message);
+      throw e; // it answered with a refusal
+    }
   }
 
   // 2) the vault
@@ -518,8 +539,20 @@ export async function startJob(input: StartInput): Promise<SessionJob> {
   job.via = "vault";
   job.status = "sent";
   await writeJson(path.join(requestsDir(job.host), `${job.id}.json`), { v: 1, job: { ...request, via: "vault" }, sentAt: Date.now() });
+  await logOut("sent", "vault");
   await mutate((jobs) => void jobs.unshift(job));
   return job;
+}
+
+/** A setup change on this machine: MCP server / plugin off-on, or installing a copied skill. */
+async function applySetup(job: SessionJob, pkg?: SkillPackage): Promise<string> {
+  if (job.setupAction === "skill-install") {
+    if (!pkg) throw new Error("The skill didn't arrive with the request.");
+    const reply = await installSkill(pkg, { replace: job.replace });
+    void publishSetup(true).catch(() => {});
+    return reply;
+  }
+  return applySetupAction(job.setupAction!, job.setupTarget!);
 }
 
 /** Run a quick job (stop, handoff) right away and record its outcome. */
@@ -548,10 +581,39 @@ async function receiveHandoff(job: SessionJob, pkg: HandoffPackage): Promise<Par
  * A request from another machine (LAN or vault). Everything that matters is
  * re-derived from THIS machine's own data, never taken from the request.
  */
+/**
+ * A request from another machine. Every one is recorded in the remote-action log (lib/remoteLog.ts)
+ * with where it came from and whether it was carried out or refused — except reads of a
+ * conversation (mode "thread") and a request seen before (the same id again).
+ */
 export async function acceptRequest(r: SessionJob, via: "lan" | "vault", content?: HandoffPackage): Promise<SessionJob> {
   if (!r?.id || !r.requestedBy || !ID_RE.test(r.id)) throw new Error("bad request");
   const existing = (await listJobs()).find((j) => j.id === r.id);
   if (existing) return existing;
+  const cfg = await readConfig().catch(() => null);
+  const entry = {
+    id: r.id,
+    dir: "in" as const,
+    host: me(),
+    hostLabel: cfg?.label || me(),
+    from: String(r.requestedBy),
+    fromLabel: r.requestedByLabel,
+    kind: r.mode,
+    via,
+    what: describeJob(r),
+    access: r.access,
+  };
+  try {
+    const job = await acceptRequestInner(r, via, content);
+    if (r.mode !== "thread") await logRemote({ ...entry, access: job.access, outcome: job.status === "error" ? "failed" : "accepted", reason: job.status === "error" ? job.error : undefined });
+    return job;
+  } catch (e) {
+    if (r.mode !== "thread") await logRemote({ ...entry, outcome: "refused", reason: (e as Error).message });
+    throw e;
+  }
+}
+
+async function acceptRequestInner(r: SessionJob, via: "lan" | "vault", content?: HandoffPackage): Promise<SessionJob> {
   const settings = await readShareSettings();
   const cfg = await readConfig().catch(() => null);
   const myLabel = cfg?.label || me();
@@ -618,7 +680,8 @@ export async function acceptRequest(r: SessionJob, via: "lan" | "vault", content
       // job.access is "edit" only when THIS machine allows edits (checked above, with a refusal)
       if (job.access !== "edit") throw Object.assign(new Error(`${myLabel} only allows answers from other machines; changing its setup needs "Answers + file edits".`), { status: 403 });
       if (!r.setupAction || !SETUP_ACTIONS.includes(r.setupAction) || typeof r.setupTarget !== "string" || !SETUP_NAME_RE.test(r.setupTarget)) throw new Error("bad setup change");
-      Object.assign(job, { setupAction: r.setupAction, setupTarget: r.setupTarget, title: `${r.setupAction} ${r.setupTarget}` });
+      if (r.setupAction === "skill-install" && (!r.skillPackage || r.skillPackage.name !== r.setupTarget)) throw new Error("bad skill copy");
+      Object.assign(job, { setupAction: r.setupAction, setupTarget: r.setupTarget, title: `${r.setupAction} ${r.setupTarget}`, replace: r.replace === true ? true : undefined });
       break;
     }
     case "update": {
@@ -647,7 +710,7 @@ export async function acceptRequest(r: SessionJob, via: "lan" | "vault", content
 
   // quick ones run right away; AI runs wait for a slot
   if (job.mode === "stop") return finishInline(job, () => stopLocal(job));
-  if (job.mode === "setup") return finishInline(job, async () => ({ status: "done", reply: await applySetupAction(job.setupAction!, job.setupTarget!) }));
+  if (job.mode === "setup") return finishInline(job, async () => ({ status: "done", reply: await applySetup(job, r.skillPackage) }));
   if (job.mode === "thread") {
     return finishInline(job, async () => {
       const t = await readThread({ key: job.key!, tool: job.tool }, 1500);

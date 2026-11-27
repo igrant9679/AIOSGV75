@@ -186,7 +186,11 @@ export function MeterRow({ m }: { m: SubscriptionMeter }) {
           <span>
             {fmtTokens(m.tokens5h)} tokens · 5h &nbsp;·&nbsp; {fmtTokens(m.tokens7d)} · 7d
           </span>
-          <span>limit not reported</span>
+          {m.status === "limited" ? (
+            <span style={{ color: c.base }}>limit reached{m.resetsAt ? ` · resets in ${until(m.resetsAt)}` : ""}</span>
+          ) : (
+            <span>limit not reported</span>
+          )}
         </p>
       )}
     </div>

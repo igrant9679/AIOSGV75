@@ -8,6 +8,7 @@ import { readConfig } from "./cluster";
 import { vaultAvailable, vaultInfo } from "./vault";
 import { cleanEnv } from "./runners";
 import { listMcpServers } from "./mcp";
+import { skillHash } from "./skillCopy";
 
 /**
  * Fleet → Setup: what each machine's AI tools are set up with, side by side.
@@ -57,6 +58,10 @@ export interface MachineSetup {
   mcp: SetupMcp[];
   /** skills in ~/.claude/skills (plugin skills are listed under their plugin) */
   skills: string[];
+  /** a fingerprint of each of those skills' contents, so a copy that differs shows (lib/skillCopy.ts) */
+  skillHashes?: Record<string, string>;
+  /** models in this machine's Ollama (names and sizes only); missing = Ollama isn't running here */
+  ollamaModels?: { name: string; gb: number }[];
   plugins: SetupPlugin[];
   /** Claude Code hooks: event → how many */
   hooks: Record<string, number>;
@@ -218,11 +223,41 @@ export async function collectSetup(forceClis = false): Promise<MachineSetup> {
     clis: await cliVersions(forceClis),
     mcp,
     skills,
+    skillHashes: skillHashes(skills),
+    ollamaModels: await ollamaModels(),
     plugins,
     hooks: Object.fromEntries(Object.entries(settings?.hooks ?? {}).map(([k, v]) => [k, Array.isArray(v) ? v.length : 0])),
     claudeMd: fingerprint(path.join(CLAUDE_DIR, "CLAUDE.md")),
     codexAgentsMd: fingerprint(path.join(HOME, ".codex", "AGENTS.md")),
   };
+}
+
+/** Skill fingerprints, cached 10 minutes (each one reads the whole skill folder). */
+let hashCache: { at: number; v: Record<string, string> } | null = null;
+function skillHashes(skills: string[]): Record<string, string> {
+  if (hashCache && Date.now() - hashCache.at < 10 * 60_000 && skills.every((s) => s in hashCache!.v)) return hashCache.v;
+  const v: Record<string, string> = {};
+  for (const s of skills) {
+    const h = skillHash(s);
+    if (h) v[s] = h;
+  }
+  hashCache = { at: Date.now(), v };
+  return v;
+}
+
+/** The models this machine's Ollama has (its own API on localhost; nothing leaves the machine). */
+async function ollamaModels(): Promise<{ name: string; gb: number }[] | undefined> {
+  try {
+    const r = await fetch("http://127.0.0.1:11434/api/tags", { signal: AbortSignal.timeout(2_000) });
+    if (!r.ok) return undefined;
+    const b = (await r.json()) as { models?: { name?: string; size?: number }[] };
+    return (b.models ?? [])
+      .filter((m) => typeof m.name === "string")
+      .map((m) => ({ name: m.name!, gb: Math.round(((m.size ?? 0) / 1e9) * 10) / 10 }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  } catch {
+    return undefined;
+  }
 }
 
 // ─── sharing ───
@@ -267,8 +302,9 @@ export async function allSetups(): Promise<MachineSetup[]> {
 
 // ─── changes (this machine only; another machine's request arrives as a job, lib/sessionActions.ts) ───
 
-export type SetupAction = "mcp-off" | "mcp-on" | "plugin-off" | "plugin-on";
-export const SETUP_ACTIONS: SetupAction[] = ["mcp-off", "mcp-on", "plugin-off", "plugin-on"];
+/** "skill-install" carries a packed skill with it (lib/skillCopy.ts); the others name what to switch. */
+export type SetupAction = "mcp-off" | "mcp-on" | "plugin-off" | "plugin-on" | "skill-install";
+export const SETUP_ACTIONS: SetupAction[] = ["mcp-off", "mcp-on", "plugin-off", "plugin-on", "skill-install"];
 
 /**
  * Apply one change here. The target is checked against this machine's own setup, never taken on
@@ -276,6 +312,7 @@ export const SETUP_ACTIONS: SetupAction[] = ["mcp-off", "mcp-on", "plugin-off", 
  */
 export async function applySetupAction(action: SetupAction, target: string): Promise<string> {
   if (!SETUP_ACTIONS.includes(action) || !SETUP_NAME_RE.test(target)) throw new Error("bad setup change");
+  if (action === "skill-install") throw new Error("A skill copy needs the skill itself (lib/skillCopy.ts).");
   const s = await collectSetup();
   const bin = claudeBin();
   if (action === "mcp-off") {

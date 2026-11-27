@@ -6,6 +6,7 @@ import { listJobs } from "./sessionActions";
 import { modeOf, readNetwork } from "./peer";
 import { toolLabel, toolShort } from "./sessionTools";
 import { MEM_FULL, MEM_WARN, memoryByHost } from "./machineLoad";
+import { withAccountLimits } from "./accountUsage";
 
 /**
  * "Run this somewhere": rank the machines that could take a task right now.
@@ -33,10 +34,11 @@ export async function rankMachines(input: { project?: string; tool: SessionTool 
   const snap = await sessionsSnapshot();
   const [{ sessions, remote }, cfg, jobs, net, memoryOf] = await Promise.all([mergeRemoteSessions(snap.sessions), readConfig().catch(() => null), listJobs(), readNetwork(), memoryByHost()]);
   const toolName = input.tool === "codex" ? "ChatGPT / Codex" : toolShort(input.tool);
-  const machines = [
+  // a login that hit its limit on one machine is limited on all of them (lib/accountUsage.ts)
+  const machines = withAccountLimits([
     { host: os.hostname(), label: cfg?.label || os.hostname(), local: true, online: true, via: "self", accepts: "edit", subs: snap.subscriptions as SubscriptionMeter[] },
     ...remote.map((m) => ({ host: m.host, label: m.label, local: false, online: !m.stale, via: m.via, accepts: m.acceptsReplies as string, subs: m.subscriptions })),
-  ];
+  ]);
   const out: Candidate[] = [];
   for (const m of machines) {
     const reasons: string[] = [];

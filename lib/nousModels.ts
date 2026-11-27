@@ -49,8 +49,12 @@ export interface WorkerModelSettings {
   routine?: string;
   web?: string;
   avoid?: string[];
-  /** false = project runs never hand a task to this machine's local model (lib/runs.ts) */
-  local?: boolean;
+  /**
+   * false = project runs never hand a task to this machine's local model (lib/runs.ts).
+   * A string = WHICH local model does that work, when several are registered: a registry LLM's id,
+   * name or model (e.g. "inkling-2-mini"). Unset = the first registered local model that is running.
+   */
+  local?: false | string;
   /**
    * Multiplies every run worker's time budget (lib/runs.ts TIME_BUDGET_MS), 0.05 to 3. For testing
    * what happens when a worker runs out of time without waiting 19 minutes; unset = 1.
@@ -138,7 +142,7 @@ export async function readWorkerModelSettings(): Promise<WorkerModelSettings> {
       routine: isModelId(j.routine) ? j.routine : undefined,
       web: isModelId(j.web) ? j.web : undefined,
       avoid: Array.isArray(j.avoid) ? j.avoid.filter(isModelId) : [],
-      local: j.local === false ? false : undefined,
+      local: j.local === false ? false : typeof j.local === "string" && j.local.trim() && j.local.length <= 120 ? j.local.trim() : undefined,
       budgetScale: typeof j.budgetScale === "number" && j.budgetScale >= 0.05 && j.budgetScale <= 3 ? j.budgetScale : undefined,
     };
   } catch {

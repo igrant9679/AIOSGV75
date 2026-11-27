@@ -61,7 +61,12 @@ manual is `/guide` (source: `lib/guideContent.ts`).
   carried by the heartbeat; feeds Health, run placement and Run somewhere),
   `fleetPause.ts` (one vault flag that holds every machine's autonomous work),
   `machineSetup.ts` (Fleet -> Setup: each machine's MCP servers, plugins, skills, CLI
-  versions as names only; MCP server / plugin off-on through Claude's own CLI),
+  versions, Ollama models as names only; MCP server / plugin off-on through Claude's own CLI),
+  `skillCopy.ts` (Fleet -> Setup -> copy one of your own skills to another machine: pack, check, stage, swap),
+  `accountUsage.ts` (Fleet -> Accounts: meters added up per login fingerprint; Claude's
+  "you've hit your limit" lines; `withAccountLimits` for placement and Run somewhere; pure, tested),
+  `remoteLog.ts` + `remoteCheck.ts` (Fleet -> Remote actions: every cross-machine request logged on
+  both ends, shared in the vault, cross-checked for requests the named sender never sent),
   `sessionTools.ts` (the registry of session tools) + `sessions.ts` /
   `hermesSessions.ts` (readers) + `sessionActions.ts` (reply / new / stop,
   locally and on other machines),
@@ -262,6 +267,28 @@ manual is `/guide` (source: `lib/guideContent.ts`).
     `setup`) with access "edit": another machine may make it only when that machine allows
     file edits. Test with a throwaway server, not the owner's (verified: definition and
     env restored byte for byte).
+
+34. **A login's limits are the account's, not the machine's.** Four machines on one Claude login share one
+    allowance, so meters carry `account` (a 12-hex hash of the account id: `accountUuid` from
+    ~/.claude.json, `tokens.account_id` from ~/.codex/auth.json, read alone; never an email or token)
+    and `withAccountLimits` (lib/accountUsage.ts) makes a limit seen on one machine count on all of them
+    for placement and Run somewhere. Claude Code records no usage figure, only the moment a limit is hit
+    (an `"error":"rate_limit"` line with "resets 6:10pm (Zone)"), so that is what the Claude meter uses;
+    the reset is the first such clock time AFTER the line. Test: scripts/test-account-usage.mjs.
+35. **Log a cross-machine action on both ends, and trust neither end alone.** Requests can arrive through
+    the vault, which anything syncing it can write. `acceptRequest` logs every request ("in", carried out
+    or refused), `startJob` / `decideFleet` / the copy route log what was sent ("out"), and
+    `crossCheck` (lib/remoteCheck.ts, pure, tested by scripts/test-remote-log.mjs) flags an "in" whose
+    named sender's own log, recent and reaching back far enough, has no matching "out". The log is
+    append-only JSON lines, and "changed since last shared" is the FILE's time, not a flag: route
+    handlers write it, the scheduler's instance publishes it (rule 1). A new remote endpoint that acts
+    must log too.
+36. **A copied skill is untrusted input that may contain scripts.** It travels only as a setup job with
+    access "edit" (the receiving machine must allow file edits), is checked on arrival (name pattern, no
+    absolute paths, no "..", no links, file and size caps, SKILL.md present), written to a staging folder
+    outside ~/.claude/skills and moved into place in one step. A different skill of the same name is
+    replaced only when asked and kept in ~/.claude/skills-replaced (outside the skills folder, so Claude
+    doesn't load it). The package rides on the request only and is never stored in the job store.
 
 ## Dev cycle (production server auto-starts at login)
 

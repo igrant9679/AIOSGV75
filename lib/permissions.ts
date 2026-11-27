@@ -222,6 +222,15 @@ export async function decideFleet(host: string, id: string, behavior: "allow" | 
   const cfg = await readConfig().catch(() => null);
   const by = cfg?.label || me();
   if (!host || host === me()) return decideLocal(id, behavior, { ...opts, by });
-  const r = await peerFetch<{ request: PermissionRequest }>(host, "/peer/permission", { body: { id, behavior, ...opts, by }, timeoutMs: 5_000 });
-  return r.request;
+  const { logRemote } = await import("./remoteLog");
+  const entry = { id: `perm-${id.slice(0, 60)}`, dir: "out" as const, host, from: me(), fromLabel: by, kind: "permission" as const, via: "lan" as const };
+  try {
+    const r = await peerFetch<{ request: PermissionRequest }>(host, "/peer/permission", { body: { id, behavior, ...opts, by }, timeoutMs: 5_000 });
+    const q = r.request;
+    await logRemote({ ...entry, hostLabel: q.hostLabel, what: `${behavior}${opts.always ? " (always)" : ""} ${q.toolName}: ${q.summary.slice(0, 80)}`, outcome: "accepted" });
+    return q;
+  } catch (e) {
+    await logRemote({ ...entry, what: `${behavior} a permission request`, outcome: "refused", reason: (e as Error).message });
+    throw e;
+  }
 }

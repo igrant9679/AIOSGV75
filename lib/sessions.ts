@@ -5,6 +5,8 @@ import path from "path";
 import os from "os";
 import readline from "readline";
 import zlib from "zlib";
+import crypto from "crypto";
+import { parseClaudeLimit, type ClaudeLimitHit } from "./accountUsage";
 import {
   UNSORTED,
   desktopAppTitles,
@@ -103,6 +105,13 @@ export interface SubscriptionMeter {
   status: "ok" | "near" | "limited" | "unknown" | "not_set_up";
   note: string;
   observedAt?: number;
+  /**
+   * Which login this is, as a short fingerprint (a hash of the account id, never the email), so
+   * meters from different machines on the same account can be added up (lib/accountUsage.ts).
+   */
+  account?: string;
+  /** the account's display name, for Fleet → Accounts */
+  accountLabel?: string;
 }
 
 const HOME = os.homedir();
@@ -112,7 +121,7 @@ const CLAUDE_JSON = path.join(HOME, ".claude.json");
 const CODEX_SESSIONS = path.join(HOME, ".codex", "sessions");
 const CODEX_INDEX = path.join(HOME, ".codex", "session_index.jsonl");
 const CACHE_FILE = path.join(process.cwd(), "data", "sessions-cache.json");
-const CACHE_VERSION = 5; // bump when parsing changes, so cached summaries are re-read
+const CACHE_VERSION = 6; // bump when parsing changes, so cached summaries are re-read
 const PARSE_BUDGET_MS = 6_000;
 const RUNNING_WINDOW_MS = 3 * 60_000;
 
@@ -125,6 +134,8 @@ interface CachedEntry {
   openTurn?: boolean;
   /** usage samples for trailing-window meters: [ts, tokens] */
   samples?: [number, number][];
+  /** claude only: the newest "you've hit your limit" line in this file */
+  limitHit?: ClaudeLimitHit;
 }
 
 interface CodexRateLimits {
@@ -319,7 +330,7 @@ function idFromFile(file: string): string {
 
 const CLAUDE_WANTED = ['"type":"user"', '"type":"assistant"', '"type":"ai-title"', '"type":"custom-title"'];
 
-async function parseClaude(file: string): Promise<CachedEntry["summary"] & { samples: [number, number][] }> {
+async function parseClaude(file: string): Promise<CachedEntry["summary"] & { samples: [number, number][]; limitHit?: ClaudeLimitHit }> {
   const id = idFromFile(file);
   let cwd = "";
   let firstPrompt = "";
@@ -336,6 +347,7 @@ async function parseClaude(file: string): Promise<CachedEntry["summary"] & { sam
   const seen = new Set<string>();
   const samples: [number, number][] = [];
   const touched: string[] = [];
+  let limitHit: ClaudeLimitHit | undefined;
 
   const rl = readline.createInterface({ input: fs.createReadStream(file, { encoding: "utf8" }), crlfDelay: Infinity });
   for await (const line of rl) {
@@ -367,6 +379,12 @@ async function parseClaude(file: string): Promise<CachedEntry["summary"] & { sam
     if (!cwd && typeof o.cwd === "string") cwd = o.cwd;
     if (!origin && typeof o.entrypoint === "string") origin = o.entrypoint;
     const msg = o.message as { role?: string; content?: unknown; usage?: Record<string, number>; model?: string; id?: string } | undefined;
+    // "You've hit your session limit · resets 6:10pm (America/New_York)": the only limit Claude Code records
+    if (o.error === "rate_limit" && o.isApiErrorMessage && ts && (!limitHit || ts > limitHit.ts)) {
+      const txt = textOf(msg?.content);
+      if (/limit/i.test(txt)) limitHit = parseClaudeLimit(txt, ts);
+      continue;
+    }
     if (type === "user" && !o.isMeta && msg) {
       const content = msg.content;
       const isToolResult = Array.isArray(content) && content.some((c) => c && typeof c === "object" && (c as { type?: string }).type === "tool_result");
@@ -425,6 +443,7 @@ async function parseClaude(file: string): Promise<CachedEntry["summary"] & { sam
     model,
     origin,
     samples: compactSamples(samples),
+    limitHit,
   };
 }
 
@@ -678,8 +697,8 @@ export async function sessionsSnapshot(): Promise<SessionsSnapshot> {
           if (Date.now() - started > PARSE_BUDGET_MS) break;
           try {
             if (f.tool === "claude") {
-              const { samples, ...summary } = await parseClaude(f.file);
-              updates[f.file] = { sig: f.sig, summary, samples };
+              const { samples, limitHit, ...summary } = await parseClaude(f.file);
+              updates[f.file] = { sig: f.sig, summary, samples, limitHit };
             } else {
               const r = await parseCodex(f.file);
               updates[f.file] = { sig: f.sig, summary: r.summary, rateLimits: r.rateLimits, openTurn: r.openTurn, samples: r.samples };
@@ -862,11 +881,15 @@ function claudePlanName(orgType?: string, tier?: string | null): string | undefi
   return mult ? `${name} ${mult}` : name;
 }
 
+/** A login's fingerprint: enough to tell two machines share an account, useless for anything else. */
+export const accountFingerprint = (tool: string, id: string) => crypto.createHash("sha256").update(`mission-control:${tool}:${id}`).digest("hex").slice(0, 12);
+
 /** Account label only — reads ~/.claude.json's oauthAccount block, never credentials. */
-async function claudeAccountLabel(): Promise<{ label: string; plan?: string }> {
+async function claudeAccountLabel(): Promise<{ label: string; plan?: string; account?: string }> {
   try {
     const o = JSON.parse(await fsp.readFile(CLAUDE_JSON, "utf8")) as {
       oauthAccount?: {
+        accountUuid?: string;
         emailAddress?: string;
         displayName?: string;
         organizationName?: string;
@@ -881,11 +904,29 @@ async function claudeAccountLabel(): Promise<{ label: string; plan?: string }> {
     return {
       label: who ? `Claude · ${who}` : "Claude",
       plan: claudePlanName(a.organizationType, a.userRateLimitTier ?? a.organizationRateLimitTier),
+      account: a.accountUuid ? accountFingerprint("claude", a.accountUuid) : undefined,
     };
   } catch {
     return { label: "Claude" };
   }
 }
+
+/** Which ChatGPT account Codex is signed in to: reads ONLY tokens.account_id from ~/.codex/auth.json (cached 10 min). */
+let codexAcct: { at: number; v?: string } | null = null;
+async function codexAccount(): Promise<string | undefined> {
+  if (codexAcct && Date.now() - codexAcct.at < 10 * 60_000) return codexAcct.v;
+  let v: string | undefined;
+  try {
+    const o = JSON.parse(await fsp.readFile(path.join(HOME, ".codex", "auth.json"), "utf8")) as { tokens?: { account_id?: unknown } };
+    if (typeof o.tokens?.account_id === "string" && o.tokens.account_id) v = accountFingerprint("codex", o.tokens.account_id);
+  } catch {
+    /* not signed in, or an API-key login */
+  }
+  codexAcct = { at: Date.now(), v };
+  return v;
+}
+
+const clock = (t: number) => new Date(t).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
 
 function windowLabel(minutes: number): string {
   if (minutes >= 10_000) return "weekly";
@@ -901,17 +942,29 @@ async function buildMeters(cache: CacheFile, foundTools: Set<SessionTool>): Prom
 
   const hasClaude = foundTools.has("claude");
   const acct = await claudeAccountLabel();
+  // Claude Code records no limit figure, only the moment a limit is hit (and when it resets)
+  let hit: ClaudeLimitHit | undefined;
+  for (const e of Object.values(cache.entries)) if (e.limitHit && (!hit || e.limitHit.ts > hit.ts)) hit = e.limitHit;
+  const now = Date.now();
+  const limitedNow = !!hit && (hit.resetsAt ? hit.resetsAt > now : now - hit.ts < H5);
   meters.push({
     id: "claude",
     tool: "claude",
     label: acct.label,
     plan: acct.plan,
+    account: acct.account,
+    accountLabel: acct.label,
     tokens5h: sumWindow(cache, "claude", H5),
     tokens7d: sumWindow(cache, "claude", D7),
-    status: hasClaude ? "unknown" : "not_set_up",
-    note: hasClaude
-      ? "Claude Code doesn't write its usage limits to disk — showing tokens used from local sessions."
-      : "No Claude Code sessions found on this machine.",
+    status: !hasClaude ? "not_set_up" : limitedNow ? "limited" : "unknown",
+    windowLabel: limitedNow ? (hit!.kind === "weekly" ? "weekly" : hit!.kind === "session" ? "5h window" : undefined) : undefined,
+    resetsAt: limitedNow ? hit!.resetsAt : undefined,
+    observedAt: hit?.ts,
+    note: !hasClaude
+      ? "No Claude Code sessions found on this machine."
+      : limitedNow
+        ? `Hit the ${hit!.kind === "other" ? "usage" : hit!.kind} limit at ${clock(hit!.ts)}${hit!.resetsAt ? `; resets at ${clock(hit!.resetsAt)}` : ""}.`
+        : "Claude Code doesn't write how much of its limit is used, only when it's hit — showing tokens used from local sessions.",
   });
 
   let rl: CodexRateLimits | undefined;
@@ -927,6 +980,7 @@ async function buildMeters(cache: CacheFile, foundTools: Set<SessionTool>): Prom
     tool: "codex",
     label: "ChatGPT · Codex",
     plan: codexPlanName(rl?.plan),
+    account: hasCodex ? await codexAccount() : undefined,
     usedPercent: stale ? 0 : pct,
     windowLabel: window ? windowLabel(window.window_minutes) : undefined,
     resetsAt: stale ? undefined : resetsAt,

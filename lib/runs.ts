@@ -17,6 +17,7 @@ import { readRegistry, isLocalEndpoint } from "./registry";
 import { productName } from "./netSettings";
 import { readChecks } from "./projectChecks";
 import { placeTask, type PlacementMachine } from "./runPlacement";
+import { withAccountLimits } from "./accountUsage";
 import { memoryByHost } from "./machineLoad";
 import { isPaused } from "./fleetPause";
 import { noteAttempt, readLessons, recordText, saveLessons, workerRecord, type AttemptNote, type Outcome } from "./runLessons";
@@ -719,23 +720,35 @@ function fitsLocal(run: Run, t: RunTask): boolean {
  * data/worker-models.json), a keyless local endpoint is registered, and it
  * answers with that model in its list. Asked, not assumed — with Ollama closed
  * every routine task would otherwise lose a pass finding that out.
+ *
+ * With several local models registered (say Llama and inkling-2-mini), "local": "<id, name or
+ * model>" in data/worker-models.json says which one does this work; unset, it is the first
+ * registered one that is running. (It used to be the first registered one, running or not, so a
+ * second local model was never used.)
  */
 async function localWorker(run: Run): Promise<LocalModel | null> {
   // the local model is THIS machine's; a task it does needs no folder, so a spreading run may use it wherever it works
   if (run.host !== me() && !run.spread) return null;
-  if ((await readWorkerModelSettings()).local === false) return null;
-  const llm = (await readRegistry()).llms.find((l) => isLocalEndpoint(l.baseUrl) && !l.apiKey && l.model);
-  if (!llm) return null;
-  try {
-    const res = await fetch(`${llm.baseUrl.replace(/\/+$/, "")}/models`, { signal: AbortSignal.timeout(2500) });
-    if (!res.ok) return null;
-    const ids = (((await res.json()) as { data?: { id?: string }[] }).data ?? []).map((m) => String(m.id ?? ""));
-    const bare = (s: string) => s.replace(/:latest$/, "");
-    if (!ids.some((x) => bare(x) === bare(llm.model))) return null;
-  } catch {
-    return null;
+  const pref = (await readWorkerModelSettings()).local;
+  if (pref === false) return null;
+  const bare = (s: string) => s.toLowerCase().replace(/:latest$/, "");
+  const all = (await readRegistry()).llms.filter((l) => isLocalEndpoint(l.baseUrl) && !l.apiKey && l.model);
+  const named = pref ? all.filter((l) => [l.id, l.name, l.model].some((v) => v && bare(v) === bare(pref))) : [];
+  const candidates = pref ? named : all;
+  const served = new Map<string, string[] | null>(); // one /models call per endpoint
+  for (const llm of candidates) {
+    const base = llm.baseUrl.replace(/\/+$/, "");
+    if (!served.has(base)) {
+      try {
+        const res = await fetch(`${base}/models`, { signal: AbortSignal.timeout(2500) });
+        served.set(base, res.ok ? (((await res.json()) as { data?: { id?: string }[] }).data ?? []).map((m) => bare(String(m.id ?? ""))) : null);
+      } catch {
+        served.set(base, null);
+      }
+    }
+    if (served.get(base)?.includes(bare(llm.model))) return { id: llm.id, name: llm.name, model: llm.model };
   }
-  return { id: llm.id, name: llm.name, model: llm.model };
+  return null;
 }
 
 /** One request at a time to the local model, across every run: a second would only queue inside Ollama with its time limit already running. */
@@ -806,7 +819,8 @@ function placementMachines(run: Run, mySubs: SubscriptionMeter[], sessions: Sess
     const s = sessions.filter((x) => x.host === host && x.project === run.project && (x.folder || x.cwd)).sort((a, b) => b.updatedAt - a.updatedAt)[0];
     return s ? s.folder || s.cwd : undefined;
   };
-  return [
+  // account-wide limits: a login limited on one machine is limited on every machine using it
+  return withAccountLimits([
     { host: me(), label: run.driverLabel, home: run.host === me(), online: true, via: "self", accepts: "edit", runWorker: true, subs: mySubs, busy: busyOn(me()), folder: folderOn(me()), memory: memoryOf(me()) },
     ...remote.map(
       (m): PlacementMachine => ({
@@ -823,7 +837,7 @@ function placementMachines(run: Run, mySubs: SubscriptionMeter[], sessions: Sess
         memory: memoryOf(m.host),
       }),
     ),
-  ];
+  ]);
 }
 
 /** Review from above: a routine task is checked by a subscription tool, everything else by Claude. */

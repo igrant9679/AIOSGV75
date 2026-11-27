@@ -5,7 +5,8 @@ import { maybeRescan } from "./youtubeWatch";
 import { syncExecuting } from "./pipeline";
 import { ensureScaffold } from "./vault";
 import { readRegistry } from "./registry";
-import { clusterTick } from "./cluster";
+import { clusterTick, readConfig } from "./cluster";
+import os from "os";
 import { maybeRefreshProfile } from "./userProfile";
 import { syncApprovedMissions } from "./approvals";
 import { maybeRunHealth } from "./health";
@@ -25,6 +26,7 @@ import { MEM_FULL, MEM_WARN, memPressure, sampleLoad } from "./machineLoad";
 import { runHealthChecks } from "./health";
 import { isPaused } from "./fleetPause";
 import { publishSetup } from "./machineSetup";
+import { maybePublishLog } from "./remoteLog";
 
 async function refreshScaffold(): Promise<void> {
   const reg = await readRegistry().catch(() => null);
@@ -56,6 +58,9 @@ export function startScheduler(): void {
   // Each machine's AI-tool setup (MCP servers, skills, plugins, CLI versions) → the vault for
   // Fleet → Setup (every 15 minutes inside; names and versions only, never settings or keys).
   setInterval(() => void publishSetup().catch(() => {}), 60_000);
+  // The remote-action log (what other machines asked of this one, and what it asked of them) →
+  // the vault for Fleet → Remote actions (when it changed, at most every 10 minutes inside).
+  setInterval(() => void readConfig().then((c) => maybePublishLog(c.label || os.hostname())).catch(() => {}), 60_000);
   // Projects page: replies / new sessions / threads asked for by your other
   // machines (through the vault), and results of the ones this machine sent.
   setInterval(() => void sessionJobsTick().catch(() => {}), 15_000);

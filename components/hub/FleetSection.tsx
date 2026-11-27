@@ -15,6 +15,9 @@ import SharingPanel from "./SharingPanel";
 import BridgePanel from "./BridgePanel";
 import VersionsPanel from "./VersionsPanel";
 import SetupPanel from "./SetupPanel";
+import AccountsPanel from "./AccountsPanel";
+import RemoteLogPanel from "./RemoteLogPanel";
+import { useCallback } from "react";
 import { AlertsPanel, NetworkPanel } from "./NetworkPanels";
 import { ConversationButton, ConversationView } from "./Conversation";
 import { useHub, SourcePill, HubError, IndexingNote, ago, fmtTokens, until } from "./common";
@@ -91,6 +94,8 @@ export default function FleetSection() {
       return { ...r, shares: r.self || Boolean(shared), publishedAt: shared?.publishedAt };
     });
   }, [hub, cluster]);
+
+  const labelOf = useCallback((host: string) => machines.find((m) => m.host === host)?.label ?? host, [machines]);
 
   const cell = (host: string, tool: SubscriptionMeter["tool"]) => {
     const meters = host === hub?.host ? hub?.subscriptions : hub?.machines.find((x) => x.host === host)?.subscriptions;
@@ -182,8 +187,10 @@ export default function FleetSection() {
         </Panel>
       )}
 
+      <AccountsPanel hub={hub} labelOf={labelOf} />
       <VersionsPanel />
       <SetupPanel />
+      <RemoteLogPanel />
       <NetworkPanel />
       <SharingPanel onShared={reload} />
       <AlertsPanel />

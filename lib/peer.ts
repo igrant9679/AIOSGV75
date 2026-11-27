@@ -174,6 +174,10 @@ export async function broadcastPeers(p: string, body: unknown): Promise<void> {
 
 type Handler = (q: URLSearchParams, body: unknown, from: string) => Promise<unknown>;
 
+/** A permission request in a few words, for the remote-action log: "Bash: $ npm test in mission-control". */
+const permWhat = (r: { toolName?: string; summary?: string; cwd?: string }) =>
+  `${r.toolName ?? "tool"}: ${(r.summary ?? "").slice(0, 80)}${r.cwd ? ` in ${path.basename(r.cwd)}` : ""}`;
+
 async function routes(): Promise<Record<string, Handler>> {
   const actions = await import("./sessionActions");
   const share = await import("./sessionShare");
@@ -181,6 +185,7 @@ async function routes(): Promise<Record<string, Handler>> {
   const search = await import("./sessionSearch");
   const handoff = await import("./handoff");
   const perms = await import("./permissions");
+  const { logRemote } = await import("./remoteLog");
   const cfg = await readConfig();
   const gate = async () => {
     const s = await share.readShareSettings();
@@ -206,20 +211,53 @@ async function routes(): Promise<Record<string, Handler>> {
       if (!t) throw Object.assign(new Error("That session isn't on this machine."), { status: 404 });
       return t;
     },
-    "GET /peer/export": async (q) => {
-      await gate();
-      return handoff.exportSession(q.get("key") ?? "");
+    "GET /peer/export": async (q, _b, from) => {
+      // a move: this session's content leaves for the asking machine (logged; lib/remoteLog.ts)
+      const key = q.get("key") ?? "";
+      const entry = { id: q.get("job") || `export-${Date.now().toString(36)}`, dir: "in" as const, host: os.hostname(), hostLabel: cfg.label || os.hostname(), from: from || "unknown", kind: "export" as const, via: "lan" as const, what: `send session ${key.replace(/^[a-z]+:/, "").slice(0, 8)} for a move` };
+      try {
+        await gate();
+        const pkg = await handoff.exportSession(key);
+        await logRemote({ ...entry, what: `send "${(pkg as { title?: string }).title ?? key}" for a move`, outcome: "accepted" });
+        return pkg;
+      } catch (e) {
+        await logRemote({ ...entry, outcome: "refused", reason: (e as Error).message });
+        throw e;
+      }
+    },
+    // one of this machine's own skills, for Fleet → Setup → Copy (lib/skillCopy.ts; logged)
+    "GET /peer/skill": async (q, _b, from) => {
+      const name = q.get("name") ?? "";
+      const entry = { id: q.get("job") || `skill-${Date.now().toString(36)}`, dir: "in" as const, host: os.hostname(), hostLabel: cfg.label || os.hostname(), from: from || "unknown", kind: "skill" as const, via: "lan" as const, what: `send skill ${name.slice(0, 80)}` };
+      try {
+        await gate();
+        const { packSkill } = await import("./skillCopy");
+        const pkg = packSkill(name, cfg.label || os.hostname());
+        await logRemote({ ...entry, outcome: "accepted" });
+        return pkg;
+      } catch (e) {
+        await logRemote({ ...entry, outcome: "refused", reason: (e as Error).message });
+        throw e;
+      }
     },
     // permission prompts waiting on this machine, and answering one (lib/permissions.ts)
     "GET /peer/permissions": async () => {
       await gate();
       return { items: await perms.pendingLocal() };
     },
-    "POST /peer/permission": async (_q, body) => {
-      await gate();
+    "POST /peer/permission": async (_q, body, from) => {
       const b = body as { id?: string; behavior?: string; always?: boolean; message?: string; by?: string };
-      if (!b.id || (b.behavior !== "allow" && b.behavior !== "deny")) throw Object.assign(new Error("id and behavior (allow/deny) required"), { status: 400 });
-      return { request: await perms.decideLocal(b.id, b.behavior, { always: b.always, message: b.message, by: b.by }) };
+      const entry = { id: `perm-${String(b.id ?? "").slice(0, 60)}`, dir: "in" as const, host: os.hostname(), hostLabel: cfg.label || os.hostname(), from: from || "unknown", fromLabel: b.by, kind: "permission" as const, via: "lan" as const, what: `${b.behavior ?? "?"}${b.always ? " (always)" : ""} a permission request` };
+      try {
+        await gate();
+        if (!b.id || (b.behavior !== "allow" && b.behavior !== "deny")) throw Object.assign(new Error("id and behavior (allow/deny) required"), { status: 400 });
+        const request = await perms.decideLocal(b.id, b.behavior, { always: b.always, message: b.message, by: b.by });
+        await logRemote({ ...entry, what: `${b.behavior}${b.always ? " (always)" : ""} ${permWhat(request)}`, outcome: "accepted" });
+        return { request };
+      } catch (e) {
+        await logRemote({ ...entry, outcome: "refused", reason: (e as Error).message });
+        throw e;
+      }
     },
   };
 }
