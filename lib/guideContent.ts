@@ -659,6 +659,22 @@ The token is stored in the vault, so any machine that takes over as master can s
 **Where it lives** — data/github-report.json on this computer only; private repositories' details never go to the vault. Each computer makes its own report if its GitHub CLI is signed in.`,
   },
   {
+    id: "talos-control",
+    title: "Talos — control the whole fleet from Telegram",
+    keywords: "talos openclaw telegram chat control fleet phone ask question command confirm yes card notifications alerts digest morning quiet hours failover backup gateway",
+    body: `**Talos** (OpenClaw on Telegram) can do anything you can do in Mission Control, on any machine, from a Telegram chat.
+
+**Ask anything:** "how many open tasks across how many machines?", "what's running on Legion7?", "which schedules failed?", "what's waiting on me?". Talos asks Mission Control for a fresh picture of the whole fleet: machines, plan limits, live sessions, jobs, Work tasks, LevelUp hand-offs, runs, missions, approvals, permission prompts, schedules and GitHub. Data that lives on one machine (Work and the GitHub report on Raider18) is fetched from it over your network when asked, never put in the vault.
+
+**Tell it what to do:** "start the 13 tasks on WINAI5", "approve the LevelUp hand-off", "pause the fleet", "update all machines", "turn off the WanGP servers on Raider18". Talos sends you a **confirm card** that says exactly what will run and where. Reply **yes** to run it, or anything else to cancel. A card runs once, expires after 10 minutes, and appears in Fleet → Remote actions and Fleet → Talos. On another machine a change runs only where that machine allows edits from your other machines.
+
+**Notifications** (Fleet → Talos): results ready to review, jobs that didn't finish, an AI asking permission, LevelUp hand-offs to approve, a machine offline for 10+ minutes, a plan hitting its limit. Quiet hours hold them for the **morning digest**, which summarises machines, work, reviews, approvals, failures and limits.
+
+**Failover:** only one machine may poll the Telegram bot. On a second machine you can switch on "take over Telegram here when the primary is down". It starts its own gateway after the primary has been quiet for the set minutes, and hands back as soon as the primary returns. Prepare that machine first: the same Telegram channel added in OpenClaw, its gateway stopped, and its auto-start task off.
+
+**Try it here:** Fleet → Talos → Ask shows the answer Talos would get.`,
+  },
+  {
     id: "levelup-fleet",
     title: "LevelUp — hand tasks and projects to the fleet from your planning app",
     keywords: "levelup level up planning planner day week month delegate hand off fleet approve approval client personal goal area lsi media communityforce meyousocial key connect outbox waiting on you",

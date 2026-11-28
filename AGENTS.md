@@ -85,6 +85,8 @@ manual is `/guide` (source: `lib/guideContent.ts`).
   self-contained because the pre-paint boot script embeds its source; every value validated:
   scripts/test-look.mjs), `fleetLook.ts` (a look pushed to every machine: vault Cluster/look.json, served at /api/look,
   applied once per push by components/FleetLookSync.tsx unless the browser opted out; cleaned on both ends),
+  `talos.ts` + `fleetSnapshot.ts` + `talosNotify.ts` + `telegramFailover.ts` (Talos on Telegram controls
+  the whole fleet: snapshot, ask, get, confirm cards for any change, notifications, digest, failover; rule 47),
   `team.ts` + `teamParse.ts` (Command -> Team: named teammates in their own sessions, @mentions and
   "@Name: task" hand-offs, settled by the scheduler's `teamTick`),
   `sessionTools.ts` (the registry of session tools) + `sessions.ts` /
@@ -426,6 +428,26 @@ pm: it works in Claude Code's
     its Fleet panel: that is private repository text going to the owner's own LevelUp account, by design.
     Areas: LSI Media, CommunityForce, MeYouSocial (+ more in data/areas.json) and Personal; repositories get
     theirs from data/areas.json, else an obvious name match (`areaOfRepo`).
+
+47. **Talos controls everything, through one door, and every change needs the owner's yes.** The owner wants
+    full control of the fleet from Telegram, "as if using Mission Control directly", with a Telegram "yes" as
+    the only confirmation (no PIN; Talos's own command access is NOT to be restricted). /api/talos
+    (lib/talos.ts): `ask` (Claude, no tools, over `buildSnapshot`, lib/fleetSnapshot.ts), `get` (any GET
+    endpoint, here or on another machine via peer GET /peer/talos-get), `act` (any POST/PUT/PATCH/DELETE →
+    a confirm card: single-use, 10 minutes, nothing runs yet) and `confirm` (the owner's reply relayed word for
+    word; only a plain yes runs it, `isYes`; claimed before running so it can't run twice). The manual
+    (`buildManual`) is generated from app/api/**/route.ts: doc comments PLUS the body fields, actions and query
+    parameters read from each handler's code, so a new endpoint is usable by Talos at once — keep route doc
+    comments current. A card for another machine runs there through POST /peer/talos-call only where that
+    machine allows edits from the fleet (remoteReplies "edit"), logged on both ends (kind "talos"). Cards can't
+    call /api/talos itself. Local-only data (Work, the GitHub report, LevelUp link) is fetched from its machine
+    over the LAN (`localPart`, GET /peer/talos-local) and never put in the vault. Notifications + morning digest:
+    lib/talosNotify.ts (`talosNotifyTick`, master only, each event once, quiet hours held for the digest,
+    approvals/health left to their existing alerts). Failover: lib/telegramFailover.ts (a standby starts its
+    OpenClaw gateway only after the primary's heartbeat is `minutes` old, stops it as soon as it returns;
+    never on the primary; the standby must be prepared by the owner with its gateway stopped). Settings:
+    data/talos.json. Pure parts tested: scripts/test-talos.mjs. Talos learns all this from
+    ~/.openclaw/workspace/TOOLS.md on the Telegram machine ("Mission Control: full control").
 
 ## Dev cycle (production server auto-starts at login)
 

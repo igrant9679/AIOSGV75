@@ -37,7 +37,7 @@ const META = {
   period: "24–27 November 2026",
   since: "2026-11-20", // git log --since (the last 7 days when first written)
   updated: "27 November 2026",
-  version: "1.9",
+  version: "2.0",
 };
 
 const SUMMARY = [
@@ -98,6 +98,7 @@ const SECTIONS = [
     title: "GitHub dashboard",
     intro: "One page for every repository on both GitHub accounts (igrant9679 and sgrant5724).",
     items: [
+      { name: "Talos: control the whole fleet from Telegram (Fleet → Talos)", date: "28 Nov", what: "Talos can now read anything in Mission Control on any machine and run any change you approve with a Telegram yes, as if you were using Mission Control directly. Questions get exact answers from one fresh picture of the whole fleet: machines, plan limits, sessions, jobs, the 153 Work tasks on Raider18, LevelUp hand-offs, runs, approvals, schedules and GitHub. Changes come as a confirm card saying what will run and where, which runs once and expires after 10 minutes, and is logged in Remote actions. New: Telegram notifications (results to review, failures, permission requests, LevelUp approvals, a machine offline, plan limits), quiet hours, a morning digest, and Telegram failover to a second machine when the Telegram machine goes down. Talos learns every endpoint from a manual Mission Control writes from its own code." },
       { name: "LevelUp → the fleet: plan there, approve, the fleet does it (Work → LevelUp)", date: "27 Nov", what: "Hand tasks and projects to the fleet from LevelUp, your planning app, as you plan your day, week or month. Every hand-off has an area: a client (LSI Media, CommunityForce, MeYouSocial) or Personal with the goal it serves. Mission Control checks LevelUp every minute (it never accepts connections), proposes which machine and tool does it and where, and starts it only after you approve, in LevelUp or in Work, on the day you chose. The result comes back to LevelUp to accept or send back. LevelUp's Fleet panel also lists what is waiting on you in Mission Control. Areas: a work folder per area and an area per repository; with no folder chosen a hand-off is answered in writing only. LevelUp's part is built on a branch and not live yet (it goes live to LevelUp's customers when merged, though only you see the Fleet). Tested end to end with a local copy of LevelUp: hand off, propose, cancel, approve, a real run on Raider18, result, accept." },
       { name: "Work: every repository task, assigned to you or the fleet (sidebar → Work)", date: "27 Nov", what: "All the to-dos, next steps, action items and “waiting on you” lines in your repositories' documents, open issues and GitHub's own signals, on one board (Inbox → To do → In progress → Review → Done) or **by project**. Assign each to yourself, a Team teammate, or a machine and tool that has the project's folder, or let Mission Control do it (**Assign for me**; **Smart assign** asks Claude about unclear ones). **Start** hands a task to its AI with its context and follows it to Review with the result. First sync: 153 tasks across 8 projects (42 yours, 32 for the fleet, 79 in projects no machine has). Before a task starts, its folder on this PC is brought up to date with GitHub when nothing local can be lost (Raider18's usip folder was 636 commits behind). Verified with a real task: Claude Code found a usip to-do item already done in today's code (fixed 20 September)." },
       { name: "GitHub page (sidebar → GitHub)", date: "27 Nov", what: "Covers all 23 repositories (12 private, 11 public) with a written report for every one, active or quiet. For the last 7, 14 or 30 days: every repository's commits, pull requests, issues, releases, checks and security alerts, each project's own status documents (“this week”, changes, status, handoff), and your GitHub activity. Claude writes a short report per active repository and an overview with your priorities, with every tool switched off so nothing in a repository can make it act. **Waiting on you** gathers reviews, failing checks, assigned issues, replies owed and the documents' “waiting on you” items in one list. Refreshes daily; private details stay on the computer." },
@@ -127,6 +128,8 @@ const FINDINGS = [
 
 // What the owner needs to do or decide. status: "to do" | "decision" | "optional" | "done"
 const WAITING = [
+  { item: "Talos: try it, and set notifications", status: "to do", why: "Talos now controls the fleet from Telegram.", how: "Ask it something in Telegram (e.g. how many open tasks across how many machines?), then try a change and reply yes. Fleet → Talos: notifications, quiet hours, digest time." },
+  { item: "Telegram failover machine", status: "optional", why: "If Legion7 is down, nobody answers on Telegram.", how: "On a second machine: add the same Telegram channel in OpenClaw, stop its gateway and turn off its auto-start task, then Fleet → Talos → failover (primary IdrisLegion7)." },
   { item: "Update the machines for the fleet look", status: "to do", why: "Pushing a look to the whole Fleet, and the LevelUp hand-offs, need the latest version on each machine.", how: "Fleet → Versions → Update all (each waits until it is idle)." },
   { item: "LevelUp's Fleet: OK it going live", status: "done", why: "LevelUp's part is on the branch fleet-integration. Merging it to main deploys it to levelupnow.tools, where only you (the owner of your workspace) will see the Fleet.", how: "Say go and it will be merged (after LevelUp's full checks), or look at the branch first." },
   { item: "Connect Mission Control to LevelUp", status: "to do", why: "Once LevelUp's part is live.", how: "LevelUp → Fleet → Make a key for Mission Control; then Mission Control → Work → LevelUp → paste the address and key → Connect (on Raider18, where Work lives)." },
@@ -151,6 +154,7 @@ const WAITING = [
 // Changes to this document itself.
 const HISTORY = [
   { date: "27 Nov 2026", change: "First version: changes from 24–27 November, findings, and what's waiting on you." },
+  { date: "28 Nov 2026", change: "2.0: Talos controls the whole fleet from Telegram (ask, confirm cards, notifications, digest, failover)." },
   { date: "27 Nov 2026", change: "1.9: push a look to the whole Fleet; LevelUp's Fleet is live (merged after its full checks); Talos's notes now explain the fleet." },
   { date: "27 Nov 2026", change: "1.8: Appearance: customize everything (colours, fonts, sizes, background, menu, placement, saved looks)." },
   { date: "27 Nov 2026", change: "1.7: LevelUp hand-offs to the fleet, with client / personal areas; three new waiting items." },

@@ -200,6 +200,13 @@ async function routes(): Promise<Record<string, Handler>> {
       return { job: await actions.acceptRequest(b.job, "lan", b.content) };
     },
     "GET /peer/job": async (q) => actions.jobForPeer(q.get("id") ?? ""),
+    // Talos (rule 47): this machine's local-only picture (Work, GitHub report, LevelUp link), a read, and a confirmed change
+    "GET /peer/talos-local": async () => {
+      await gate();
+      return (await import("./fleetSnapshot")).localPart();
+    },
+    "GET /peer/talos-get": async (q) => (await import("./talos")).peerGet(q.get("path") ?? ""),
+    "POST /peer/talos-call": async (_q, body, from) => (await import("./talos")).runPeerCard(body, from),
     "POST /peer/event": async (_q, body) => ({ ok: await events.ingestRemote((body as { events?: never[] }).events ?? []) }),
     "GET /peer/search": async (q) => {
       await gate();
