@@ -1,4 +1,4 @@
-import { TALOS_GUIDE, askFleet, buildManual, cardText, confirmCard, makeCard, recentCards, talosGet } from "@/lib/talos";
+import { TALOS_GUIDE, askFleet, buildManual, cardText, commandFleet, confirmCard, makeCard, recentCards, talosGet } from "@/lib/talos";
 import { buildSnapshot } from "@/lib/fleetSnapshot";
 import { readTalosSettings, saveTalosSettings } from "@/lib/talosNotify";
 
@@ -9,6 +9,7 @@ export const maxDuration = 300;
  * Talos (OpenClaw on Telegram) controls Mission Control, rule 47 (lib/talos.ts):
  * GET  ?what=guide | manual | snapshot | cards | settings
  * POST { op: "ask", question }                                   a plain answer about the fleet
+ * POST { op: "command", text, history? }                         any request in plain words → { say } or { say, card } (JARVIS)
  * POST { op: "get", path, host? }                                read any GET endpoint (here or on another machine)
  * POST { op: "act", method, path, body?, host?, summary }        → a confirm card for the owner (nothing runs yet)
  * POST { op: "confirm", id, reply }                              the owner's reply: yes runs it once, anything else cancels
@@ -39,6 +40,8 @@ export async function POST(req: Request) {
     switch (b.op) {
       case "ask":
         return Response.json(await askFleet(String(b.question ?? "")));
+      case "command":
+        return Response.json(await commandFleet(String(b.text ?? ""), Array.isArray(b.history) ? (b.history as { who: string; text: string }[]) : []));
       case "get":
         return Response.json({ data: await talosGet(b.path, b.host) });
       case "act": {

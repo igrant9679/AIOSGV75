@@ -672,6 +672,8 @@ The token is stored in the vault, so any machine that takes over as master can s
 
 **Failover:** only one machine may poll the Telegram bot. On a second machine you can switch on "take over Telegram here when the primary is down". It starts its own gateway after the primary has been quiet for the set minutes, and hands back as soon as the primary returns. Prepare that machine first: the same Telegram channel added in OpenClaw, its gateway stopped, and its auto-start task off.
 
+**JARVIS has the same control** (/jarvis): speak or type any question or command. Questions are answered from the same picture of the whole fleet. A change is read out as a confirm card; say or type **yes** to run it, **no** to cancel.
+
 **Try it here:** Fleet → Talos → Ask shows the answer Talos would get.`,
   },
   {

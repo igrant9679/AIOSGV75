@@ -99,9 +99,13 @@ function LiveEqualizer({ color }: { color: string }) {
 }
 
 /**
- * JARVIS — a voice command center for the whole OS. Speak; it navigates,
- * answers via the Auto agent, and talks back. Web Speech API, no keys.
+ * JARVIS — a voice command center for the whole OS, with the same full control as Talos on Telegram
+ * (rule 47): speak or type; it navigates, answers any question about the fleet from Mission Control's own
+ * picture of all machines, and turns any change into a confirm card it reads out — say (or type) yes to
+ * run it, no to cancel. Web Speech API, no keys.
  */
+
+const YES_NO = /^\s*(y|yes|yeah|yep|yes please|ok|okay|go|go ahead|do it|confirm(ed)?|approved?|sure|no|nope|cancel|stop|don'?t|never mind)[\s.!]*$/i;
 
 const NAV: { words: string[]; href: string; label: string }[] = [
   { words: ["overview", "home", "mission control", "dashboard"], href: "/", label: "Overview" },
@@ -143,6 +147,12 @@ export default function JarvisSection() {
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [voiceName, setVoiceName] = useState<string>("");
   const [typed, setTyped] = useState("");
+  // a change JARVIS proposed, waiting for the owner's yes (lib/talos.ts confirm cards)
+  const [pending, setPending] = useState<{ id: string; text: string } | null>(null);
+  const pendingRef = useRef<{ id: string; text: string } | null>(null);
+  useEffect(() => {
+    pendingRef.current = pending;
+  }, [pending]);
   const feedRef = useRef<HTMLDivElement>(null);
   const busyRef = useRef(false);
 
@@ -222,21 +232,42 @@ export default function JarvisSection() {
         }
       }
 
-      // otherwise: ask the Auto agent and speak the answer
+      const post = async (body: object) => {
+        const res = await fetch("/api/talos", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+        return (await res.json()) as { say?: string; card?: { id: string; text: string }; status?: string; result?: unknown; error?: string };
+      };
       busyRef.current = true;
       setThinking(true);
       try {
-        const res = await fetch("/api/auto", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            prompt: `You are JARVIS, a concise spoken assistant for ${owner ? `${owner}'s` : "the user's"} ${deckName}. Answer in 1-3 sentences, plain speech, no markdown. Question: ${command}`,
-          }),
-        });
-        const json = (await res.json()) as { text?: string; error?: string; routedTo?: string };
-        const reply = json.error ? "I hit an error reaching the agent." : json.text ?? "No response.";
-        setLines((l) => [...l, { who: "jarvis", text: reply }]);
-        say(reply);
+        // a proposed change is waiting: yes runs it, no cancels; anything else cancels it and is a new request
+        const card = pendingRef.current;
+        if (card) {
+          setPending(null);
+          const isAnswer = YES_NO.test(command);
+          const r = await post({ op: "confirm", id: card.id, reply: isAnswer ? command : "no" });
+          if (isAnswer) {
+            const reply = r.error ? `That didn't work: ${r.error}` : r.status === "done" ? `Done.${resultLine(r.result)}` : r.status === "failed" ? `It failed: ${String((r as { error?: string }).error ?? "")}` : r.status === "expired" ? "That confirmation expired. Ask me again." : "Cancelled.";
+            setLines((l) => [...l, { who: "jarvis", text: reply }]);
+            say(reply);
+            return;
+          }
+        }
+        // anything else: Mission Control answers it, or proposes the change as a confirm card
+        const history = lines.slice(-6).map((x) => ({ who: x.who === "you" ? "owner" : "jarvis", text: x.text }));
+        const r = await post({ op: "command", text: command, history });
+        if (r.error) {
+          const reply = `I couldn't do that: ${r.error}`;
+          setLines((l) => [...l, { who: "jarvis", text: reply }]);
+          say(reply);
+        } else if (r.card) {
+          setPending(r.card);
+          setLines((l) => [...l, { who: "jarvis", text: `${r.say ?? ""}\n\n${r.card!.text}`.trim() }]);
+          say(`${r.say ?? "I can do that."} Say yes to run it, or no to cancel.`);
+        } else {
+          const reply = r.say ?? "No response.";
+          setLines((l) => [...l, { who: "jarvis", text: reply }]);
+          say(reply);
+        }
       } catch {
         setLines((l) => [...l, { who: "jarvis", text: "Connection failed." }]);
       } finally {
@@ -244,7 +275,7 @@ export default function JarvisSection() {
         setThinking(false);
       }
     },
-    [router, say, wakeWord]
+    [router, say, wakeWord, lines]
   );
 
   const { supported, listening, interim, toggle } = useSpeech(handle);
@@ -396,4 +427,13 @@ export default function JarvisSection() {
       </Panel>
     </div>
   );
+}
+
+/** One short spoken line about what a confirmed change returned. */
+function resultLine(r: unknown): string {
+  if (!r || typeof r !== "object") return "";
+  const o = r as Record<string, unknown>;
+  if (typeof o.error === "string") return ` It said: ${o.error.slice(0, 120)}`;
+  const n = Object.entries(o).find(([, v]) => typeof v === "number");
+  return n ? ` ${n[0]}: ${n[1]}.` : "";
 }

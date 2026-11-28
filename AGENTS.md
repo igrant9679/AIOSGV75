@@ -448,6 +448,10 @@ pm: it works in Claude Code's
     never on the primary; the standby must be prepared by the owner with its gateway stopped). Settings:
     data/talos.json. Pure parts tested: scripts/test-talos.mjs. Talos learns all this from
     ~/.openclaw/workspace/TOOLS.md on the Telegram machine ("Mission Control: full control").
+    JARVIS (/jarvis) has the same control: `op: "command"` (`commandFleet`) turns any request in plain words into
+    an answer or ONE confirm card (Claude, tools off, over the snapshot + manual, up to 4 reads first); JARVIS
+    reads the card out and a spoken or typed yes / no confirms or cancels it (anything else cancels it and is
+    taken as a new request). Talos may use the same op instead of choosing endpoints itself.
 
 ## Dev cycle (production server auto-starts at login)
 
