@@ -18,7 +18,7 @@ interface Command {
 }
 
 const PAGES: Command[] = [
-  { id: "overview", label: "Overview", hint: "fleet & vitals", accent: "cyan", href: "/" },
+  { id: "overview", label: "Overview", hint: "fleet & vitals", accent: "cyan", href: "/overview" },
   { id: "command", label: "Command", hint: "second brain · what needs you", accent: "cyan", href: "/command" },
   { id: "timeline", label: "Timeline", hint: "every AI action, one stream", accent: "violet", href: "/timeline" },
   { id: "projects", label: "Projects", hint: "brain by project", accent: "magenta", href: "/projects" },
@@ -50,6 +50,13 @@ const PAGES: Command[] = [
   { id: "journal", label: "Journal", hint: "one file per day", accent: "rose", href: "/journal" },
   { id: "memory", label: "Memory", hint: "shared brain", accent: "violet", href: "/memory" },
   { id: "settings", label: "Settings", hint: "LLMs · agents · spaces", accent: "cyan", href: "/settings" },
+  { id: "hub", label: "Hub", hint: "one box for everything", accent: "violet", href: "/" },
+  { id: "city", label: "Board", hint: "live · office · waiting on you", accent: "violet", href: "/city" },
+  { id: "agents-fleet", label: "Agents", hint: "your standing agents", accent: "violet", href: "/agents" },
+  { id: "tools", label: "Tools", hint: "skills as short forms", accent: "violet", href: "/tools" },
+  { id: "connections", label: "Connections", hint: "sign-ins · services · subscriptions", accent: "violet", href: "/connections" },
+  { id: "levelup", label: "LevelUp", hint: "hand-offs from your planner", accent: "violet", href: "/levelup" },
+  { id: "modules", label: "Modules", hint: "switch features on or off", accent: "cyan", href: "/modules" },
   { id: "appearance", label: "Appearance", hint: "theme · colors · fonts · layout", accent: "magenta", href: "/appearance" },
   { id: "guide", label: "Guide", hint: "searchable manual", accent: "magenta", href: "/guide" },
 ];
@@ -109,6 +116,13 @@ export default function CommandPalette() {
         setOpen(false);
       }
     };
+    // the Studio top bar's search box opens it too
+    const onOpen = () => {
+      setOpen(true);
+      setQuery("");
+      setIndex(0);
+    };
+    window.addEventListener("mc-open-palette", onOpen);
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);

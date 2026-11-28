@@ -737,6 +737,7 @@ export async function refreshGithubReport(days = 7): Promise<void> {
  * Skipped while the fleet is paused (the caller checks) or while one is running.
  */
 export async function githubDailyTick(): Promise<void> {
+  if (!(await import("./modules")).moduleOn("github")) return; // the GitHub module is switched off (rule 53)
   const p = readGithubProgress();
   if (p?.running) return;
   const rep = await readGithubReport();

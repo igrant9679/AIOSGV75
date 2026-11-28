@@ -167,6 +167,7 @@ export async function levelupTick(): Promise<void> {
   const cfg = readLevelupConfig();
   if (!cfg || busy) return;
   if (!(await import("./workHome")).isWorkHome()) return; // hand-offs are Work tasks: the Work home handles them (rule 48)
+  if (!(await import("./modules")).moduleOn("levelup")) return; // the LevelUp module is switched off (rule 53)
   busy = true;
   try {
     const myLabel = await machineLabel();

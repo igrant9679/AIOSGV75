@@ -10,6 +10,8 @@ import { useMission } from "./store";
 import StatusOrb from "./ui/StatusOrb";
 import Avatar, { type AvatarKind } from "./Avatar";
 import { useLook } from "./useLook";
+import { useModules } from "./useModules";
+import { useNetSettings, NET_DEFAULTS } from "./useNetSettings";
 import { arrangeGroup, arrangeGroups } from "@/lib/lookCustom";
 import { IconGrid, IconTarget, IconBook, IconBrain, IconGear, IconPlus, IconRocket, IconSwords, IconPulse, IconCheck, IconHelp, IconWrench, IconSpark, IconGraph, IconWing, IconTerminal, IconMic, IconStudio, IconArticle, IconImport, IconSearch } from "./icons";
 
@@ -24,7 +26,6 @@ interface NavItem {
 }
 
 const AGENT_NAV: NavItem[] = [
-  { href: "/", label: "Overview", sub: "Fleet & vitals", accent: "cyan", icon: IconGrid },
   { href: "/auto", label: "Auto", sub: "Smart router", accent: "cyan", avatarName: "Auto" },
   { href: "/claude", label: "Claude", sub: "Claude Code CLI", accent: "violet", avatar: "claude" },
   { href: "/openclaw", label: "OpenClaw", sub: "Assistant gateway", accent: "magenta", avatar: "openclaw" },
@@ -34,17 +35,24 @@ const AGENT_NAV: NavItem[] = [
 
 /** The second-brain hub: one place for every AI activity, across tools and machines. */
 const BRAIN_NAV: NavItem[] = [
+  { href: "/", label: "Hub", sub: "One box for everything", accent: "violet", icon: IconSpark },
+  { href: "/city", label: "Board", sub: "Live · waiting on you", accent: "violet", icon: IconGrid },
+  { href: "/agents", label: "Agents", sub: "Your standing agents", accent: "violet", icon: IconWing },
+  { href: "/tools", label: "Tools", sub: "Skills as short forms", accent: "violet", icon: IconWrench },
+  { href: "/connections", label: "Connections", sub: "Sign-ins · services · plans", accent: "violet", icon: IconTerminal },
+  { href: "/levelup", label: "LevelUp", sub: "Hand-offs from your planner", accent: "violet", icon: IconTarget },
   { href: "/command", label: "Command", sub: "What needs you", accent: "cyan", icon: IconGrid },
   { href: "/timeline", label: "Timeline", sub: "Every AI action", accent: "violet", icon: IconPulse },
   { href: "/projects", label: "Projects", sub: "Brain by project", accent: "magenta", icon: IconBrain },
   { href: "/fleet", label: "Fleet", sub: "Machines × subscriptions", accent: "lime", icon: IconTerminal },
-  { href: "/board", label: "Board", sub: "Manager · workers · reviewer", accent: "amber", icon: IconRocket },
+  { href: "/board", label: "Manager", sub: "Manager · workers · reviewer", accent: "amber", icon: IconRocket },
   { href: "/runs", label: "Runs", sub: "Projects done by workers", accent: "violet", icon: IconRocket },
   { href: "/github", label: "GitHub", sub: "Repos · changes · waiting on you", accent: "lime", icon: IconBook },
   { href: "/work", label: "Work", sub: "Repo tasks · assign the fleet", accent: "lime", icon: IconCheck },
 ];
 
 const WORKSPACE_NAV: NavItem[] = [
+  { href: "/overview", label: "Overview", sub: "Fleet & vitals", accent: "cyan", icon: IconGrid },
   { href: "/mastermind", label: "Mastermind", sub: "All agents, one room", accent: "cyan", icon: IconWing },
   { href: "/jarvis", label: "JARVIS", sub: "Voice command center", accent: "cyan", icon: IconMic },
   { href: "/pipeline", label: "Pipeline", sub: "Inbox → Shipped", accent: "violet", icon: IconSpark },
@@ -66,6 +74,7 @@ const WORKSPACE_NAV: NavItem[] = [
   { href: "/journal", label: "Journal", sub: "One file per day", accent: "rose", icon: IconBook },
   { href: "/memory", label: "Memory", sub: "Shared by all agents", accent: "violet", icon: IconBrain },
   { href: "/settings", label: "Settings", sub: "LLMs · agents · spaces", accent: "cyan", icon: IconGear },
+  { href: "/modules", label: "Modules", sub: "Switch features on or off", accent: "cyan", icon: IconGrid },
   { href: "/appearance", label: "Appearance", sub: "Look · type · layout", accent: "magenta", icon: IconStudio },
   { href: "/guide", label: "Guide", sub: "Searchable manual", accent: "magenta", icon: IconHelp },
 ];
@@ -80,6 +89,9 @@ export const NAV_GROUPS: { id: string; label: string; items: { href: string; lab
 export const NAV_ALWAYS = ["/appearance"];
 
 export default function Sidebar() {
+  const net = useNetSettings();
+  const brandName = net?.appName || NET_DEFAULTS.appName;
+  const { hidden: moduleHidden } = useModules();
   const { look } = useLook();
   const menu = look.menu;
   const pathname = usePathname();
@@ -110,6 +122,7 @@ export default function Sidebar() {
     if (href === "/auto") return busy.auto ? "amber" : "lime";
     if (href === "/hermes-lab") { const h = agents.find((a) => a.id === "hermes"); return h?.available ? "lime" : "rose"; }
     if (href === "/watcher") return "lime";
+    if (href === "/overview" || href === "/city" || href === "/agents" || href === "/connections" || href === "/tools" || href === "/levelup" || href === "/modules") return "lime";
     if (href === "/command" || href === "/timeline" || href === "/projects" || href === "/fleet" || href === "/board" || href === "/runs" || href === "/github" || href === "/work" || href === "/appearance") return "lime";
     if (href === "/" || href === "/settings" || href === "/missions" || href === "/arena" || href === "/analytics" || href === "/reports" || href === "/evals" || href === "/guide" || href === "/tasks" || href === "/schedule" || href === "/mastermind" || href === "/jarvis" || href === "/pipeline") return "lime";
     if (href === "/goals" || href === "/journal" || href === "/memory" || href === "/library" || href === "/graph" || href === "/builds" || href === "/studio" || href === "/content" || href === "/import" || href === "/conversations") return vaultOk ? "lime" : "rose";
@@ -143,10 +156,12 @@ export default function Sidebar() {
           />
         )}
         {item.avatar || item.avatarName ? (
-          <Avatar kind={item.avatar} name={item.avatarName} accent={item.accent} size={30} />
+          <span className="sb-av flex shrink-0">
+            <Avatar kind={item.avatar} name={item.avatarName} accent={item.accent} size={30} />
+          </span>
         ) : (
           <span
-            className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full"
+            className="sb-ico flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full"
             style={{ background: c.soft, color: c.base }}
           >
             {Icon && <Icon width={15} height={15} />}
@@ -175,8 +190,18 @@ export default function Sidebar() {
   const groupLabel: Record<string, string> = { brain: "Second brain", agents: "Agents", workspace: "Workspace" };
   const items = (
     <>
+      <Link href="/" className="sb-brand items-center gap-2.5 px-2 pb-2 pt-1">
+        <span className="flex h-7 w-7 items-center justify-center rounded-lg text-[12px] font-bold text-white" style={{ background: "var(--ac-violet)" }}>
+          MC
+        </span>
+        <span className="min-w-0">
+          <span className="block truncate text-[13px] font-semibold text-ink">{brandName}</span>
+          <span className="block truncate text-[11px] text-ink-faint">{system?.hostname ?? ""}</span>
+        </span>
+      </Link>
       {arrangeGroups(["brain", "agents", "workspace"], menu).map((gid, gi) => {
-        const list = arrangeGroup(gid, groupItems[gid], visibleMenu);
+        // pages of a module that is switched off leave the menu (rule 53)
+        const list = arrangeGroup(gid, groupItems[gid], visibleMenu).filter((it) => !moduleHidden.has(it.href));
         if (!list.length && gid !== "agents") return null;
         return (
           <div key={gid} className="contents">

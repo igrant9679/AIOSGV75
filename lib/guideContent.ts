@@ -659,6 +659,24 @@ The token is stored in the vault, so any machine that takes over as master can s
 **Where it lives** — data/github-report.json on this computer only; private repositories' details never go to the vault. Each computer makes its own report if its GitHub CLI is signed in.`,
   },
   {
+    id: "hub-board-agents",
+    title: "Hub, Board, Agents, Tools, Connections and Modules",
+    keywords: "hub one box ask auto fleet agent chat engine model machine board office city bot room kanban waiting on you pending running done failed approve agents persona task schedule sub agents starter tools library form skill offer email proposal connections sign-in key service subscription cost renewal modules switch on off levelup studio look",
+    body: `**The Studio look** is the default: a slim top bar with search (Ctrl/⌘ K), light / dark, how many things wait on you, and the menu down the side. The older looks are still in Appearance → Presets, and Appearance → Frame switches between Studio and Deck.
+
+**Hub** (the home page) — one box for everything. **Auto** decides where your request goes and tells you before you send: **Fleet** answers from all your machines or proposes a change as a card (nothing runs until you press Yes); **Agent** starts a real session on a machine (pick the tool, the machine or Auto, whether it may change files, and for Claude the model: Fast, Balanced or Best); **Chat** is an answer from the best available model, or the engine you pick. Below it your engines and machines are shown wired in, live. The old home page is **Overview**.
+
+**Board** — everything the fleet is doing or waiting on, in one place: Work tasks, LevelUp hand-offs, session jobs, runs, missions, approvals, AI permission prompts and confirm cards. **Office** draws one room per machine; each piece of running work is a bot at a desk in the room of the machine it runs on, what waits on you stands at the front desk, and what is queued sits in the inbox. Click a bot to see it and settle it. **Board** shows the same as five columns (Waiting on you, Pending, Running, Done, Failed) with the buttons on each card.
+
+**Agents** — your own standing agents. Give one a name, a persona, a standing task, the tool it runs on, a machine (or Auto: the best one at the time), whether it may use the web and change files, how many helpers it may start, and optionally a schedule. **Run** starts it now, with a note for that run if you like; scheduled runs are started by the master machine and wait while the fleet is paused. If Auto picks a machine where the tool isn't signed in, the run moves to the next machine and says which one needs a sign-in. Starters: Morning Brief, Repo Watcher, Research Analyst, Draft Writer, Fleet Caretaker.
+
+**Tools** — short forms that produce a finished piece of writing: built-in ones (project brief, email, proposal, meeting notes to actions, research brief, social posts, process to checklist, second opinion), your own (**Make a tool**: write the prompt and put {name} where an answer goes), and every Claude skill on this machine, each with one box. Results are saved on the machine; copy or download them.
+
+**Connections** — every AI sign-in by machine with its plan and how much is used, the services (vault, GitHub, Telegram, LevelUp, the Work home), models added by key and local models, and **Subscriptions**: what each plan costs a month, when it renews, and what it is doing right now. Keys' values are never shown or sent.
+
+**Modules** — switch whole features off and on for every machine: LevelUp, GitHub, Studio and content, Arena and evals, JARVIS, Hermes Lab, and Graph / journal / goals. Off removes the pages from the menu and stops any background checking; nothing is deleted. **LevelUp** has its own page: connect, approve plans, follow the work and review results, by area.`,
+  },
+  {
     id: "talos-control",
     title: "Talos — control the whole fleet from Telegram",
     keywords: "talos openclaw telegram chat control fleet phone ask question command confirm yes card notifications alerts digest morning quiet hours failover backup gateway",

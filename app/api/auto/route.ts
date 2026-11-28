@@ -33,7 +33,9 @@ interface Turn {
  * Non-streaming — the router already spans engines with different transports.
  */
 export async function POST(request: Request) {
-  const body = (await request.json()) as { prompt?: string; history?: Turn[] };
+  // agent: answer with this agent instead of routing (the Hub's engine picker); "auto" or missing = route
+  const body = (await request.json()) as { prompt?: string; history?: Turn[]; agent?: string };
+  const agent = typeof body.agent === "string" && /^[\w.-]{1,60}$/.test(body.agent) ? body.agent : "auto";
   const prompt = (body.prompt ?? "").toString().trim();
   if (!prompt) return Response.json({ error: "prompt is required" }, { status: 400 });
 
@@ -46,12 +48,12 @@ export async function POST(request: Request) {
       ? `Previous conversation:\n${history.map((t) => `${t.role === "user" ? "User" : "Assistant"}: ${t.content.slice(0, 1500)}`).join("\n")}\n\nUser's new message: ${prompt}\n\nReply to the new message as the assistant.`
       : prompt;
 
-  const r = await runAgentText("auto", transcript);
+  const r = await runAgentText(agent, transcript);
   return Response.json({
     text: r.text,
     ms: r.ms,
     error: r.error,
-    routedTo: r.routedTo,
+    routedTo: r.routedTo ?? (agent !== "auto" ? agent : undefined),
     reason: r.routeReason,
   });
 }

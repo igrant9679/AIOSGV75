@@ -166,7 +166,7 @@ const RUN_STEPS = [
 ];
 
 export const PAGE_HELP: Record<string, PageHelp> = {
-  "/": {
+  "/overview": {
     what: "The overview: your agents, this computer's vitals, what's queued, and anything blocked on you.",
     useFor: ["A quick glance at whether everything is up", "Seeing if anything needs your attention", "This computer's CPU, memory and disk"],
     tips: ["Lime means healthy, amber degraded, rose needs attention.", "Command is the more useful home screen day to day; you can make it your start page in Appearance."],
@@ -402,6 +402,48 @@ export const PAGE_HELP: Record<string, PageHelp> = {
     tips: ["Keys stay on this computer; they never sync.", "Settings → This network holds the Telegram bot and the app's name for all computers."],
     guide: ["settings-env", "api-llms", "multi-machine", "new-network"],
   },
+  "/": {
+    what: "One box for everything: ask about or control the fleet, start an agent on a machine, or just chat.",
+    useFor: ["Asking what is running, waiting or failing anywhere", "Starting a job on the best machine without picking one", "A quick answer from the best available model"],
+    steps: [{ title: "Use it", items: ["Type and press Enter. **Auto** shows where it will go (Fleet, Agent or Chat); click one to choose yourself.", "**Fleet** changes arrive as a card: **Yes, run it** or **Cancel**.", "**Agent**: pick the tool, the machine (or Auto), and whether it may change files."] }],
+    tips: ["The diagram below is live: engines on the left, your machines on the right.", "The old home page is **Overview** in the menu."],
+    guide: ["hub-board-agents"],
+  },
+  "/city": {
+    what: "Everything the fleet is doing or waiting on, as an office (one room per machine) or a board with five columns.",
+    useFor: ["Seeing what is running and on which machine", "Settling what waits on you: approvals, reviews, permission prompts", "Stopping or starting work from one place"],
+    steps: [{ title: "Use it", items: ["**Office**: click a bot to see what it is and settle it.", "**Board**: the buttons on each card do the same as on that item's own page.", "Search, or pick a machine, to narrow the board."] }],
+    tips: ["Your own to-dos stay in Work: this is the fleet's work."],
+    guide: ["hub-board-agents"],
+  },
+  "/agents": {
+    what: "Your own standing agents: a name, a persona, a task, the tool and machine it runs on, and an optional schedule.",
+    useFor: ["Work you want done the same way again and again", "A daily or weekly check that reports back"],
+    steps: [{ title: "Make one", items: ["**+ New agent**, or **+ Add** on a starter and change anything.", "Machine **Auto** uses the best machine at the time.", "**Run** starts it now; add a note for that run if you like."] }],
+    tips: ["Scheduled runs are started by the master machine and wait while the fleet is paused.", "If the chosen machine isn't signed in, an Auto run moves to the next one and tells you."],
+    guide: ["hub-board-agents"],
+  },
+  "/tools": {
+    what: "Short forms that produce a finished piece of writing, plus every Claude skill on this machine.",
+    useFor: ["A proposal, an email, a brief or a checklist in a minute", "Running one of your skills without opening a session"],
+    steps: [{ title: "Use it", items: ["Pick a tool, answer its questions, **Run it**.", "**+ Make a tool**: write the prompt with {name} where an answer goes.", "Results are saved on the right: copy or download."] }],
+    tips: ["A skill runs as a Claude Code session, answer only, and can take a few minutes."],
+    guide: ["hub-board-agents"],
+  },
+  "/connections": {
+    what: "Every AI sign-in by machine, the services the fleet uses, extra models, and what your subscriptions cost.",
+    useFor: ["Seeing which machine isn't signed in to which tool", "Checking a service is connected", "Tracking what you pay and when it renews"],
+    tips: ["**Check all** asks every machine again.", "Keys' values are never shown here."],
+    guide: ["hub-board-agents"],
+  },
+  "/levelup": {
+    what: "The hand-offs from LevelUp, your planning app: connect, approve plans, follow the work, review results.",
+    useFor: ["Approving what you delegated from LevelUp", "Seeing what the fleet did for each client or personal goal"],
+    steps: [{ title: "Use it", items: ["Connect once with a key made in LevelUp (Fleet → Make a key).", "**Approve** a plan to let it start; **Accept** a result when it is right.", "Send something back with a note from LevelUp."] }],
+    tips: ["Areas and their work folders are set in Work → LevelUp → Areas.", "Switch this page off in Modules if you don't use it."],
+    guide: ["levelup-fleet", "hub-board-agents"],
+  },
+  "/modules": { what: "Switch whole features on or off, for every machine.", useFor: ["Removing pages you don't use from the menu", "Stopping LevelUp or the GitHub report for a while"], tips: ["Nothing is deleted; switch a module back on and it is as you left it."], guide: ["hub-board-agents"] },
   "/appearance": {
     what: "Change the look of the app: theme, colours, fonts, sizes, background, the menu's order and where it sits.",
     useFor: ["Making it easier to read", "Making it yours: your colours, fonts and background picture", "Putting the pages you use first, hiding the rest", "Choosing your start page"],

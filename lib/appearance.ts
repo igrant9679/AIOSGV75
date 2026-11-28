@@ -42,7 +42,8 @@ export type AppearanceKey =
   | "width"
   | "footer"
   | "motion"
-  | "startPage";
+  | "startPage"
+  | "shell";
 
 export type Appearance = Record<AppearanceKey, string>;
 
@@ -55,6 +56,7 @@ export const APPEARANCE_OPTIONS: AppearanceOption[] = [
     label: "Color palette",
     hint: "The six accent colors used for pages, agents and status.",
     choices: [
+      { value: "iris", label: "Studio (violet)" },
       { value: "mission", label: "MissionCommand" },
       { value: "neon", label: "Neon" },
       { value: "ocean", label: "Ocean" },
@@ -72,6 +74,7 @@ export const APPEARANCE_OPTIONS: AppearanceOption[] = [
     label: "Background tone",
     hint: "The base color behind and inside panels.",
     choices: [
+      { value: "studio", label: "Studio (clean)" },
       { value: "mission", label: "MissionCommand (teal)" },
       { value: "cool", label: "Cool blue" },
       { value: "neutral", label: "Neutral gray" },
@@ -266,6 +269,17 @@ export const APPEARANCE_OPTIONS: AppearanceOption[] = [
       { value: "hide", label: "Hide" },
     ],
   },
+  {
+    key: "shell",
+    attr: "shell",
+    group: "Layout",
+    label: "Frame",
+    hint: "Studio: a slim top bar with search, the menu down the side edge, plain page titles. Deck: the original header band and floating panels.",
+    choices: [
+      { value: "studio", label: "Studio" },
+      { value: "deck", label: "Deck" },
+    ],
+  },
   // ── Behavior ──
   {
     key: "motion",
@@ -286,7 +300,9 @@ export const APPEARANCE_OPTIONS: AppearanceOption[] = [
     label: "Start page",
     hint: "What opens first when you load the app.",
     choices: [
-      { value: "/", label: "Overview" },
+      { value: "/", label: "Hub" },
+      { value: "/overview", label: "Overview" },
+      { value: "/city", label: "Board" },
       { value: "/command", label: "Command" },
       { value: "/timeline", label: "Timeline" },
       { value: "/projects", label: "Projects" },
@@ -295,7 +311,8 @@ export const APPEARANCE_OPTIONS: AppearanceOption[] = [
   },
 ];
 
-export const APPEARANCE_DEFAULTS: Appearance = {
+/** The look before version 3 (MissionCommand): the older presets are built on it. */
+const DECK_BASE: Appearance = {
   palette: "mission",
   surface: "mission",
   contrast: "standard",
@@ -315,6 +332,25 @@ export const APPEARANCE_DEFAULTS: Appearance = {
   footer: "show",
   motion: "full",
   startPage: "/",
+  shell: "deck",
+};
+
+/** The default since look version 3: Studio (clean, violet, slim top bar, compact menu). */
+export const APPEARANCE_DEFAULTS: Appearance = {
+  ...DECK_BASE,
+  palette: "iris",
+  surface: "studio",
+  panels: "solid",
+  stripe: "off",
+  corners: "soft",
+  bg: "plain",
+  glow: "off",
+  font: "inter",
+  labels: "normal",
+  sidebar: "compact",
+  width: "wide",
+  footer: "hide",
+  shell: "studio",
 };
 
 export interface AppearancePreset {
@@ -327,52 +363,53 @@ export interface AppearancePreset {
 
 /** One-click looks. Anything a preset doesn't name falls back to the default. */
 export const APPEARANCE_PRESETS: AppearancePreset[] = [
-  { id: "default", name: "MissionCommand", blurb: "Teal, maroon and gold on light grey, Plus Jakarta Sans (the default).", theme: "light", values: {} },
+  { id: "default", name: "Studio", blurb: "Clean and calm: violet on white or near-black, a slim top bar, a compact menu (the default).", values: {} },
+  { id: "mission", name: "MissionCommand", blurb: "Teal, maroon and gold on light grey, Plus Jakarta Sans, the header band.", theme: "light", values: { ...DECK_BASE } },
   {
     id: "neon",
     name: "Neon deck",
     blurb: "The original dark neon look with Space Grotesk.",
     theme: "dark",
-    values: { palette: "neon", surface: "cool", font: "grotesk", mono: "jetbrains" },
+    values: { ...DECK_BASE, palette: "neon", surface: "cool", font: "grotesk", mono: "jetbrains" },
   },
   {
     id: "calm",
     name: "Calm",
     blurb: "Ocean colors, solid panels, no glow, gentle motion.",
-    values: { palette: "ocean", panels: "solid", bg: "subtle", glow: "off", motion: "reduced", labels: "normal", font: "inter" },
+    values: { ...DECK_BASE, palette: "ocean", panels: "solid", bg: "subtle", glow: "off", motion: "reduced", labels: "normal", font: "inter" },
   },
   {
     id: "terminal",
     name: "Terminal",
     blurb: "Green-on-black, monospace, sharp outlines.",
     theme: "dark",
-    values: { palette: "terminal", surface: "max", panels: "outline", corners: "sharp", bg: "plain", glow: "off", font: "monoui", mono: "jetbrains" },
+    values: { ...DECK_BASE, palette: "terminal", surface: "max", panels: "outline", corners: "sharp", bg: "plain", glow: "off", font: "monoui", mono: "jetbrains" },
   },
   {
     id: "paper",
     name: "Paper",
     blurb: "Light, warm and editorial with a serif face.",
     theme: "light",
-    values: { palette: "forest", surface: "warm", panels: "flat", stripe: "off", bg: "plain", glow: "off", font: "serif", labels: "normal", motion: "reduced" },
+    values: { ...DECK_BASE, palette: "forest", surface: "warm", panels: "flat", stripe: "off", bg: "plain", glow: "off", font: "serif", labels: "normal", motion: "reduced" },
   },
   {
     id: "focus",
     name: "Focus",
     blurb: "Icon sidebar, compact spacing, nothing moving.",
-    values: { sidebar: "icons", density: "compact", width: "wide", bg: "subtle", glow: "off", motion: "reduced", footer: "hide", startPage: "/command" },
+    values: { ...DECK_BASE, sidebar: "icons", density: "compact", width: "wide", bg: "subtle", glow: "off", motion: "reduced", footer: "hide", startPage: "/command" },
   },
   {
     id: "readable",
     name: "Easy reading",
     blurb: "Larger, high-contrast, extra-legible text.",
-    values: { contrast: "high", font: "readable", scale: "110", labels: "normal", glow: "off", bg: "subtle", panels: "solid", density: "spacious" },
+    values: { ...DECK_BASE, contrast: "high", font: "readable", scale: "110", labels: "normal", glow: "off", bg: "subtle", panels: "solid", density: "spacious" },
   },
 ];
 
 export const APPEARANCE_STORAGE_KEY = "mc-appearance";
 /** Bumped when the default look changes: browsers on an older version are moved to the new look once. */
 export const LOOK_VERSION_KEY = "mc-look-version";
-export const LOOK_VERSION = "2";
+export const LOOK_VERSION = "3";
 export const THEME_STORAGE_KEY = "mc-theme";
 /** Fired on window whenever appearance or theme changes, so open components can resync. */
 export const APPEARANCE_EVENT = "mc-appearance";
@@ -395,5 +432,7 @@ export function sanitizeAppearance(raw: unknown): Appearance {
  */
 export function appearanceBootScript(): string {
   const spec = APPEARANCE_OPTIONS.map((o) => [o.key, o.attr, o.choices.map((c) => c.value), APPEARANCE_DEFAULTS[o.key]]);
-  return `try{if(localStorage.getItem("${LOOK_VERSION_KEY}")!=="${LOOK_VERSION}"){var o={};try{o=JSON.parse(localStorage.getItem("${APPEARANCE_STORAGE_KEY}")||"{}")||{}}catch(e){}o.palette="mission";o.surface="mission";o.font="jakarta";o.mono="jakarta";localStorage.setItem("${APPEARANCE_STORAGE_KEY}",JSON.stringify(o));localStorage.setItem("${THEME_STORAGE_KEY}","light");localStorage.setItem("${LOOK_VERSION_KEY}","${LOOK_VERSION}")}}catch(e){}try{var d=document.documentElement,t=localStorage.getItem("${THEME_STORAGE_KEY}")||"light";if(t==="system"){t=window.matchMedia("(prefers-color-scheme: light)").matches?"light":"dark"}d.dataset.theme=t==="light"?"light":"dark";var a={};try{a=JSON.parse(localStorage.getItem("${APPEARANCE_STORAGE_KEY}")||"{}")||{}}catch(e){}var s=${JSON.stringify(spec)};for(var i=0;i<s.length;i++){var v=a[s[i][0]];d.setAttribute("data-"+s[i][1],s[i][2].indexOf(v)>=0?v:s[i][3])}}catch(e){}`;
+  const moved = ["palette", "surface", "panels", "stripe", "corners", "bg", "glow", "font", "labels", "sidebar", "width", "footer", "shell"] as const;
+  const move = Object.fromEntries(moved.map((k) => [k, APPEARANCE_DEFAULTS[k]]));
+  return `try{if(localStorage.getItem("${LOOK_VERSION_KEY}")!=="${LOOK_VERSION}"){var o={};try{o=JSON.parse(localStorage.getItem("${APPEARANCE_STORAGE_KEY}")||"{}")||{}}catch(e){}var m=${JSON.stringify(move)};for(var k in m)o[k]=m[k];localStorage.setItem("${APPEARANCE_STORAGE_KEY}",JSON.stringify(o));if(!localStorage.getItem("${THEME_STORAGE_KEY}"))localStorage.setItem("${THEME_STORAGE_KEY}","light");localStorage.setItem("${LOOK_VERSION_KEY}","${LOOK_VERSION}")}}catch(e){}try{var d=document.documentElement,t=localStorage.getItem("${THEME_STORAGE_KEY}")||"light";if(t==="system"){t=window.matchMedia("(prefers-color-scheme: light)").matches?"light":"dark"}d.dataset.theme=t==="light"?"light":"dark";var a={};try{a=JSON.parse(localStorage.getItem("${APPEARANCE_STORAGE_KEY}")||"{}")||{}}catch(e){}var s=${JSON.stringify(spec)};for(var i=0;i<s.length;i++){var v=a[s[i][0]];d.setAttribute("data-"+s[i][1],s[i][2].indexOf(v)>=0?v:s[i][3])}}catch(e){}`;
 }

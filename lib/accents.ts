@@ -47,12 +47,19 @@ export function accentForPath(pathname: string): Accent {
 
 /** Page identity shown in the hero strip above every page's content. */
 export const ROUTE_META: Record<string, { title: string; tagline: string }> = {
-  "/": { title: "Overview", tagline: "Fleet & vitals" },
+  "/": { title: "Hub", tagline: "One box for everything" },
+  "/overview": { title: "Overview", tagline: "Fleet & vitals" },
+  "/city": { title: "Board", tagline: "Everything the fleet is doing or waiting on. Each agent sits in the room of the machine it runs on." },
+  "/agents": { title: "Agents", tagline: "Your own agents: a name, a persona, a standing task, the tools it may use, and where it runs." },
+  "/connections": { title: "Connections", tagline: "Every sign-in, key and service the fleet uses, in one place." },
+  "/tools": { title: "Tools", tagline: "Your skills as short forms: fill it in, pick an engine, keep the result." },
+  "/levelup": { title: "LevelUp", tagline: "Hand-offs from your planning app: approve, follow, review." },
+  "/modules": { title: "Modules", tagline: "Switch whole pages on or off." },
   "/command": { title: "Command", tagline: "Second brain · what needs you" },
   "/timeline": { title: "Timeline", tagline: "Every AI action, one stream" },
   "/projects": { title: "Projects", tagline: "The brain, by project" },
   "/fleet": { title: "Fleet", tagline: "Machines × subscriptions" },
-  "/board": { title: "Board", tagline: "Manager · workers · reviewer" },
+  "/board": { title: "Manager", tagline: "Manager · workers · reviewer" },
   "/runs": { title: "Runs", tagline: "Projects done by workers" },
   "/work": { title: "Work", tagline: "Every task your repositories mention · assign it to you or the fleet" },
   "/github": { title: "GitHub", tagline: "Every repository · what changed · what's waiting on you" },

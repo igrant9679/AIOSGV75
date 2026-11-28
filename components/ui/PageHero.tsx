@@ -22,7 +22,7 @@ export default function PageHero() {
       initial={{ opacity: 0, y: -6 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
-      className="page-hero relative mb-4 overflow-hidden px-1"
+      className={`page-hero relative mb-4 overflow-hidden px-1 ${pathname === "/" ? "hero-hidden" : ""}`}
     >
       {/* MissionCommand look only: orbit lines and a soft dot field in the page's color, behind the text */}
       <svg aria-hidden className="hero-art pointer-events-none absolute inset-y-0 right-0 hidden h-full w-[46%]" viewBox="0 0 400 80" preserveAspectRatio="xMaxYMid slice">

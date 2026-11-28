@@ -18,6 +18,8 @@ import AppearanceCustom from "./AppearanceCustom";
 
 /** Swatches for the palette buttons and preset cards (the bright --nb-* set). */
 const PALETTE_SWATCH: Record<string, string[]> = {
+  iris: ["#6d28d9", "#4f46e5", "#d97706", "#16a34a", "#8b5cf6", "#dc2626"],
+  mission: ["#1d5f5a", "#9b2c46", "#e0a12e", "#2e6b3a", "#2b4c8c", "#b42335"],
   neon: ["#22d3ee", "#e879f9", "#fbbf24", "#a3e635", "#a78bfa", "#fb7185"],
   ocean: ["#38bdf8", "#a5b4fc", "#fcd34d", "#5eead4", "#93c5fd", "#fda4af"],
   sunset: ["#fb923c", "#f472b6", "#fbbf24", "#bef264", "#f87171", "#fb7185"],
@@ -154,7 +156,7 @@ export default function AppearanceSection() {
         <div className="grid gap-2 p-4 sm:grid-cols-2 xl:grid-cols-3">
           {APPEARANCE_PRESETS.map((p) => {
             const on = p.id === activePreset;
-            const pal = p.values.palette ?? "neon";
+            const pal = p.values.palette ?? "iris";
             return (
               <button
                 key={p.id}

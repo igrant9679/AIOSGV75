@@ -7,6 +7,7 @@ import { useAppearance } from "./useAppearance";
 import { ACCENTS, ROUTE_ACCENTS, type Accent } from "@/lib/accents";
 import { MissionProvider, useMission } from "./store";
 import Header from "./Header";
+import TopBar from "./TopBar";
 import Sidebar from "./Sidebar";
 import ApprovalsBar from "./ApprovalsBar";
 import CommandPalette from "./CommandPalette";
@@ -19,6 +20,7 @@ import { SessionAlertsWatcher } from "./hub/NetworkPanels";
 import PermissionPrompts from "./hub/PermissionPrompts";
 import { FleetPauseBar } from "./hub/FleetPause";
 import FleetLookSync from "./FleetLookSync";
+import { ModuleGate } from "./useModules";
 
 /** Agent chat routes get a FULL theme takeover — the whole sky in their color. */
 const TAKEOVER_ROUTES = new Set(["/auto", "/claude", "/openclaw", "/hermes"]);
@@ -43,7 +45,7 @@ function DeckFrame({ children }: { children: ReactNode }) {
 
   return (
     <div
-      className={`relative min-h-dvh ${takeover ? "theme-takeover" : ""}`}
+      className={`deck-root relative min-h-dvh ${takeover ? "theme-takeover" : ""}`}
       style={{ "--page-accent": pageAccent } as CSSProperties}
     >
       {/* ambient layers — page-tint washes the accent in everywhere; on agent
@@ -61,14 +63,17 @@ function DeckFrame({ children }: { children: ReactNode }) {
       <HelpDrawer />
       <Celebration />
       <div className="deck-frame relative mx-auto flex min-h-dvh w-full max-w-[1600px] flex-col gap-4 p-4 lg:p-5">
-        <Header />
+        <div className="deck-only">
+          <Header />
+        </div>
         <ApprovalsBar />
         <FleetPauseBar />
         <div className="deck-row flex flex-1 flex-col gap-4 md:flex-row">
           <Sidebar />
           <main className="min-w-0 flex-1">
+            <TopBar />
             <PageHero />
-            {children}
+            <ModuleGate>{children}</ModuleGate>
           </main>
         </div>
         <footer className="deck-footer flex items-center justify-between gap-4 px-1 font-mono text-[10px] tracking-[0.2em] text-ink-faint">

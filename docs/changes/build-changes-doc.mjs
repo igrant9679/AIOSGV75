@@ -37,7 +37,7 @@ const META = {
   period: "24–27 November 2026",
   since: "2026-11-20", // git log --since (the last 7 days when first written)
   updated: "27 November 2026",
-  version: "2.2",
+  version: "3.0",
 };
 
 const SUMMARY = [
@@ -47,6 +47,18 @@ const SUMMARY = [
 
 // Each section: a title, an optional intro, and items { name, what, date }. "what" may use **bold**.
 const SECTIONS = [
+  {
+    title: "A new front: Studio look, Hub, Board, Agents, Tools, Connections, Modules (28 Nov)",
+    items: [
+      { name: "Studio look (now the default)", date: "28 Nov", what: "A calmer interface: a slim top bar with search, light / dark and a count of what waits on you; the menu down the side edge; plain page titles; one violet accent on white or near-black. Every browser moves to it once. The earlier looks are still under Appearance → Presets, and your custom colours, fonts, background and menu order still apply on top." },
+      { name: "Hub: one box for everything (the new home page)", date: "28 Nov", what: "Type anything. Auto decides where it goes and tells you first: Fleet (answers from all machines, or a change shown as a card to confirm), Agent (a real session on the best machine, or the one you pick, answer-only or allowed to change files, with Fast / Balanced / Best for Claude) or Chat (the best available model, or the engine you pick). Below: your engines and six machines wired in, live. The old home page is now Overview." },
+      { name: "Board: the office and the live board", date: "28 Nov", what: "Everything the fleet is doing or waiting on in one place: Work tasks, LevelUp hand-offs, jobs, runs, missions, approvals, permission prompts and confirm cards. Office view: one room per machine, running work as bots at desks, what waits on you at the front desk. Board view: Waiting on you, Pending, Running, Done, Failed, with the buttons on each card." },
+      { name: "Agents: your own standing agents", date: "28 Nov", what: "Name, persona, standing task, tool, machine (or Auto), web and file permissions, helpers, and an optional schedule. Five starters. If Auto lands on a machine where the tool isn't signed in, the run moves to the next machine and says which one needs a sign-in (found in testing: Claude on Sabine-1 isn't signed in)." },
+      { name: "Tools: skills as short forms", date: "28 Nov", what: "Eight built-in tools (brief, email, proposal, meeting notes, research, social posts, checklist, second opinion), your own (write a prompt with {name} blanks), and every Claude skill on the machine with one box each. Results are saved to copy or download." },
+      { name: "Connections and Subscriptions", date: "28 Nov", what: "Every AI sign-in by machine with its plan and usage, the services (vault, GitHub, Telegram, LevelUp, Work home), extra models, and a subscriptions list: monthly cost, renewal date and what each plan is doing right now." },
+      { name: "Modules, with LevelUp as its own page", date: "28 Nov", what: "Switch LevelUp, GitHub, Studio and content, Arena and evals, JARVIS, Hermes Lab, and Graph / journal / goals off or on for every machine. Off hides the pages and stops any background checking; nothing is deleted. LevelUp has its own page: connect, approve, follow, review, by area." },
+    ],
+  },
   {
     title: "Your machines, managed from one place",
     intro: "Fleet now shows and controls every computer in the group, not just this one.",
@@ -129,6 +141,9 @@ const FINDINGS = [
 
 // What the owner needs to do or decide. status: "to do" | "decision" | "optional" | "done"
 const WAITING = [
+  { item: "Sign Claude in on Sabine-1", status: "to do", why: "A test agent sent there failed with “Not logged in”. Auto now moves on to another machine, but that one can't run Claude work until it is signed in.", how: "On Sabine-1, in a terminal: claude, then /login." },
+  { item: "Look at the new interface", status: "to do", why: "The look, home page and menu changed.", how: "Open Mission Control: Hub, Board, Agents, Tools, Connections, LevelUp, Modules. Appearance → Presets → MissionCommand brings the old look back if you prefer it." },
+  { item: "Add your subscriptions", status: "optional", why: "Connections can show what you pay and when it renews, next to live usage.", how: "Connections → Subscriptions → Add subscription." },
   { item: "GitHub sign-in on Legion7 (optional)", status: "optional", why: "Legion7 is now the Work home. It keeps Work up to date from other machines' GitHub reports, but with its own sign-in it makes them itself, even when the others are off.", how: "On Legion7, in a normal PowerShell window: gh auth login --hostname github.com --git-protocol https --web, approve in the browser; run it again for your other account." },
   { item: "Connect LevelUp on Legion7", status: "to do", why: "LevelUp hand-offs are handled by the Work home (Legion7).", how: "LevelUp → Fleet → Make a key; then Work → LevelUp → Connect on any machine (it is stored on Legion7)." },
   { item: "Talos: try it, and set notifications", status: "to do", why: "Talos now controls the fleet from Telegram.", how: "Ask it something in Telegram (e.g. how many open tasks across how many machines?), then try a change and reply yes. Fleet → Talos: notifications, quiet hours, digest time." },
@@ -157,6 +172,7 @@ const WAITING = [
 // Changes to this document itself.
 const HISTORY = [
   { date: "27 Nov 2026", change: "First version: changes from 24–27 November, findings, and what's waiting on you." },
+  { date: "28 Nov 2026", change: "3.0: the new front: Studio look, Hub, Board (office), Agents, Tools, Connections and Subscriptions, Modules with a LevelUp page." },
   { date: "28 Nov 2026", change: "2.2: Work lives on Legion7 (the Work home); two new waiting items." },
   { date: "28 Nov 2026", change: "2.1: first morning digest fixed: Work kept on three machines shown once, only real schedule problems listed, a job stopped on purpose not called a failure; the Telegram gateway check no longer reports a slow answer as the gateway being down." },
   { date: "28 Nov 2026", change: "2.0: Talos controls the whole fleet from Telegram (ask, confirm cards, notifications, digest, failover)." },

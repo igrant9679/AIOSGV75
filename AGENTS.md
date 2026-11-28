@@ -85,6 +85,9 @@ manual is `/guide` (source: `lib/guideContent.ts`).
   self-contained because the pre-paint boot script embeds its source; every value validated:
   scripts/test-look.mjs), `fleetLook.ts` (a look pushed to every machine: vault Cluster/look.json, served at /api/look,
   applied once per push by components/FleetLookSync.tsx unless the browser opted out; cleaned on both ends),
+  `board.ts` (/city: one live list of everything, and the office view), `hubRoute.ts` (the Hub's Auto),
+  `fleetAgents.ts` + `fleetAgentRules.ts` (/agents), `connections.ts` (/connections, subscriptions),
+  `toolsLibrary.ts` + `toolRules.ts` (/tools), `modules.ts` + `moduleList.ts` (/modules, /levelup); rules 49–53,
   `talos.ts` + `fleetSnapshot.ts` + `talosNotify.ts` + `telegramFailover.ts` (Talos on Telegram controls
   the whole fleet: snapshot, ask, get, confirm cards for any change, notifications, digest, failover; rule 47),
   `team.ts` + `teamParse.ts` (Command -> Team: named teammates in their own sessions, @mentions and
@@ -466,6 +469,38 @@ pm: it works in Claude Code's
     left on disk, unused. The home keeps a fresh GitHub report even without its own GitHub sign-in: every
     30 minutes `borrowGithubReport` takes the newest report another machine made (LAN only) and syncs Work.
     Unset home = the old behaviour.
+
+49. **The Studio look, the Hub and the Board are a new front, not new powers.** Look version 3 makes
+    "Studio" the default (palette "iris", surface "studio", frame `data-shell="studio"`: TopBar.tsx, the menu
+    on the side edge, plain titles, one accent); every browser is moved to it once (the boot script), and the
+    older looks are presets built on `DECK_BASE` (lib/appearance.ts). Both frames render; CSS shows one
+    (.studio-only / .deck-only), so there is no flash. "/" is the Hub (HubSection.tsx): one box whose Auto
+    (lib/hubRoute.ts, pure, scripts/test-hub.mjs) sends a request to Fleet (commandFleet + confirm cards),
+    Agent (an ordinary session job on a machine) or Chat (/api/auto, optional `agent`), and SAYS which before
+    sending. The old Overview is /overview. The Board (/city, lib/board.ts) is one list of everything the
+    fleet is doing or waiting on (Work, LevelUp, jobs, runs, missions, approvals, permission prompts, confirm
+    cards) in five states; each item's buttons are plain calls to the API its own page already uses. The
+    office view draws one room per MACHINE (the owner's choice), running work as bots at desks.
+50. **A fleet agent is a saved prompt plus a place; its run is an ordinary job.** lib/fleetAgents.ts keeps the
+    owner's standing agents (name, persona, task, tool, machine or Auto, access, web, schedule) in the vault
+    (Cluster/fleet-agents.json). A run is `startJob` mode "new", so access levels, the target's own settings
+    and logging all apply. Scheduled runs: the master only, never while paused, each slot once (claimed
+    before starting) and only within six hours of its time. Auto placement that lands on a machine whose
+    tool isn't signed in retries on the next-best machine, up to three (`isSignInFailure`): found on the
+    first test, when Auto picked idle Sabine-1 and Claude there said "Not logged in". Pure rules:
+    lib/fleetAgentRules.ts, scripts/test-fleet-agents.mjs.
+51. **Connections shows; it does not hold.** lib/connections.ts gathers sign-ins per machine, models added by
+    key (names only) and services from what other pages already know, and never returns a key's value.
+    Subscriptions (cost, renewal day) are the owner's notes in the vault (Cluster/subscriptions.json).
+52. **A tool is a form that becomes a prompt.** lib/toolsLibrary.ts: built-in and owner-made tools
+    (vault Cluster/tools.json; `fillTool`, lib/toolRules.ts, scripts/test-tools.mjs) are answered by a model
+    with no tools of its own; a Claude skill runs as an answer-only Claude Code session on this machine.
+    Results stay on the machine (data/tool-results.json).
+53. **A module is pages plus, sometimes, a duty; off hides and stops, never deletes.** lib/moduleList.ts
+    (client-safe) names them; the state is one vault file (Cluster/modules.json). The menu drops a switched-off
+    module's pages, `ModuleGate` (components/useModules.tsx) replaces the page with a way back, and its
+    background duty checks `moduleOn` (LevelUp's tick, the daily GitHub report). LevelUp is a module with its
+    own page (/levelup) over the same Work tasks. A new optional feature should be a module.
 
 ## Dev cycle (production server auto-starts at login)
 

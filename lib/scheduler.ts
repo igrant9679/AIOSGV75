@@ -18,6 +18,7 @@ import { githubDailyTick } from "./githubReport";
 import { workTick } from "./repoTasks";
 import { levelupTick } from "./levelup";
 import { borrowGithubReport } from "./workHome";
+import { fleetAgentsTick } from "./fleetAgents";
 import { talosNotifyTick } from "./talosNotify";
 import { failoverTick } from "./telegramFailover";
 import { startPeerServer } from "./peer";
@@ -75,6 +76,8 @@ export function startScheduler(): void {
   setInterval(() => void workTick().catch((e: Error) => console.error(`[mission-control] work: ${e.message}`)), 30_000);
   // LevelUp hand-offs (rule 46): this machine calls LevelUp when it holds a connection (data/levelup.json)
   setInterval(() => void levelupTick().catch((e: Error) => console.error(`[mission-control] levelup: ${e.message}`)), 60_000);
+  // fleet agents (rule 50): the master starts scheduled ones; every machine settles the runs it started
+  setInterval(() => void fleetAgentsTick().catch((e: Error) => console.error(`[mission-control] agents: ${e.message}`)), 60_000);
   // the Work home keeps a fresh GitHub report even without its own GitHub sign-in (rule 48)
   setInterval(() => void borrowGithubReport().catch((e: Error) => console.error(`[mission-control] work home report: ${e.message}`)), 5 * 60_000);
   // Talos (rule 47): Telegram notifications + morning digest (the master sends), and Telegram failover on a standby
