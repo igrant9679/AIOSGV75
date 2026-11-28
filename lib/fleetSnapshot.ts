@@ -73,6 +73,31 @@ export async function localPart(): Promise<Any> {
   return out;
 }
 
+/**
+ * Several machines can hold Work (each one whose GitHub CLI is signed in builds the list from the same
+ * repositories), so the same task appears on each, under the same id. One picture: counts over the union of
+ * ids, each task as its most recently changed copy, and which machines hold a copy.
+ */
+export function mergeWork(holders: Any[]): Any[] {
+  if (holders.length <= 1) return holders;
+  const lists = ["levelupWaitingApproval", "doing", "review", "yours", "fleetReady"] as const;
+  const merged: Any = { heldBy: holders.map((h) => h.heldBy).join(", "), copies: holders.map((h) => ({ machine: h.heldBy, open: h.open })) };
+  for (const k of lists) {
+    const seen = new Map<string, Any>();
+    for (const h of holders) for (const t of h[k] ?? []) if (!seen.has(t.id)) seen.set(t.id, { ...t, heldBy: h.heldBy });
+    merged[k] = [...seen.values()];
+  }
+  // counts: the copy with the most open tasks is the fullest picture; the others are mostly the same tasks
+  const fullest = [...holders].sort((a, b) => (b.open ?? 0) - (a.open ?? 0))[0];
+  merged.open = fullest.open;
+  merged.byStatus = fullest.byStatus;
+  merged.byWho = fullest.byWho;
+  merged.byRepo = fullest.byRepo;
+  merged.countsFrom = fullest.heldBy;
+  merged.note = `The same repositories' tasks are kept on ${holders.length} machines (${merged.heldBy}); counts are from ${fullest.heldBy}'s copy.`;
+  return [merged];
+}
+
 /** The whole fleet, as seen from this machine (plus the other machines' local parts over the LAN). */
 export async function buildSnapshot(opts: { peers?: boolean } = {}): Promise<Any> {
   const errors: string[] = [];
@@ -126,7 +151,8 @@ export async function buildSnapshot(opts: { peers?: boolean } = {}): Promise<Any
   const jobs: Any[] = (await safe(async () => (await import("./sessionActions")).listJobs(), "jobs", errors)) ?? [];
   snap.jobs = {
     active: jobs.filter((j) => ["queued", "sent", "running", "waiting"].includes(j.status)).map((j) => ({ id: j.id, mode: j.mode, machine: j.hostLabel, tool: j.tool, status: j.status, title: String(j.title ?? j.prompt ?? "").slice(0, 100), waitReason: j.waitReason })),
-    failedLast24h: jobs.filter((j) => j.status === "error" && Date.now() - (j.finishedAt ?? j.createdAt ?? 0) < 24 * 3600e3).slice(0, 20).map((j) => ({ id: j.id, mode: j.mode, machine: j.hostLabel, error: String(j.error ?? "").slice(0, 160) })),
+    // a job someone stopped on purpose isn't a failure
+    failedLast24h: jobs.filter((j) => j.status === "error" && !/^stopped\b/i.test(String(j.error ?? "")) && Date.now() - (j.finishedAt ?? j.createdAt ?? 0) < 24 * 3600e3).slice(0, 20).map((j) => ({ id: j.id, mode: j.mode, machine: j.hostLabel, error: String(j.error ?? "").slice(0, 160) })),
   };
   const runs: Any[] = (await safe(async () => (await import("./runs")).listRuns(30), "runs", errors)) ?? [];
   snap.runs = runs.filter((r) => !["done", "failed", "stopped"].includes(r.status) || Date.now() - (r.updatedAt ?? 0) < 3 * 24 * 3600e3).map((r) => ({ id: r.id, title: r.title, status: r.status, machine: r.hostLabel, tasks: (r.tasks ?? []).length, done: (r.tasks ?? []).filter((t: Any) => t.status === "done").length }));
@@ -149,7 +175,7 @@ export async function buildSnapshot(opts: { peers?: boolean } = {}): Promise<Any
     const got = await Promise.all(others.map((m: Any) => peerFetch<Any>(m.host, "/peer/talos-local", { timeoutMs: 6000 }).then((p) => ({ ...p, label: m.label })).catch((e) => ({ host: m.host, label: m.label, unreachable: (e as Error).message.slice(0, 100) }))));
     for (const p of got) if (p.work || p.github || p.levelup || p.unreachable) parts.push(p);
   }
-  snap.work = parts.filter((p) => p.work).map((p) => ({ heldBy: p.label, ...p.work }));
+  snap.work = mergeWork(parts.filter((p) => p.work).map((p) => ({ heldBy: p.label, ...p.work })));
   snap.github = parts.filter((p) => p.github).map((p) => ({ heldBy: p.label, ...p.github }))[0] ?? null;
   snap.levelup = parts.filter((p) => p.levelup).map((p) => ({ heldBy: p.label, ...p.levelup }));
   const unreachable = parts.filter((p) => p.unreachable).map((p) => `${p.label} (${p.unreachable})`);

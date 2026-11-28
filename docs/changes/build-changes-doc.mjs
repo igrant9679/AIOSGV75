@@ -37,7 +37,7 @@ const META = {
   period: "24–27 November 2026",
   since: "2026-11-20", // git log --since (the last 7 days when first written)
   updated: "27 November 2026",
-  version: "2.0",
+  version: "2.1",
 };
 
 const SUMMARY = [
@@ -154,6 +154,7 @@ const WAITING = [
 // Changes to this document itself.
 const HISTORY = [
   { date: "27 Nov 2026", change: "First version: changes from 24–27 November, findings, and what's waiting on you." },
+  { date: "28 Nov 2026", change: "2.1: first morning digest fixed: Work kept on three machines shown once, only real schedule problems listed, a job stopped on purpose not called a failure; the Telegram gateway check no longer reports a slow answer as the gateway being down." },
   { date: "28 Nov 2026", change: "2.0: Talos controls the whole fleet from Telegram (ask, confirm cards, notifications, digest, failover)." },
   { date: "27 Nov 2026", change: "1.9: push a look to the whole Fleet; LevelUp's Fleet is live (merged after its full checks); Talos's notes now explain the fleet." },
   { date: "27 Nov 2026", change: "1.8: Appearance: customize everything (colours, fonts, sizes, background, menu, placement, saved looks)." },

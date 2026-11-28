@@ -113,7 +113,7 @@ export function digestText(snap: Any): string {
   const lines = [`☀️ Mission Control this morning`, `Machines: ${up} of ${ms.length} up${down.length ? ` (down: ${down.join(", ")})` : ""}${snap.pause?.paused ? " · the fleet is PAUSED" : ""}`];
   for (const w of snap.work ?? []) {
     const who = Object.entries(w.byWho ?? {}).sort((a: Any, b: Any) => b[1] - a[1]).slice(0, 5).map(([k, v]) => `${k} ${v}`).join(", ");
-    lines.push(`Work (${w.heldBy}): ${w.open} open — ${who}; ${w.byStatus?.review ?? 0} to review, ${w.byStatus?.doing ?? 0} in progress${w.levelupWaitingApproval?.length ? `; ${w.levelupWaitingApproval.length} LevelUp hand-off(s) waiting for approval` : ""}`);
+    lines.push(`Work${w.copies ? "" : ` (${w.heldBy})`}: ${w.open} open — ${who}; ${w.byStatus?.review ?? 0} to review, ${w.byStatus?.doing ?? 0} in progress${w.levelupWaitingApproval?.length ? `; ${w.levelupWaitingApproval.length} LevelUp hand-off(s) waiting for approval` : ""}`);
   }
   if (snap.approvals?.length) lines.push(`Approvals waiting: ${snap.approvals.length}`);
   if (snap.permissionPrompts?.length) lines.push(`Permission prompts waiting: ${snap.permissionPrompts.length}`);
@@ -121,7 +121,8 @@ export function digestText(snap: Any): string {
   if (runs.length) lines.push(`Runs going: ${runs.map((r: Any) => `${r.title} (${r.status}, ${r.done}/${r.tasks})`).join("; ")}`);
   const failed = snap.jobs?.failedLast24h?.length ?? 0;
   if (failed) lines.push(`Didn't finish in the last 24 h: ${failed}`);
-  const badSched = (snap.schedules ?? []).filter((x: Any) => x.enabled && x.lastStatus && !/^(ok|done|success)/i.test(x.lastStatus));
+  // only real problems: "saved to vault" / "delivered to Telegram" are how a good run ends
+  const badSched = (snap.schedules ?? []).filter((x: Any) => x.enabled && x.lastStatus && /fail|error|timed? ?out|refused|cancel|stopped|no agent|not (found|available)/i.test(x.lastStatus));
   if (badSched.length) lines.push(`Schedules with a problem: ${badSched.map((x: Any) => `${x.title} (${x.lastStatus})`).join("; ")}`);
   const limited = ms.flatMap((m: Any) => (m.subscriptions ?? []).filter((x: Any) => x.status === "limited").map((x: Any) => `${x.tool} on ${m.label}`));
   if (limited.length) lines.push(`At their limit: ${limited.join(", ")}`);

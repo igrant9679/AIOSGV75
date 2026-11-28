@@ -74,4 +74,26 @@ t("failover: takes over only after the primary is quiet long enough, hands back 
   assert.equal(F.failoverDecision({ ...base, isPrimary: true, primaryAgeMin: 60 }), "none"); // never on the primary itself
 });
 
+const S = await imp("fleetSnapshot.ts");
+t("Work kept on several machines is one picture, not three", () => {
+  const a = { heldBy: "Raider18", open: 153, byWho: { you: 42 }, byStatus: { review: 1 }, review: [{ id: "t1", title: "x" }], yours: [{ id: "y1" }, { id: "y2" }] };
+  const b = { heldBy: "Idris-2-16gb", open: 154, byWho: { you: 43 }, byStatus: { review: 0 }, review: [], yours: [{ id: "y1" }, { id: "y3" }] };
+  const m = S.mergeWork([a, b]);
+  assert.equal(m.length, 1);
+  assert.equal(m[0].open, 154);
+  assert.equal(m[0].countsFrom, "Idris-2-16gb");
+  assert.deepEqual(m[0].yours.map((x) => x.id), ["y1", "y2", "y3"]);
+  assert.equal(m[0].review.length, 1);
+  assert.match(m[0].note, /2 machines/);
+  assert.equal(S.mergeWork([a]).length, 1);
+  const d = N.digestText({ ...snap, work: m });
+  assert.equal(d.split("\n").filter((l) => l.startsWith("Work")).length, 1);
+});
+
+t("schedules: only real problems are listed in the digest", () => {
+  const d = N.digestText({ ...snap, schedules: [{ title: "Vault Librarian", enabled: true, lastStatus: "saved to vault" }, { title: "Ops Tuner", enabled: true, lastStatus: "delivered to Telegram" }, { title: "LSI Monday Status", enabled: true, lastStatus: "mission failed: timed out" }] });
+  assert.match(d, /LSI Monday Status/);
+  assert.doesNotMatch(d, /Vault Librarian|Ops Tuner/);
+});
+
 console.log(`\n${n} tests passed`);

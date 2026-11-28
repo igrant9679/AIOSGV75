@@ -582,7 +582,15 @@ async function checkCompanions(): Promise<HealthCheck[]> {
       .split(/\r?\n/)
       .map((l) => l.trim().replace(/(token|secret|key)\s*[:=]\s*\S+/gi, "$1=<hidden>"))
       .filter((l) => l && !/^(checking channel status|tip:)/i.test(l));
-    const reachable = lines.some((l) => /gateway reachable/i.test(l)) && !lines.some((l) => /not reachable|unreachable/i.test(l));
+    // A slow or empty answer is "couldn't tell", not "down": on 2026-11-28 the check flapped fail → ok every few
+    // hours (Telegram alerts at 02:02 / 08:05) while the gateway was fine, because the CLI sometimes took longer.
+    const saysDown = lines.some((l) => /not reachable|unreachable|not running|gateway (is )?stopped|connection refused|ECONNREFUSED/i.test(l));
+    const saysUp = lines.some((l) => /gateway reachable/i.test(l));
+    if (!saysDown && !saysUp) {
+      out.push({ id: "openclaw", label: "OpenClaw gateway (Telegram)", level: "info", detail: `Couldn't check just now: OpenClaw ${st.code === null ? "didn't answer within 45 seconds" : "gave no gateway status"}. It will be checked again at the next health run.` });
+      return out;
+    }
+    const reachable = saysUp && !saysDown;
     const telegram = lines.filter((l) => /telegram/i.test(l));
     const troubled = telegram.some((l) => /error|fail|disconnect|stopped|not (running|connected|linked)|offline|unauthori[sz]ed|\b40[19]\b|conflict|logged out/i.test(l));
     const said = telegram.length ? ` Telegram: ${telegram.join(" · ").slice(0, 240)}` : "";
