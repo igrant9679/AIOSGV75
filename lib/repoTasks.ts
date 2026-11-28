@@ -537,6 +537,7 @@ export async function startAllAssigned(): Promise<{ started: number; failed: str
  * "start automatically" on (and the fleet not paused) it starts one assigned task per tick.
  */
 export async function workTick(): Promise<void> {
+  if (!(await import("./workHome")).isWorkHome()) return; // Work lives on another machine (rule 48)
   const tasks = await readTasks();
   const doing = tasks.filter((t) => t.status === "doing" && t.job);
   if (doing.length) {
@@ -576,6 +577,7 @@ export async function workTick(): Promise<void> {
 /** After a GitHub report: bring its tasks in and, if switched on, assign them. */
 export async function afterGithubReport(report: GithubReport): Promise<void> {
   if (report.anonymous) return;
+  if (!(await import("./workHome")).isWorkHome()) return; // only the Work home syncs Work (rule 48)
   await syncTasksFromReport(report);
   if ((await readWorkSettings()).autoAssign) await autoAssign();
 }

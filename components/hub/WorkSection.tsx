@@ -21,6 +21,8 @@ interface View {
     areas: { names: string[]; clients: string[]; repos: Record<string, string>; folders: Record<string, { host: string; hostLabel: string; folder: string; tool: string; agent?: string; agentLabel?: string }> };
     repoAreas: Record<string, string | null>;
   };
+  /** the Work home (lib/workHome.ts): Work is kept on one machine; elsewhere this page shows its list */
+  home?: { host: string; label: string; here: boolean; unreachable?: boolean } | null;
   error?: string;
 }
 
@@ -69,7 +71,11 @@ export default function WorkSection() {
   const load = useCallback(() => {
     fetch("/api/work")
       .then((r) => r.json())
-      .then((b: View) => (b.error ? setMsg({ text: b.error, bad: true }) : setView(b)))
+      .then((b: View) => {
+        if (b.error) setMsg({ text: b.error, bad: true });
+        if (b.tasks) setView(b);
+        else if (b.home) setView((v) => (v ? { ...v, home: b.home } : v));
+      })
       .catch((e: Error) => setMsg({ text: e.message, bad: true }));
   }, []);
   const doing = view?.tasks.some((t) => t.status === "doing");
@@ -160,6 +166,7 @@ export default function WorkSection() {
               </label>
             </div>
           )}
+          <HomeBar home={view?.home ?? null} act={act} busy={busy} />
           {msg && (
             <p className="text-[11px]" style={{ color: msg.bad ? ACCENTS.rose.base : ACCENTS.lime.base }}>
               {msg.text}
@@ -541,5 +548,41 @@ function LevelupPanel({ lu, places, act, busy }: { lu: LuView; places: Record<st
         )}
       </div>
     </Panel>
+  );
+}
+
+/** Where Work lives (rule 48), and moving it to another machine. */
+function HomeBar({ home, act, busy }: { home: View["home"] | null; act: Act; busy: string | null }) {
+  const [machines, setMachines] = useState<{ host: string; label: string; online: boolean }[]>([]);
+  const [pick, setPick] = useState("");
+  useEffect(() => {
+    fetch("/api/cluster")
+      .then((r) => r.json())
+      .then((j) => setMachines((j.nodes ?? []).map((n: { host: string; label?: string; online?: boolean }) => ({ host: n.host, label: n.label ?? n.host, online: !!n.online }))))
+      .catch(() => {});
+  }, []);
+  const canMove = !home || home.here;
+  return (
+    <div className="flex flex-wrap items-center gap-2 font-mono text-[10px] text-ink-dim">
+      <span style={{ color: home?.unreachable ? ACCENTS.rose.base : undefined }}>
+        {!home ? "Work is kept on each machine separately (no Work home chosen)." : home.here ? `This machine (${home.label}) is the Work home: Work is kept and run here for the whole fleet.` : home.unreachable ? `Work lives on ${home.label}, which can't be reached right now.` : `Work lives on ${home.label}; you're seeing its list over the LAN, and every button acts there.`}
+      </span>
+      {canMove && (
+        <>
+          <span className="flex-1" />
+          <select value={pick} onChange={(e) => setPick(e.target.value)} aria-label="Move Work to" className="rounded-md border border-line bg-transparent px-1.5 py-0.5 font-mono text-[10px] text-ink">
+            <option value="" style={{ background: "var(--color-panel)" }}>{home ? "move Work to…" : "keep Work on one machine…"}</option>
+            {machines.filter((m) => m.host !== home?.host).map((m) => (
+              <option key={m.host} value={m.host} disabled={!m.online} style={{ background: "var(--color-panel)" }}>
+                {m.label}{m.online ? "" : " (offline)"}
+              </option>
+            ))}
+          </select>
+          <SmallButton onClick={() => pick && void act("home", { action: "move-home", host: pick }, (r) => `Work now lives on ${r.home}.${(r.moved as { written?: string[] })?.written?.length ? ` Moved: ${(r.moved as { written: string[] }).written.join(", ")}.` : ""}`)} disabled={!pick || !!busy}>
+            {busy === "home" ? "Moving…" : "Move"}
+          </SmallButton>
+        </>
+      )}
+    </div>
   );
 }

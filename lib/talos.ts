@@ -162,8 +162,11 @@ export function cardText(c: TalosCard): string {
   return [`Confirm ${c.id}: ${c.summary}`, `On: ${c.hostLabel} · ${c.method} ${c.path}${body ? ` ${body.length > 300 ? body.slice(0, 300) + "…" : body}` : ""}`, `Reply yes to run it (within 10 minutes), anything else to cancel.`].join("\n");
 }
 
-async function callLocal(method: string, p: string, body?: unknown): Promise<unknown> {
-  const res = await fetch(LOCAL + p, { method, headers: body === undefined ? {} : { "Content-Type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(110_000) });
+export async function callLocalApi(method: string, p: string, body?: unknown, headers: Record<string, string> = {}): Promise<unknown> {
+  return callLocal(method, p, body, headers);
+}
+async function callLocal(method: string, p: string, body?: unknown, extra: Record<string, string> = {}): Promise<unknown> {
+  const res = await fetch(LOCAL + p, { method, headers: { ...(body === undefined ? {} : { "Content-Type": "application/json" }), ...extra }, body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(110_000) });
   const text = await res.text();
   let data: unknown = text;
   try {

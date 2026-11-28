@@ -688,7 +688,7 @@ The token is stored in the vault, so any machine that takes over as master can s
 
 **Areas:** every hand-off is client work (LSI Media, CommunityForce, MeYouSocial, or any you add) or Personal (with the goal it serves). Work → LevelUp → **Areas**: set a work folder per area and an area per repository. The area filter on the board then shows one client or Personal at a time.
 
-**Connect:** in LevelUp open **Fleet → Make a key for Mission Control**, then paste the address and key into Work → LevelUp → **Connect**, on the machine whose Work page you use. The key stays on that machine. **Disconnect** forgets it. A new key made in LevelUp stops the old one.
+**Connect:** in LevelUp open **Fleet → Make a key for Mission Control**, then paste the address and key into Work → LevelUp → **Connect**, on any machine. It is kept on the Work home, which does the checking. **Disconnect** forgets it. A new key made in LevelUp stops the old one.
 
 **What LevelUp sees from here:** your Work items marked yours and the fleet's results waiting for review here, with their area, listed in LevelUp's Fleet panel under "Mission Control: waiting on you".`,
   },
@@ -697,6 +697,8 @@ The token is stored in the vault, so any machine that takes over as master can s
     title: "Work — the tasks your repositories mention, assigned to you or the fleet",
     keywords: "work tasks todo to-do next steps action items waiting on you issues assign assignee fleet teammate machine tool start review done dismissed board by project auto assign smart assign automatically repo tasks",
     body: `**Work (/work)** — one board for the tasks in all your repositories, so you can manage the work across your apps and projects.
+
+**Where Work lives:** on one machine, the **Work home** (now Legion7, which stays on). Work looks and works the same from any machine: elsewhere you see the home's list over your network, and every button acts there. The bar at the top of Work says where it lives, and the home can **move Work to** another machine, taking its tasks, settings, areas and GitHub report along. The home keeps Work in step with your repositories even without its own GitHub sign-in: it uses the newest GitHub report any machine made.
 
 **Where tasks come from** (after every GitHub report, or **Sync from GitHub**): the items in each repository's status documents (to-do lists, next steps, action items, "waiting on you" and "for you to do" sections, in this-week, changes, status, handoff and to-do files); what GitHub says needs you (reviews asked of you, your pull requests to merge or fix, failing checks, security alerts); and every open issue. Each task keeps the same identity from one sync to the next (repository + source + its words), so your assignments, status and notes stay; one that disappears from its document is flagged "no longer in its source" rather than deleted, and a closed issue closes its task.
 

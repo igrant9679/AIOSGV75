@@ -200,6 +200,34 @@ async function routes(): Promise<Record<string, Handler>> {
       return { job: await actions.acceptRequest(b.job, "lan", b.content) };
     },
     "GET /peer/job": async (q) => actions.jobForPeer(q.get("id") ?? ""),
+    // Work home (rule 48): Work is kept on one machine; the others' Work pages are answered from here
+    "GET /peer/work": async () => {
+      await gate();
+      return (await import("./talos")).callLocalApi("GET", "/api/work", undefined, { "x-mc-work-proxied": "1" });
+    },
+    "POST /peer/work": async (_q, body, from) => {
+      const s = await gate();
+      const entry = { id: `work-${Date.now().toString(36)}`, dir: "in" as const, host: os.hostname(), hostLabel: cfg.label || os.hostname(), from: from || "unknown", kind: "work" as const, via: "lan" as const, what: `Work: ${String((body as { action?: string })?.action ?? "?")}` };
+      if (s.remoteReplies !== "edit") {
+        await logRemote({ ...entry, outcome: "refused", reason: "changes from the fleet aren't allowed here" });
+        throw Object.assign(new Error(`${cfg.label || os.hostname()} (the Work home) doesn't allow changes from your other machines: set its "Replies from my other machines" to edit.`), { status: 403 });
+      }
+      const r = await (await import("./talos")).callLocalApi("POST", "/api/work", body, { "x-mc-work-proxied": "1" });
+      await logRemote({ ...entry, outcome: "accepted" });
+      return r;
+    },
+    "POST /peer/work-import": async (_q, body, from) => {
+      const s = await gate();
+      if (s.remoteReplies !== "edit") throw Object.assign(new Error("This machine doesn't allow changes from your other machines (set it to edit first)."), { status: 403 });
+      const wh = await import("./workHome");
+      const r = await wh.unpackWork((body as { files?: Record<string, unknown> })?.files ?? {});
+      await logRemote({ id: `work-move-${Date.now().toString(36)}`, dir: "in", host: os.hostname(), hostLabel: cfg.label || os.hostname(), from: from || "unknown", kind: "work", via: "lan", what: `Work moved here (${r.written.join(", ") || "nothing new"})`, outcome: "accepted" });
+      return r;
+    },
+    "GET /peer/github-report": async () => {
+      await gate();
+      return { report: await (await import("./githubReport")).readGithubReport() };
+    },
     // Talos (rule 47): this machine's local-only picture (Work, GitHub report, LevelUp link), a read, and a confirmed change
     "GET /peer/talos-local": async () => {
       await gate();

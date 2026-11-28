@@ -166,6 +166,7 @@ function assigneeOf(p: PlanPlace | null, myLabel: string): Assignee {
 export async function levelupTick(): Promise<void> {
   const cfg = readLevelupConfig();
   if (!cfg || busy) return;
+  if (!(await import("./workHome")).isWorkHome()) return; // hand-offs are Work tasks: the Work home handles them (rule 48)
   busy = true;
   try {
     const myLabel = await machineLabel();

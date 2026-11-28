@@ -1,6 +1,26 @@
 import { autoAssign, placesForPage, readTasks, readWorkSettings, saveWorkSettings, smartAssign, startAllAssigned, startTask, syncTasksFromReport, updateTask, type Assignee, type TaskStatus } from "@/lib/repoTasks";
 import { readTeam } from "@/lib/team";
 import { approveLevelupTask, connectLevelup, disconnectLevelup, levelupForPage, levelupTick, saveAreas } from "@/lib/levelup";
+import os from "os";
+import { readConfig } from "@/lib/cluster";
+import { isWorkHome, packWork, readWorkHome, writeWorkHome } from "@/lib/workHome";
+
+/**
+ * Work lives on ONE machine, the Work home (lib/workHome.ts, rule 48). Anywhere else this route is answered
+ * by the home over the LAN; a request the home itself forwards (x-mc-work-proxied) is always answered here.
+ */
+async function viaHome(req: Request, method: "GET" | "POST", body?: unknown): Promise<Response | null> {
+  if (req.headers.get("x-mc-work-proxied") === "1" || isWorkHome()) return null;
+  if (method === "POST" && (body as { action?: string })?.action === "move-home") return null; // handled below
+  const home = readWorkHome()!;
+  try {
+    const { peerFetch } = await import("@/lib/peer");
+    const data = await peerFetch<Record<string, unknown>>(home.host, "/peer/work", method === "GET" ? { timeoutMs: 30_000 } : { body, timeoutMs: 115_000 });
+    return Response.json(method === "GET" ? { ...data, home: { host: home.host, label: home.label, here: false } } : data);
+  } catch (e) {
+    return Response.json({ error: `Work lives on ${home.label}, which can't be reached right now (${(e as Error).message}).`, home: { host: home.host, label: home.label, here: false, unreachable: true } }, { status: method === "GET" ? 200 : 502 });
+  }
+}
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -19,11 +39,14 @@ export const maxDuration = 120;
  * POST { action: "approve", id }               a LevelUp hand-off: approve it here
  * POST { action: "area-repo", repo, area } | { action: "area-folder", area, place } | { action: "area-clients", clients }
  */
-export async function GET() {
+export async function GET(req: Request) {
   try {
+    const forwarded = await viaHome(req, "GET");
+    if (forwarded) return forwarded;
+    const wh = readWorkHome();
     const [tasks, settings, places, team, levelup] = await Promise.all([readTasks(), readWorkSettings(), placesForPage(), readTeam(), levelupForPage()]);
     // the prompt (brief) stays out of the page: it is the owner's own LevelUp text and only the worker needs it
-    return Response.json({ tasks: tasks.map(({ brief: _b, ...t }) => t), settings, places, teammates: team.members.map((m) => ({ id: m.id, name: m.name, host: m.hostLabel, folder: m.folder })), levelup });
+    return Response.json({ tasks: tasks.map(({ brief: _b, ...t }) => t), settings, places, teammates: team.members.map((m) => ({ id: m.id, name: m.name, host: m.hostLabel, folder: m.folder })), levelup, home: wh ? { host: wh.host, label: wh.label, here: wh.host === os.hostname() } : null });
   } catch (e) {
     return Response.json({ error: (e as Error).message }, { status: 500 });
   }
@@ -38,8 +61,29 @@ export async function POST(req: Request) {
   } catch {
     return Response.json({ error: "invalid JSON" }, { status: 400 });
   }
+  const forwarded = await viaHome(req, "POST", b);
+  if (forwarded) return forwarded;
   try {
     switch (b.action) {
+      case "move-home": {
+        // make another machine (or this one) the Work home; this machine's Work goes with it
+        const target = String((b as { host?: string }).host ?? "");
+        if (!target) throw new Error("Which machine?");
+        const { clusterStatus } = await import("@/lib/cluster");
+        const st = await clusterStatus();
+        const node = st.nodes.find((n) => n.host === target || n.label === target);
+        if (!node) throw new Error(`No machine called ${target} in the fleet.`);
+        const cfg = await readConfig().catch(() => null);
+        const me = cfg?.label || os.hostname();
+        let moved: { written: string[]; backup?: string } = { written: [] };
+        if (node.host !== os.hostname()) {
+          if (!isWorkHome()) throw new Error(`Move it from the machine that has Work now (${readWorkHome()?.label}).`);
+          const { peerFetch } = await import("@/lib/peer");
+          moved = await peerFetch(node.host, "/peer/work-import", { body: { files: await packWork() }, timeoutMs: 120_000 });
+        }
+        await writeWorkHome({ host: node.host, label: node.label ?? node.host, at: Date.now(), by: me });
+        return Response.json({ ok: true, home: node.label ?? node.host, moved });
+      }
       case "sync":
         return Response.json(await syncTasksFromReport());
       case "auto-assign":

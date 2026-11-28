@@ -27,7 +27,8 @@ const safe = async <T,>(fn: () => Promise<T>, label: string, errors: string[]): 
 export async function localPart(): Promise<Any> {
   const errors: string[] = [];
   const out: Any = { host: os.hostname(), at: Date.now() };
-  const work = await safe(async () => {
+  const home = (await import("./workHome")).isWorkHome(); // old copies on other machines aren't Work any more (rule 48)
+  const work = !home ? null : await safe(async () => {
     const { readTasks, assigneeLabel } = await import("./repoTasks");
     const tasks = await readTasks();
     if (!tasks.length) return null;

@@ -77,7 +77,7 @@ manual is `/guide` (source: `lib/guideContent.ts`).
   `github.ts` + `githubReport.ts` + `githubDocs.ts` (/github: every repository on the owner's GitHub
   accounts, changes, waiting-on-you and Claude-written reports; rule 44),
   `repoTasks.ts` + `repoTaskRules.ts` (/work: the tasks the repositories mention, assigned to the owner or
-  the fleet and started from there; rule 45),
+  the fleet and started from there; rule 45), `workHome.ts` (the one machine Work lives on; rule 48),
   `levelup.ts` + `levelupRules.ts` (LevelUp hand-offs: the owner's planning app hands tasks and projects to
   the fleet, approved before they run, filed by client / personal area; rule 46),
   `appearance.ts` (preset options as data-* attributes) + `lookCustom.ts` (the free-form look: any colour,
@@ -452,6 +452,20 @@ pm: it works in Claude Code's
     an answer or ONE confirm card (Claude, tools off, over the snapshot + manual, up to 4 reads first); JARVIS
     reads the card out and a spoken or typed yes / no confirms or cancels it (anything else cancels it and is
     taken as a new request). Talos may use the same op instead of choosing endpoints itself.
+
+48. **Work lives on ONE machine, the Work home (Legion7, the owner's choice: Raider18 is often off).** Before,
+    every machine whose GitHub CLI was signed in kept its own copy of the same tasks and assigned them on its
+    own (three copies on 2026-11-28). lib/workHome.ts: vault Cluster/work-home.json names the home; only it
+    runs `workTick`, `afterGithubReport` (the Work sync) and `levelupTick`, and only its tasks are in the Talos
+    snapshot. On every other machine /api/work is answered by the home over the LAN (peer GET/POST /peer/work;
+    the home answers a forwarded request itself, header x-mc-work-proxied, so two machines can't bounce it), so
+    Work, LevelUp's connect and the areas work from any machine, stored on the home. A POST there needs the home
+    to allow edits from the fleet. Moving: Work → "move Work to…" on the current home packs data/repo-tasks.json,
+    repo-tasks-settings.json, areas.json and the GitHub report to the new home (POST /peer/work-import; what was
+    there kept in data/work-backup-<time>/; the LevelUp key stays put: connect again). Old copies elsewhere are
+    left on disk, unused. The home keeps a fresh GitHub report even without its own GitHub sign-in: every
+    30 minutes `borrowGithubReport` takes the newest report another machine made (LAN only) and syncs Work.
+    Unset home = the old behaviour.
 
 ## Dev cycle (production server auto-starts at login)
 
